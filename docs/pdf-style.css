@@ -1,0 +1,184 @@
+@page {
+  size: A4;
+  margin: 2.5cm 2cm 2.5cm 2cm;
+}
+
+@page :first {
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: #1f2937;
+  max-width: 100%;
+}
+
+/* Cover page (first H1) */
+h1:first-of-type {
+  page-break-before: avoid;
+  page-break-after: always;
+  margin: 0;
+  padding: 6cm 2cm 0 2cm;
+  font-size: 28pt;
+  color: #1e3a8a;
+  border: none;
+  text-align: center;
+}
+
+h1:first-of-type + h3 {
+  text-align: center;
+  font-size: 16pt;
+  color: #475569;
+  font-weight: 400;
+  margin-top: 0.5cm;
+  padding: 0 2cm;
+}
+
+h1:first-of-type + h3 + table {
+  margin: 4cm auto 0 auto;
+  width: 60%;
+}
+
+/* Headings */
+h1 {
+  color: #1e3a8a;
+  font-size: 20pt;
+  border-bottom: 2px solid #1e3a8a;
+  padding-bottom: 6px;
+  margin-top: 1.6em;
+  page-break-before: always;
+  page-break-after: avoid;
+}
+
+h2 {
+  color: #1e40af;
+  font-size: 15pt;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  page-break-after: avoid;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 3px;
+}
+
+h3 {
+  color: #1e40af;
+  font-size: 12.5pt;
+  margin-top: 1.3em;
+  page-break-after: avoid;
+}
+
+h4 {
+  color: #334155;
+  font-size: 11pt;
+  margin-top: 1em;
+  page-break-after: avoid;
+}
+
+/* Paragraphs & lists */
+p {
+  margin: 0.5em 0;
+  text-align: justify;
+}
+
+ul, ol {
+  margin: 0.4em 0;
+  padding-left: 1.5em;
+}
+
+li {
+  margin: 0.15em 0;
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+th, td {
+  border: 1px solid #cbd5e1;
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #1e40af;
+  color: #fff;
+  font-weight: 600;
+}
+
+tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+/* Code */
+code {
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: "SF Mono", "Consolas", "Monaco", monospace;
+  font-size: 9pt;
+  color: #be123c;
+}
+
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 12px 14px;
+  border-radius: 5px;
+  overflow-x: auto;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  page-break-inside: avoid;
+}
+
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+/* Blockquote */
+blockquote {
+  border-left: 3px solid #2563eb;
+  background: #eff6ff;
+  margin: 1em 0;
+  padding: 8px 14px;
+  color: #1e293b;
+  font-style: normal;
+  page-break-inside: avoid;
+}
+
+blockquote p {
+  margin: 0.3em 0;
+}
+
+/* Horizontal rule */
+hr {
+  border: 0;
+  border-top: 1px solid #cbd5e1;
+  margin: 1.5em 0;
+}
+
+/* Strong */
+strong {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+/* Links */
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+/* Avoid orphan tables */
+table, pre, blockquote {
+  page-break-inside: avoid;
+}
