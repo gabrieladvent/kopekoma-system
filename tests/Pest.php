@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\User;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /*
@@ -14,7 +17,7 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
- // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+    ->use(LazilyRefreshDatabase::class)
     ->in('Feature');
 
 /*
@@ -43,7 +46,23 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Create a super_admin user and authenticate as them. Shield's super_admin
+ * role bypasses all resource policies via a Gate::before hook, so this keeps
+ * Filament resource tests passing even after Shield policies are generated.
+ */
+function asSuperAdmin(): User
 {
-    // ..
+    $user = User::factory()->create();
+
+    $role = Role::firstOrCreate([
+        'name' => 'super_admin',
+        'guard_name' => 'web',
+    ]);
+
+    $user->assignRole($role);
+
+    test()->actingAs($user);
+
+    return $user;
 }
