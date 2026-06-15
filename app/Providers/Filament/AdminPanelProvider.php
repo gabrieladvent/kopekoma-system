@@ -21,6 +21,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -28,19 +29,30 @@ class AdminPanelProvider extends PanelProvider
     public function panel(Panel $panel): Panel
     {
         $settings = $this->generalSettings();
+        $appName = $settings?->app_name ?: config('app.name');
 
         $panel = $panel
             ->default()
             ->id('admin')
             ->path('admin')
             ->login(Login::class)
-            ->brandName($settings?->app_name ?: config('app.name'))
+            ->brandName($appName)
             ->colors([
                 'primary' => Color::Emerald,
             ]);
 
         if ($logo = $this->assetUrl($settings?->logo_path)) {
-            $panel->brandLogo($logo)->brandLogoHeight('2.25rem');
+            // Render the logo AND the app name together. Filament hides the
+            // brand name once a brand logo is set, so we build the brand as
+            // HTML that keeps the name visible alongside the image. Inline
+            // styles are used for sizing because arbitrary Tailwind classes in
+            // a PHP string are not present in the compiled stylesheet.
+            $panel->brandLogo(new HtmlString(
+                '<span style="display:flex;align-items:center;gap:.5rem;">'
+                .'<img src="'.e($logo).'" alt="'.e($appName).'" style="height:2rem;width:auto;flex:none;" />'
+                .'<span style="font-size:1rem;font-weight:700;line-height:1.25;white-space:nowrap;" class="text-gray-950 dark:text-white">'.e($appName).'</span>'
+                .'</span>'
+            ));
         }
 
         if ($favicon = $this->assetUrl($settings?->favicon_path)) {
