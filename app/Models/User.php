@@ -17,15 +17,6 @@ class User extends Authenticatable implements FilamentUser
     use HasFactory, HasRoles, Notifiable;
 
     /**
-     * Anyone with an account may access the admin panel; per-resource
-     * access is enforced by Filament Shield policies.
-     */
-    public function canAccessPanel(Panel $panel): bool
-    {
-        return true;
-    }
-
-    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -57,5 +48,14 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Anyone with an account may access the admin panel; per-resource
+     * access is enforced by Filament Shield policies.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return true;
     }
 }

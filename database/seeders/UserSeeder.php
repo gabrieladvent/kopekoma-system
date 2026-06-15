@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
         $admin = User::updateOrCreate(
             ['email' => 'admin@example.com'],
             [
-                'name' => 'Eko Admin',
+                'name' => 'admin example',
                 'password' => Hash::make('password'),
             ],
         );
