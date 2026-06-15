@@ -4,6 +4,10 @@ namespace App\Providers;
 
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
+use Filament\Actions\DeleteAction as PageDeleteAction;
+use Filament\Notifications\Notification;
+use Filament\Tables\Actions\DeleteAction as TableDeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -23,6 +27,29 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->applyGeneralSettings();
+        $this->configureDeleteNotifications();
+    }
+
+    /**
+     * Ensure every delete action (page header, table row, bulk) shows a
+     * notification with a description, not just a title.
+     */
+    private function configureDeleteNotifications(): void
+    {
+        $single = Notification::make()
+            ->success()
+            ->title('Data dihapus')
+            ->body('Data telah berhasil dihapus dari sistem.');
+
+        PageDeleteAction::configureUsing(fn (PageDeleteAction $action) => $action->successNotification($single));
+        TableDeleteAction::configureUsing(fn (TableDeleteAction $action) => $action->successNotification($single));
+
+        DeleteBulkAction::configureUsing(fn (DeleteBulkAction $action) => $action->successNotification(
+            Notification::make()
+                ->success()
+                ->title('Data terpilih dihapus')
+                ->body('Seluruh data yang dipilih telah berhasil dihapus.')
+        ));
     }
 
     /**

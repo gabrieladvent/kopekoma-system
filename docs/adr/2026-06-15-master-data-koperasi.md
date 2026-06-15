@@ -123,8 +123,8 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 |---|------|--------|-----------|--------|
 | 1a | `GradeResource` — CRUD Golongan (sudah ada) | — | — | Done |
 | 1b | `GradeSeeder` — seed HR-THL & GOL-1..4 (sudah ada) | — | — | Done |
-| 2a | `AgencyResource` — CRUD OPD (form: kode, nama, alamat, PIC bendahara, no HP, status) | S | ✅ | Pending |
-| 2b | Table OPD: search/filter status, kolom ringkasan jumlah anggota | S | setelah 2a | Pending |
+| 2a | `AgencyResource` — CRUD OPD (form: kode, nama, alamat, PIC bendahara, no HP, status) | S | ✅ | Done |
+| 2b | Table OPD: search/filter status, kolom ringkasan jumlah anggota | S | setelah 2a | Done |
 | 3a | `MemberResource` skeleton — Resource + form minimal (identitas inti + select OPD/golongan) yang sudah bisa create/edit | M | setelah 2a | Pending |
 | 3a2 | Form lengkap — seksi kepegawaian, keuangan, ahli waris (repeater) | M | setelah 3a | Pending |
 | 3b | Penomoran anggota otomatis `member_number` = `KM-YYYY-NNNN`, reset per tahun, race-safe (D2) | M | setelah 3a | Pending |
@@ -219,4 +219,6 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 
 - **2026-06-15 v1**: Initial draft — rancangan master data & urutan pengerjaan (Golongan✅ → OPD → Anggota).
 - **2026-06-15 v2**: Status Draft → Accepted. Tutup 3 blocker via keputusan desain D1–D4: snapshot nominal wajib (D1), format `member_number` `KM-YYYY-NNNN` (D2), tabel nominal per golongan (D3), matriks RBAC 3 peran (D4). Pecah bottleneck 3a → 3a + 3a2; longgarkan dependency 3e; perbaiki dependency 3g (butuh 3b) & item 4 (butuh 2a+3a); tambah §Desain Import Excel; angkat security review ke fase desain; resolve Open Questions terkait.
+- **2026-06-16 v5**: Item **2b Done** — table OPD filter status + kolom `members_count`. Plus konvensi global selama eksekusi: view page + infolist, redirect create→list & edit→view, ActionGroup, kode auto-generate, helperText/placeholder, bendahara Select dari User, normalisasi no HP, `MoneyInput` global, notifikasi ber-body, menu Log Aktivitas + fix `subject_id` UUID, `AuditTrailRelationManager` global. **Grup OPD (item 2) selesai.**
+- **2026-06-15 v4**: Item **2a Done** — `AgencyResource` (CRUD OPD) + 3 Pages + `AgencyFactory` + 7 test (semua pass). Branch `feat/agency-resource`. Unlock 2b, 3a, 4.
 - **2026-06-15 v3**: Koreksi berbasis verifikasi kode. (1) **Fix angka D3** — nilai nominal sebelumnya keliru; disinkronkan ke `GradeSeeder` aktual (GOL-1=50k, GOL-2=75k, GOL-3=100k). (2) **D1 skema** — terkonfirmasi `members` belum punya kolom nominal & nama kolom yang benar `mandatory_savings_amount`; tambah migrasi aditif (item 3c) & revisi Non-Goals untuk mengizinkannya. (3) Catat 3d butuh `registerMediaCollections()` (belum ada di `Member`). (4) Tambah catatan tipe kunci campuran (UUID vs integer) untuk import 3g. Resolve Open Question kolom snapshot.
