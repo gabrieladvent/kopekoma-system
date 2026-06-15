@@ -1,0 +1,16 @@
+name: SourceMain
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR source to main
+        run: |
+          # Hanya izinkan dari development
+          if [[ "${{ github.head_ref }}" != "development" ]]; then
+            echo "❌ PR ke main harus dari development"
+            exit 1
+          fi

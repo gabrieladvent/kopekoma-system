@@ -1,0 +1,20 @@
+name: SourceDev
+on:
+  pull_request:
+    branches: [ development ]
+
+jobs:
+  check-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR source to development
+        run: |
+          # Izinkan PR dari feat/*, fix/*, docs/*, style/*, refactor/*, test/*, chore/*
+          if [[ "${{ github.head_ref }}" =~ ^(feat|fix|docs|style|refactor|test|chore)/.+ ]]; then
+            echo "✅ PR dari ${{ github.head_ref }} ke development diizinkan"
+            exit 0
+          else
+            echo "❌ PR ke development harus dari feat/*, fix/*, docs/*, style/*, refactor/*, test/*, atau chore/*"
+            echo "Branch anda: ${{ github.head_ref }}"
+            exit 1
+          fi
