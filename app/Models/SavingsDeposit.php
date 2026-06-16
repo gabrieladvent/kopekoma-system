@@ -10,7 +10,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class SavingsDeposit extends Model
 {
-    use HasUuids, LogsActivity;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'transaction_number',

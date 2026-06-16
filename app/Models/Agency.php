@@ -11,7 +11,9 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class Agency extends Model
 {
-    use HasFactory, HasUuids, LogsActivity;
+    use HasFactory;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'agency_code',

@@ -10,7 +10,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class Installment extends Model
 {
-    use HasUuids, LogsActivity;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'installment_number',

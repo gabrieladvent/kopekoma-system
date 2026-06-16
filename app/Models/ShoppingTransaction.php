@@ -10,7 +10,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class ShoppingTransaction extends Model
 {
-    use HasUuids, LogsActivity;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'member_id',

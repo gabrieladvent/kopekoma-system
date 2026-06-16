@@ -20,6 +20,10 @@ class MoneyInput extends TextInput
             ->numeric()
             ->prefix('Rp')
             ->minValue(0)
+            // Normalize a stored value (e.g. decimal:2 "50000.00") to a plain
+            // integer string before display, so stripCharacters('.') below never
+            // eats a decimal point on a save round-trip.
+            ->formatStateUsing(fn ($state) => filled($state) ? (string) (int) round((float) $state) : $state)
             // $money(input, decimalSeparator, thousandsSeparator, precision)
             ->mask(RawJs::make("\$money(\$input, ',', '.', 0)"))
             // strip the thousands separator so the stored value is a plain number

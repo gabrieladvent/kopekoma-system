@@ -13,7 +13,9 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 class Loan extends Model implements HasMedia
 {
-    use HasUuids, InteractsWithMedia, LogsActivity;
+    use HasUuids;
+    use InteractsWithMedia;
+    use LogsActivity;
 
     protected $fillable = [
         'loan_number',
