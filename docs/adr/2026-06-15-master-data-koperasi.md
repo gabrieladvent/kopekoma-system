@@ -133,7 +133,7 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 | 3e | Table Anggota: search NIK/NIP/nama, filter OPD/golongan/status, soft-delete | M | setelah 3a | Done |
 | 3f | Cetak kartu anggota (PDF / DomPDF) | M | setelah 3a2 | Done |
 | 3g | Import data anggota massal dari Excel (Maatwebsite) — lihat §Desain Import | L | setelah 3a2, 3b | Done |
-| 4 | RBAC: generate Shield permission ketiga Resource + assign role sesuai matriks D4 | S | setelah 2a, 3a | Pending |
+| 4 | RBAC: generate Shield permission ketiga Resource + assign role sesuai matriks D4 | S | setelah 2a, 3a | Done |
 
 **Effort:** S = small (< 1 jam), M = medium (1-3 jam), L = large (> 3 jam), — = sudah selesai/non-code
 
@@ -180,8 +180,8 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 - [x] Anggota di-nonaktifkan/keluar tidak terhapus permanen (soft delete / status).
 - [x] Cetak kartu anggota menghasilkan PDF yang benar. <!-- 3f printCard StreamedResponse -->
 - [x] Import Excel: baris valid masuk, baris invalid dilaporkan tanpa menggagalkan seluruh batch; duplikat NIK intra-batch tertolak; `member_number` di-generate sistem. <!-- 3g MembersImport -->
-- [ ] Shield permission ketiga Resource ter-generate; akses sesuai matriks D4 — Petugas tidak bisa delete/export/import, Pengurus & Super Admin bisa. <!-- item 4, belum -->
-- [x] Override nominal wajib hanya tersedia untuk Pengurus ke atas (D4). <!-- canOverrideMandatorySavings; enforcement penuh menyusul item 4 -->
+- [x] Shield permission ketiga Resource ter-generate; akses sesuai matriks D4 — Petugas tidak bisa delete/export/import, Pengurus & Super Admin bisa. <!-- item 4, RolePermissionMatrixTest -->
+- [x] Override nominal wajib hanya tersedia untuk Pengurus ke atas (D4). <!-- canOverrideMandatorySavings; enforcement penuh via item 4 RolePermissionSeeder -->
 - [x] Perubahan tercatat di `activity_log`.
 
 ---
@@ -217,6 +217,7 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 
 ## Changelog
 
+- **2026-06-16 v12**: **Item 4 (Shield RBAC) Done — seluruh master data selesai.** `shield:generate --all` membuat `AgencyPolicy` + `MemberPolicy` (+ `ActivityPolicy`), 55 permission. `RolePermissionSeeder` baru: definisi 3 peran (`petugas`, `pengurus`, `super_admin`) + assign per matriks D4 — `petugas` hanya view/create/update ketiga resource; `pengurus` tambah delete/restore/force-delete (+replicate/reorder); `super_admin` semua (gate bypass). Seeder idempotent (panggil `shield:generate` dulu) & di-wire ke `DatabaseSeeder`. Kode gating distandardkan: `MemberResource::ELEVATED_ROLES = ['super_admin','pengurus']` (hapus duplikat `Pengurus`/`pengurus`), tambah `canExportMembers()` + gate aksi **Cetak Kartu** (table & view page) yang sebelumnya tak terlindungi — D4 export = Pengurus+. Test baru `RolePermissionMatrixTest` (7 test, 54 assertion) memverifikasi matriks penuh; helper `asRole/asPengurus/asPetugas` di `Pest.php`. Full suite **70 pass**, pint clean. **Catatan ops:** jalankan `php artisan db:seed --class=RolePermissionSeeder` (atau `migrate:fresh --seed`) di production untuk membuat peran & permission.
 - **2026-06-15 v1**: Initial draft — rancangan master data & urutan pengerjaan (Golongan✅ → OPD → Anggota).
 - **2026-06-15 v2**: Status Draft → Accepted. Tutup 3 blocker via keputusan desain D1–D4: snapshot nominal wajib (D1), format `member_number` `KM-YYYY-NNNN` (D2), tabel nominal per golongan (D3), matriks RBAC 3 peran (D4). Pecah bottleneck 3a → 3a + 3a2; longgarkan dependency 3e; perbaiki dependency 3g (butuh 3b) & item 4 (butuh 2a+3a); tambah §Desain Import Excel; angkat security review ke fase desain; resolve Open Questions terkait.
 - **2026-06-16 v5**: Item **2b Done** — table OPD filter status + kolom `members_count`. Plus konvensi global selama eksekusi: view page + infolist, redirect create→list & edit→view, ActionGroup, kode auto-generate, helperText/placeholder, bendahara Select dari User, normalisasi no HP, `MoneyInput` global, notifikasi ber-body, menu Log Aktivitas + fix `subject_id` UUID, `AuditTrailRelationManager` global. **Grup OPD (item 2) selesai.**

@@ -3,10 +3,10 @@
 namespace App\Policies;
 
 use App\Models\User;
-use App\Models\Grade;
+use Spatie\Activitylog\Models\Activity;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
-class GradePolicy
+class ActivityPolicy
 {
     use HandlesAuthorization;
 
@@ -15,15 +15,15 @@ class GradePolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_grade');
+        return $user->can('view_any_activity');
     }
 
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, Grade $grade): bool
+    public function view(User $user, Activity $activity): bool
     {
-        return $user->can('view_grade');
+        return $user->can('view_activity');
     }
 
     /**
@@ -31,23 +31,23 @@ class GradePolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_grade');
+        return $user->can('create_activity');
     }
 
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, Grade $grade): bool
+    public function update(User $user, Activity $activity): bool
     {
-        return $user->can('update_grade');
+        return $user->can('update_activity');
     }
 
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, Grade $grade): bool
+    public function delete(User $user, Activity $activity): bool
     {
-        return $user->can('delete_grade');
+        return $user->can('delete_activity');
     }
 
     /**
@@ -55,15 +55,15 @@ class GradePolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_grade');
+        return $user->can('delete_any_activity');
     }
 
     /**
      * Determine whether the user can permanently delete.
      */
-    public function forceDelete(User $user, Grade $grade): bool
+    public function forceDelete(User $user, Activity $activity): bool
     {
-        return $user->can('force_delete_grade');
+        return $user->can('force_delete_activity');
     }
 
     /**
@@ -71,15 +71,15 @@ class GradePolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_grade');
+        return $user->can('force_delete_any_activity');
     }
 
     /**
      * Determine whether the user can restore.
      */
-    public function restore(User $user, Grade $grade): bool
+    public function restore(User $user, Activity $activity): bool
     {
-        return $user->can('restore_grade');
+        return $user->can('restore_activity');
     }
 
     /**
@@ -87,15 +87,15 @@ class GradePolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_grade');
+        return $user->can('restore_any_activity');
     }
 
     /**
      * Determine whether the user can replicate.
      */
-    public function replicate(User $user, Grade $grade): bool
+    public function replicate(User $user, Activity $activity): bool
     {
-        return $user->can('replicate_grade');
+        return $user->can('replicate_activity');
     }
 
     /**
@@ -103,6 +103,6 @@ class GradePolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_grade');
+        return $user->can('reorder_activity');
     }
 }

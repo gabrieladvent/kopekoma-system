@@ -37,14 +37,21 @@ class MemberResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Anggota';
 
+    private const ELEVATED_ROLES = ['super_admin', 'pengurus'];
+
     public static function canOverrideMandatorySavings(): bool
     {
-        return auth()->user()?->hasAnyRole(['super_admin', 'Pengurus', 'pengurus']) ?? false;
+        return auth()->user()?->hasAnyRole(self::ELEVATED_ROLES) ?? false;
     }
 
     public static function canImportMembers(): bool
     {
-        return auth()->user()?->hasAnyRole(['super_admin', 'Pengurus', 'pengurus']) ?? false;
+        return auth()->user()?->hasAnyRole(self::ELEVATED_ROLES) ?? false;
+    }
+
+    public static function canExportMembers(): bool
+    {
+        return auth()->user()?->hasAnyRole(self::ELEVATED_ROLES) ?? false;
     }
 
     public static function normalizePhone(?string $state): ?string
@@ -511,6 +518,7 @@ class MemberResource extends Resource
                     Tables\Actions\Action::make('cetakKartu')
                         ->label('Cetak Kartu')
                         ->icon('heroicon-o-identification')
+                        ->visible(fn (): bool => static::canExportMembers())
                         ->action(fn (Member $record): StreamedResponse => static::printCard($record)),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),

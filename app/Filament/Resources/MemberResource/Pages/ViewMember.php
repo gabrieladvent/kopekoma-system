@@ -18,6 +18,7 @@ class ViewMember extends ViewRecord
                 ->label('Cetak Kartu')
                 ->icon('heroicon-o-identification')
                 ->color('gray')
+                ->visible(fn (): bool => MemberResource::canExportMembers())
                 ->action(fn (): StreamedResponse => MemberResource::printCard($this->getRecord())),
             Actions\EditAction::make(),
             Actions\DeleteAction::make(),
