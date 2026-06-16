@@ -1,0 +1,118 @@
+<?php
+
+namespace App\Imports;
+
+use App\Filament\Resources\MemberResource;
+use App\Models\Agency;
+use App\Models\Grade;
+use App\Models\Member;
+use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Concerns\Importable;
+use Maatwebsite\Excel\Concerns\SkipsErrors;
+use Maatwebsite\Excel\Concerns\SkipsFailures;
+use Maatwebsite\Excel\Concerns\SkipsOnError;
+use Maatwebsite\Excel\Concerns\SkipsOnFailure;
+use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Maatwebsite\Excel\Concerns\WithValidation;
+
+class MembersImport implements SkipsOnError, SkipsOnFailure, ToModel, WithChunkReading, WithHeadingRow, WithValidation
+{
+    use Importable, SkipsErrors, SkipsFailures;
+
+    /** @var array<int, string> NIKs already seen in this file (intra-batch dedupe). */
+    protected array $seenNik = [];
+
+    /** @var array<string, int|string|null> Resolved code → id caches. */
+    protected array $agencyCache = [];
+
+    protected array $gradeCache = [];
+
+    public function model(array $row): ?Member
+    {
+        $grade = $this->resolveGrade($row['kode_golongan']);
+        $agencyId = $this->resolveAgencyId($row['kode_opd']);
+
+        $amount = filled($row['simpanan_wajib'] ?? null)
+            ? (float) $row['simpanan_wajib']
+            : $grade?->mandatory_savings_amount;
+
+        return new Member([
+            'full_name' => $row['nama'],
+            'nik' => (string) $row['nik'],
+            'nip' => $row['nip'] ?? null,
+            'birth_place' => $row['tempat_lahir'],
+            'birth_date' => $row['tanggal_lahir'],
+            'gender' => $row['jenis_kelamin'],
+            'agency_id' => $agencyId,
+            'grade_id' => $grade?->id,
+            'mandatory_savings_amount' => $amount,
+            'position' => $row['jabatan'] ?? null,
+            'employment_status' => $row['status_kepegawaian'],
+            'payroll_account_number' => (string) $row['no_rekening_gaji'],
+            'bank_name' => $row['nama_bank'] ?? null,
+            'address' => $row['alamat'],
+            'phone_number' => MemberResource::normalizePhone((string) $row['no_hp']),
+            'join_date' => $row['tanggal_bergabung'],
+            'heir_name' => $row['nama_ahli_waris'],
+            'heir_relationship' => $row['hubungan_ahli_waris'],
+            'heir_phone_number' => MemberResource::normalizePhone((string) $row['no_hp_ahli_waris']),
+            'status' => $row['status'] ?? 'Aktif',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rules(): array
+    {
+        return [
+            'nik' => [
+                'required',
+                'digits:16',
+                Rule::unique('members', 'nik')->withoutTrashed(),
+                function (string $attribute, mixed $value, callable $fail): void {
+                    $value = (string) $value;
+                    if (in_array($value, $this->seenNik, true)) {
+                        $fail('NIK duplikat dalam file yang sama.');
+
+                        return;
+                    }
+                    $this->seenNik[] = $value;
+                },
+            ],
+            'nama' => ['required', 'string', 'max:100'],
+            'kode_opd' => ['required', Rule::exists('agencies', 'agency_code')],
+            'kode_golongan' => ['required', Rule::exists('grades', 'code')],
+            'tempat_lahir' => ['required', 'string', 'max:50'],
+            'tanggal_lahir' => ['required', 'date'],
+            'jenis_kelamin' => ['required', Rule::in(['L', 'P'])],
+            'status_kepegawaian' => ['required', Rule::in(['ASN', 'Honorer'])],
+            'no_rekening_gaji' => ['required'],
+            'alamat' => ['required', 'string'],
+            'no_hp' => ['required'],
+            'tanggal_bergabung' => ['required', 'date'],
+            'nama_ahli_waris' => ['required', 'string', 'max:100'],
+            'hubungan_ahli_waris' => ['required', Rule::in(array_keys(Member::HEIR_RELATIONSHIPS))],
+            'no_hp_ahli_waris' => ['required'],
+            'status' => ['nullable', Rule::in(['Aktif', 'Non-Aktif', 'Keluar', 'Meninggal'])],
+            'simpanan_wajib' => ['nullable', 'numeric', 'min:0'],
+        ];
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
+    }
+
+    protected function resolveAgencyId(string $code): int|string|null
+    {
+        return $this->agencyCache[$code] ??= Agency::where('agency_code', $code)->value('id');
+    }
+
+    protected function resolveGrade(string $code): ?Grade
+    {
+        return $this->gradeCache[$code] ??= Grade::where('code', $code)->first();
+    }
+}

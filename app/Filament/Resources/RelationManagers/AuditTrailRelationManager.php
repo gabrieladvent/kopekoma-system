@@ -6,28 +6,12 @@ use App\Filament\Concerns\FormatsActivity;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Models\Activity;
 
-/**
- * Reusable, read-only "Audit Trail" relation manager that lists the Spatie
- * activity-log entries for ANY record. Works on any model that uses the
- * LogsActivity trait, since that trait exposes an `activities` morphMany
- * relationship.
- *
- * Drop it into any resource via getRelations():
- *   public static function getRelations(): array
- *   {
- *       return [AuditTrailRelationManager::class];
- *   }
- *
- * Flexible by design — override the static props in a subclass to customize:
- *   - $relationship  (default 'activities')
- *   - $title / $icon
- *   - $hiddenColumns (column names to drop, e.g. ['causer.name'])
- */
 class AuditTrailRelationManager extends RelationManager
 {
     use FormatsActivity;
@@ -63,7 +47,8 @@ class AuditTrailRelationManager extends RelationManager
             ])
             ->headerActions([])
             ->actions([
-                Tables\Actions\ViewAction::make(),
+                Tables\Actions\ViewAction::make()
+                    ->modalWidth(MaxWidth::FiveExtraLarge),
             ])
             ->bulkActions([]);
     }
@@ -91,15 +76,20 @@ class AuditTrailRelationManager extends RelationManager
                             ->columnSpanFull(),
                     ]),
                 Infolists\Components\Section::make('Perubahan Data')
-                    ->columns(2)
+                    ->columns(1)
                     ->schema([
-                        Infolists\Components\KeyValueEntry::make('properties.old')
-                            ->label('Sebelum')
-                            ->state(fn (Activity $record): array => (array) ($record->properties['old'] ?? []))
-                            ->placeholder('—'),
                         Infolists\Components\KeyValueEntry::make('properties.attributes')
                             ->label('Sesudah')
+                            ->keyLabel('Kolom')
+                            ->valueLabel('Nilai')
                             ->state(fn (Activity $record): array => (array) ($record->properties['attributes'] ?? []))
+                            ->placeholder('—'),
+                        Infolists\Components\KeyValueEntry::make('properties.old')
+                            ->label('Sebelum')
+                            ->keyLabel('Kolom')
+                            ->valueLabel('Nilai')
+                            ->state(fn (Activity $record): array => (array) ($record->properties['old'] ?? []))
+                            ->visible(fn (Activity $record): bool => filled($record->properties['old'] ?? null))
                             ->placeholder('—'),
                     ]),
             ]);
@@ -139,10 +129,6 @@ class AuditTrailRelationManager extends RelationManager
         return array_values($columns);
     }
 
-    /**
-     * Only show the relation manager for records that actually log activity
-     * (i.e. expose the configured relationship).
-     */
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
     {
         return method_exists($ownerRecord, static::$relationship);

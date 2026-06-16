@@ -10,7 +10,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class SavingsWithdrawal extends Model
 {
-    use HasUuids, LogsActivity;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'withdrawal_number',

@@ -125,14 +125,14 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 | 1b | `GradeSeeder` — seed HR-THL & GOL-1..4 (sudah ada) | — | — | Done |
 | 2a | `AgencyResource` — CRUD OPD (form: kode, nama, alamat, PIC bendahara, no HP, status) | S | ✅ | Done |
 | 2b | Table OPD: search/filter status, kolom ringkasan jumlah anggota | S | setelah 2a | Done |
-| 3a | `MemberResource` skeleton — Resource + form minimal (identitas inti + select OPD/golongan) yang sudah bisa create/edit | M | setelah 2a | Pending |
-| 3a2 | Form lengkap — seksi kepegawaian, keuangan, ahli waris (repeater) | M | setelah 3a | Pending |
-| 3b | Penomoran anggota otomatis `member_number` = `KM-YYYY-NNNN`, reset per tahun, race-safe (D2) | M | setelah 3a | Pending |
-| 3c | Migrasi aditif `members.mandatory_savings_amount` + auto-fill **+ persist snapshot** dari golongan, override Pengurus (D1, D3) | M | setelah 3a2 | Pending |
-| 3d | Upload dokumen anggota via Media Library — **tambah `registerMediaCollections()` di `Member`** (belum ada) | M | setelah 3a | Pending |
-| 3e | Table Anggota: search NIK/NIP/nama, filter OPD/golongan/status, soft-delete | M | setelah 3a | Pending |
-| 3f | Cetak kartu anggota (PDF / DomPDF) | M | setelah 3a2 | Pending |
-| 3g | Import data anggota massal dari Excel (Maatwebsite) — lihat §Desain Import | L | setelah 3a2, 3b | Pending |
+| 3a | `MemberResource` skeleton — Resource + form minimal (identitas inti + select OPD/golongan) yang sudah bisa create/edit | M | setelah 2a | Done |
+| 3a2 | Form lengkap — seksi kepegawaian, keuangan, ahli waris + validasi kondisional (NIP wajib ASN, tgl keluar wajib Keluar/Meninggal) | M | setelah 3a | Done |
+| 3b | Penomoran anggota otomatis `member_number` = `KM-YYYY-NNNN`, reset per tahun, race-safe (D2) | M | setelah 3a | Done |
+| 3c | Migrasi aditif `members.mandatory_savings_amount` + auto-fill **+ persist snapshot** dari golongan, override Pengurus (D1, D3) | M | setelah 3a2 | Done |
+| 3d | Upload dokumen anggota via Media Library — **tambah `registerMediaCollections()` di `Member`** (belum ada) | M | setelah 3a | Done |
+| 3e | Table Anggota: search NIK/NIP/nama, filter OPD/golongan/status, soft-delete | M | setelah 3a | Done |
+| 3f | Cetak kartu anggota (PDF / DomPDF) | M | setelah 3a2 | Done |
+| 3g | Import data anggota massal dari Excel (Maatwebsite) — lihat §Desain Import | L | setelah 3a2, 3b | Done |
 | 4 | RBAC: generate Shield permission ketiga Resource + assign role sesuai matriks D4 | S | setelah 2a, 3a | Pending |
 
 **Effort:** S = small (< 1 jam), M = medium (1-3 jam), L = large (> 3 jam), — = sudah selesai/non-code
@@ -171,18 +171,18 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 
 ## Verification
 
-- [ ] CRUD OPD: tambah/ubah/nonaktif berjalan; `agency_code` unik ditolak bila duplikat.
-- [ ] CRUD Anggota: tambah anggota baru menghasilkan `member_number` format `KM-YYYY-NNNN` unik otomatis; urut reset per tahun (D2).
-- [ ] Memilih golongan di form Anggota meng-auto-fill nominal simpanan wajib sesuai tabel D3; nilai **tersimpan sebagai snapshot** di record anggota (D1).
-- [ ] Mengubah golongan anggota **tidak** mengubah snapshot nominal wajib record/historis yang sudah ada (D1).
-- [ ] NIK 16 digit & unik tervalidasi; duplikat ditolak.
-- [ ] Upload dokumen anggota tersimpan & tertaut via Media Library.
-- [ ] Anggota di-nonaktifkan/keluar tidak terhapus permanen (soft delete / status).
-- [ ] Cetak kartu anggota menghasilkan PDF yang benar.
-- [ ] Import Excel: baris valid masuk, baris invalid dilaporkan tanpa menggagalkan seluruh batch; duplikat NIK intra-batch tertolak; `member_number` di-generate sistem.
-- [ ] Shield permission ketiga Resource ter-generate; akses sesuai matriks D4 — Petugas tidak bisa delete/export/import, Pengurus & Super Admin bisa.
-- [ ] Override nominal wajib hanya tersedia untuk Pengurus ke atas (D4).
-- [ ] Perubahan tercatat di `activity_log`.
+- [x] CRUD OPD: tambah/ubah/nonaktif berjalan; `agency_code` unik ditolak bila duplikat. <!-- AgencyResourceTest -->
+- [x] CRUD Anggota: tambah anggota baru menghasilkan `member_number` format `KM-YYYY-NNNN` unik otomatis; urut reset per tahun (D2). <!-- MemberResourceTest 3b -->
+- [x] Memilih golongan di form Anggota meng-auto-fill nominal simpanan wajib sesuai tabel D3; nilai **tersimpan sebagai snapshot** di record anggota (D1). <!-- MemberResourceTest 3c -->
+- [x] Mengubah golongan anggota **tidak** mengubah snapshot nominal wajib record/historis yang sudah ada (D1). <!-- MemberResourceTest 3c -->
+- [x] NIK 16 digit & unik tervalidasi; duplikat ditolak.
+- [x] Upload dokumen anggota tersimpan & tertaut via Media Library. <!-- 3d SpatieMediaLibraryFileUpload -->
+- [x] Anggota di-nonaktifkan/keluar tidak terhapus permanen (soft delete / status).
+- [x] Cetak kartu anggota menghasilkan PDF yang benar. <!-- 3f printCard StreamedResponse -->
+- [x] Import Excel: baris valid masuk, baris invalid dilaporkan tanpa menggagalkan seluruh batch; duplikat NIK intra-batch tertolak; `member_number` di-generate sistem. <!-- 3g MembersImport -->
+- [ ] Shield permission ketiga Resource ter-generate; akses sesuai matriks D4 — Petugas tidak bisa delete/export/import, Pengurus & Super Admin bisa. <!-- item 4, belum -->
+- [x] Override nominal wajib hanya tersedia untuk Pengurus ke atas (D4). <!-- canOverrideMandatorySavings; enforcement penuh menyusul item 4 -->
+- [x] Perubahan tercatat di `activity_log`.
 
 ---
 
@@ -191,7 +191,7 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 - ~~Format `member_number`~~ → **Resolved (D2):** `KM-YYYY-NNNN`, reset per tahun.
 - ~~Nominal wajib preview vs snapshot~~ → **Resolved (D1):** snapshot per anggota, auto-fill dari golongan, override Pengurus.
 - ~~Akses/RBAC data anggota~~ → **Resolved (D4):** 3 peran standar; delete/export/import dibatasi Pengurus+.
-- **Masih terbuka:** Apakah data awal OPD & Anggota tersedia dalam Excel untuk seeder/import, atau diinput manual? (Rencana v5: data awal siap awal Minggu 2.) → Mempengaruhi apakah 3g masuk jalur kritis Minggu 2 atau bisa ditunda.
+- ~~Data awal OPD & Anggota: Excel atau input manual?~~ → **Resolved (2026-06-16):** **kedua jalur didukung** — import Excel (3g) *dan* input manual via form. Konsekuensi: item 3g **tetap in-scope** (tidak ditunda), berjalan berdampingan dengan jalur entri manual (3a/3a2). Dependency 3g tetap: butuh 3a2 + 3b.
 - ~~Apakah kolom snapshot D1 sudah ada di skema?~~ → **Resolved (terkonfirmasi kode):** belum ada. `members` tidak punya kolom nominal apa pun. Diputuskan tambah migrasi aditif `members.mandatory_savings_amount` (item 3c); Non-Goals direvisi untuk mengizinkan ini.
 
 ---
@@ -221,4 +221,10 @@ Model akses awal untuk ketiga Resource (item 4). Data anggota = PII finansial (N
 - **2026-06-15 v2**: Status Draft → Accepted. Tutup 3 blocker via keputusan desain D1–D4: snapshot nominal wajib (D1), format `member_number` `KM-YYYY-NNNN` (D2), tabel nominal per golongan (D3), matriks RBAC 3 peran (D4). Pecah bottleneck 3a → 3a + 3a2; longgarkan dependency 3e; perbaiki dependency 3g (butuh 3b) & item 4 (butuh 2a+3a); tambah §Desain Import Excel; angkat security review ke fase desain; resolve Open Questions terkait.
 - **2026-06-16 v5**: Item **2b Done** — table OPD filter status + kolom `members_count`. Plus konvensi global selama eksekusi: view page + infolist, redirect create→list & edit→view, ActionGroup, kode auto-generate, helperText/placeholder, bendahara Select dari User, normalisasi no HP, `MoneyInput` global, notifikasi ber-body, menu Log Aktivitas + fix `subject_id` UUID, `AuditTrailRelationManager` global. **Grup OPD (item 2) selesai.**
 - **2026-06-15 v4**: Item **2a Done** — `AgencyResource` (CRUD OPD) + 3 Pages + `AgencyFactory` + 7 test (semua pass). Branch `feat/agency-resource`. Unlock 2b, 3a, 4.
+- **2026-06-16 v11**: **Import 3g disempurnakan — template + queue + notifikasi.** (1) **Template** `MembersTemplateExport` (.xlsx, heading = kolom import + 1 baris contoh + 1 baris keterangan nilai valid) via action "Unduh Template". (2) **Queue**: upload kini menyimpan berkas ke disk `local` lalu dispatch `ImportMembersJob` (ShouldQueue); UI langsung kasih notif "sedang diproses". (3) **Notifikasi selesai**: job menghitung jumlah terimport vs baris dilewati, hapus berkas, lalu kirim **Filament database notification** ke uploader (success/warning). Aktifkan `->databaseNotifications()` + polling 30s di panel; tambah migrasi tabel `notifications`. **Dokumen via Relation Manager (3d):** `DocumentsRelationManager` (list + pratinjau buka tab baru utk gambar & PDF, ikon dokumen inline utk non-gambar, upload/unduh/hapus) + `Member::logDocumentActivity()` agar perubahan dokumen tercatat di Audit Trail. Form & infolist dokumen lama dihapus (digantikan RM). 63 test pass. **Catatan ops:** butuh `php artisan queue:work` jalan (QUEUE_CONNECTION=database) agar import diproses.
+- **2026-06-16 v10**: **Fix bug upload dokumen (3d)** — tabel `media` dibuat dengan `morphs('model')` → `model_id` BIGINT, padahal `Member` ber-PK UUID, jadi UUID ke-truncate saat insert ("Data truncated for column 'model_id'"). Tambah migrasi korektif `fix_media_model_id_to_uuid` (drop index → `uuid('model_id')->change()` → re-index; non-destruktif, string tetap kompatibel untuk owner ber-PK integer di masa depan). Regression test upload dokumen ke Member (59 test pass).
+- **2026-06-16 v9**: Refinement pasca-review UI/UX (branch `feat/member-resource`, 58 test pass, pint clean). (1) **Nomor anggota** kini di-preview langsung di form create via `->default(Member::generateMemberNumber())` — terlihat sebelum simpan, hook tetap otoritatif. (2) **Hubungan ahli waris** jadi enum `Select` (kolom string → simpan label) dengan opsi terpusat di konstanta `Member::HEIR_RELATIONSHIPS`, dipakai ulang form + validasi import + rule `in`. (3) **Pesan validasi Bahasa Indonesia** reusable app-wide via `lang/id/validation.php` (+ `custom`/`attributes`) & locale default `id`; pesan khusus NIK 16 digit di field. (4) **Popup activity log** diperbaiki — section "Perubahan Data" jadi 1 kolom + modal `5xl` + label Kolom/Nilai + sembunyikan "Sebelum" saat kosong, supaya value (UUID dll.) tak meluber. (5) **Infolist anggota** didesain ulang: header ringkasan (nama + jabatan·OPD + badge nomor/status/golongan/kepegawaian) + layout 2 kolom (utama 2/3: Data Pribadi, Kepegawaian, Kontak & Alamat; sidebar 1/3: Simpanan Wajib di-highlight, **Ahli Waris**, Keanggotaan, Dokumen). Helper `statusColor()` dipakai bersama table+infolist.
+- **2026-06-16 v8**: **Seluruh Grup Anggota (item 3) selesai** — 3a2, 3b, 3c, 3d, 3e, 3f, 3g semua Done dalam satu batch. Branch `feat/member-resource`, 26 test MemberResource (full suite 54 pass), pint clean. Rincian: **3b** `member_number` auto-generate via `Member::generateMemberNumber()` (lockForUpdate dalam transaksi, soft-deleted disertakan agar nomor tak dipakai ulang) + hook `creating`; field form jadi disabled/immutable. **3c** migrasi aditif `mandatory_savings_amount` (decimal 18,2, nullable) + cast + `MoneyInput`; auto-fill snapshot dari golongan **hanya saat create** (`afterStateUpdated` cek `instanceof CreateMember`), edit tidak menulis ulang snapshot (D1); override di-gate `canOverrideMandatorySavings()` (Pengurus+, degrade aman sebelum role ada). **3d** `registerMediaCollections('documents')` + `SpatieMediaLibraryFileUpload`. **3e** kolom searchable NIK/NIP/nama, filter OPD/golongan/status + `TrashedFilter`, restore/forceDelete, `getEloquentQuery` tanpa SoftDeletingScope. **3f** `printCard()` DomPDF + `resources/views/pdf/member-card.blade.php`, action di table & header view. **3g** `MembersImport` (ToModel/WithValidation/WithChunkReading/SkipsOnFailure+Error): resolve `agency_code`/`grade.code`→id, NIK 16-digit unik DB **+ intra-batch**, snapshot dari golongan, `member_number` selalu sistem, partial success; action import di List page (gate Pengurus+). **Keputusan:** ahli waris tetap **single** (kolom skema NOT NULL `heir_*`); repeater multi-ahli-waris butuh perubahan skema di luar Non-Goals → tidak dikerjakan. **Side-fix global:** `MoneyInput` kini `formatStateUsing` menormalkan nilai `decimal:2` ("50000.00") ke integer sebelum tampil, supaya `stripCharacters('.')` tak memakan titik desimal saat round-trip simpan. Item 4 (Shield) kini fully unblocked.
+- **2026-06-16 v7**: Item **3a Done** — `MemberResource` skeleton (form working create/edit, view+infolist, table+filter status, ActionGroup, audit trail RM, normalisasi no HP anggota & ahli waris) + 4 Pages + `MemberFactory` (+ `HasFactory` di `Member`) + 15 test (semua pass, full suite 43 pass). Branch `feat/member-resource`. Form menyertakan semua kolom NOT NULL agar create benar-benar persist; `member_number` masih manual (auto-gen → 3b), media/money/snapshot/filter-lanjutan/repeater ahli waris ditangani item masing-masing (3d/3c/3e/3a2). Unlock 3a2, 3b, 3d, 3e, dan item 4 (Shield, kini 2a+3a siap).
+- **2026-06-16 v6**: `/adr:validate` run — Key Items table & Verification checklist terkonfirmasi 100% sinkron dengan kode (4 Done: 1a/1b/2a/2b; 9 Pending: 3a–4). Gate transisi grup OPD→Anggota **GREEN** (lookup Golongan + OPD siap), item 3a unblocked sebagai langkah berikut. Resolve Open Question terakhir: data awal mendukung **import + manual**, 3g tetap in-scope.
 - **2026-06-15 v3**: Koreksi berbasis verifikasi kode. (1) **Fix angka D3** — nilai nominal sebelumnya keliru; disinkronkan ke `GradeSeeder` aktual (GOL-1=50k, GOL-2=75k, GOL-3=100k). (2) **D1 skema** — terkonfirmasi `members` belum punya kolom nominal & nama kolom yang benar `mandatory_savings_amount`; tambah migrasi aditif (item 3c) & revisi Non-Goals untuk mengizinkannya. (3) Catat 3d butuh `registerMediaCollections()` (belum ada di `Member`). (4) Tambah catatan tipe kunci campuran (UUID vs integer) untuk import 3g. Resolve Open Question kolom snapshot.
