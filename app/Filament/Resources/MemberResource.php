@@ -37,12 +37,6 @@ class MemberResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Anggota';
 
-    /**
-     * Roles allowed to perform Pengurus-and-above actions per the D4 access
-     * matrix: override mandatory savings, import, and export (PDF card / Excel).
-     * super_admin bypasses Shield gates but is listed explicitly because these
-     * are role checks, not policy gates.
-     */
     private const ELEVATED_ROLES = ['super_admin', 'pengurus'];
 
     public static function canOverrideMandatorySavings(): bool
