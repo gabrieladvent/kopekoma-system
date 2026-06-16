@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -65,4 +66,31 @@ function asSuperAdmin(): User
     test()->actingAs($user);
 
     return $user;
+}
+
+/**
+ * Seed the Shield permissions + D4 roles (petugas, pengurus, super_admin),
+ * then create and authenticate a user with the given role. Used by RBAC
+ * matrix tests so the assigned role carries its real permission set.
+ */
+function asRole(string $role): User
+{
+    test()->seed(RolePermissionSeeder::class);
+
+    $user = User::factory()->create();
+    $user->assignRole($role);
+
+    test()->actingAs($user);
+
+    return $user;
+}
+
+function asPengurus(): User
+{
+    return asRole('pengurus');
+}
+
+function asPetugas(): User
+{
+    return asRole('petugas');
 }
