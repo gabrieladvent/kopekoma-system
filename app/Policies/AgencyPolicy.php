@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\Agency;
 use App\Models\User;
+use App\Models\Agency;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class AgencyPolicy
