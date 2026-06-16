@@ -37,39 +37,27 @@ class MemberResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Anggota';
 
-    /**
-     * Only Pengurus and above may override the mandatory savings snapshot (D4).
-     * Degrades safely before the Pengurus role exists (item 4 / Shield).
-     */
     public static function canOverrideMandatorySavings(): bool
     {
         return auth()->user()?->hasAnyRole(['super_admin', 'Pengurus', 'pengurus']) ?? false;
     }
 
-    /**
-     * Only Pengurus and above may bulk-import members (D4). Degrades safely
-     * before the Pengurus role exists (item 4 / Shield).
-     */
     public static function canImportMembers(): bool
     {
         return auth()->user()?->hasAnyRole(['super_admin', 'Pengurus', 'pengurus']) ?? false;
     }
 
-    /**
-     * Normalize an Indonesian phone number for storage as "+62XXXXXXXXXX".
-     */
     public static function normalizePhone(?string $state): ?string
     {
         $digits = preg_replace('/\D/', '', (string) $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
+
         $digits = ltrim((string) $digits, '0');
 
         return $digits === '' ? null : '+62'.$digits;
     }
 
-    /**
-     * Strip the "+62" prefix for display in the edit form.
-     */
     public static function localPhone(?string $state): ?string
     {
         if (blank($state)) {
@@ -77,14 +65,12 @@ class MemberResource extends Resource
         }
 
         $digits = preg_replace('/\D/', '', $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
 
         return ltrim((string) $digits, '0') ?: null;
     }
 
-    /**
-     * Shared status → badge color map (table + infolist).
-     */
     public static function statusColor(string $state): string
     {
         return match ($state) {
@@ -96,9 +82,6 @@ class MemberResource extends Resource
         };
     }
 
-    /**
-     * Stream the member card PDF as a download (3f).
-     */
     public static function printCard(Member $member): StreamedResponse
     {
         $pdf = Pdf::loadView('pdf.member-card', ['member' => $member->loadMissing(['agency', 'grade'])]);
@@ -121,8 +104,6 @@ class MemberResource extends Resource
                             ->label('Nomor Anggota')
                             ->disabled()
                             ->dehydrated(false)
-                            // Show the next number up-front so it is visible while
-                            // filling the form; the model hook re-confirms it on save (D2).
                             ->default(fn (): string => Member::generateMemberNumber())
                             ->helperText('Digenerate otomatis & tidak dapat diubah (format KM-YYYY-NNNN).'),
                         Forms\Components\TextInput::make('full_name')
@@ -183,8 +164,6 @@ class MemberResource extends Resource
                             ->preload()
                             ->required()
                             ->live()
-                            // Auto-fill the snapshot from the grade while creating.
-                            // On edit we never overwrite the stored snapshot (D1).
                             ->afterStateUpdated(function ($state, Set $set, $livewire): void {
                                 if ($livewire instanceof CreateMember) {
                                     $set('mandatory_savings_amount', Grade::find($state)?->mandatory_savings_amount);
@@ -299,8 +278,6 @@ class MemberResource extends Resource
                             ->formatStateUsing(fn (?string $state): ?string => static::localPhone($state))
                             ->dehydrateStateUsing(fn (?string $state): ?string => static::normalizePhone($state)),
                     ]),
-                // Dokumen dikelola lewat DocumentsRelationManager (di halaman detail)
-                // agar bisa di-list & dipratinjau (gambar + PDF).
             ]);
     }
 
@@ -308,7 +285,6 @@ class MemberResource extends Resource
     {
         return $infolist
             ->schema([
-                // ── Header ringkasan: identitas utama sekilas pandang ──────────
                 Infolists\Components\Section::make()
                     ->schema([
                         Infolists\Components\TextEntry::make('full_name')
@@ -348,7 +324,6 @@ class MemberResource extends Resource
                             ]),
                     ]),
 
-                // ── Kolom utama (2/3) + sidebar (1/3) ──────────────────────────
                 Infolists\Components\Grid::make(3)
                     ->schema([
                         Infolists\Components\Group::make([

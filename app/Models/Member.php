@@ -71,7 +71,6 @@ class Member extends Model implements HasMedia
 
     protected static function booted(): void
     {
-        // Auto-assign the member number on create when none was provided (3b/D2).
         static::creating(function (Member $member): void {
             if (blank($member->member_number)) {
                 $member->member_number = static::generateMemberNumber();
@@ -79,14 +78,6 @@ class Member extends Model implements HasMedia
         });
     }
 
-    /**
-     * Generate the next member number in the format KM-YYYY-NNNN, reset per year.
-     *
-     * Race-safe: reads the current max for the year under a row lock inside a
-     * transaction, so concurrent creates (interactive or bulk import) cannot
-     * hand out a duplicate sequence. Soft-deleted rows are included so a number
-     * is never reused.
-     */
     public static function generateMemberNumber(?int $year = null): string
     {
         $year ??= (int) now()->format('Y');
@@ -105,12 +96,6 @@ class Member extends Model implements HasMedia
         });
     }
 
-    /**
-     * Record a document change (upload/delete) on this member's activity log.
-     * Media lives in a separate table, so those changes don't trigger the
-     * model's own LogsActivity — we log them explicitly here so they still
-     * show up in the member's Audit Trail.
-     */
     public function logDocumentActivity(string $description): void
     {
         activity()
@@ -122,8 +107,6 @@ class Member extends Model implements HasMedia
 
     public function registerMediaCollections(): void
     {
-        // Member documents (KTP, SK, application form, etc.). Restricted to
-        // common document/image mime types (3d).
         $this->addMediaCollection('documents')
             ->acceptsMimeTypes([
                 'application/pdf',

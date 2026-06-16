@@ -14,10 +14,6 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 
-/**
- * Runs the member Excel import in the background and notifies the uploader via a
- * Filament database notification when it finishes (success/partial summary).
- */
 class ImportMembersJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;

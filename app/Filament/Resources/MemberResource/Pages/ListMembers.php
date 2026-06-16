@@ -47,8 +47,6 @@ class ListMembers extends ListRecords
                         ->helperText('Gunakan template di atas. Nomor anggota digenerate sistem. Proses berjalan di latar belakang.'),
                 ])
                 ->action(function (array $data): void {
-                    // Simpan berkas ke disk agar bisa dibaca worker antrian,
-                    // lalu proses import di background.
                     $file = $data['file'];
                     $path = $file->storeAs(
                         'imports/members',

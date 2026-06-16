@@ -11,11 +11,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-/**
- * Lists & manages a member's documents (KTP, SK, dll.) from the Spatie media
- * library `documents` collection. Preview opens the file in a new tab so both
- * images *and* PDFs render natively (the infolist image entry can't show PDFs).
- */
 class DocumentsRelationManager extends RelationManager
 {
     protected static string $relationship = 'media';
@@ -31,10 +26,6 @@ class DocumentsRelationManager extends RelationManager
         return $form->schema([]);
     }
 
-    /**
-     * Inline document icon (SVG data-URI) for non-image files, so the preview
-     * column never renders a broken <img>.
-     */
     protected static function fileIconUri(): string
     {
         $svg = <<<'SVG'
