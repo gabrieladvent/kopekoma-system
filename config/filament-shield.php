@@ -60,7 +60,11 @@ return [
     ],
 
     'generator' => [
-        'option' => 'policies_and_permissions',
+        // 'permissions' only — policies di-maintain manual sebagai source of truth
+        // agar ability custom (reverse/approve/disburse/export, D7) tak ditimpa
+        // shield:generate tiap re-seed. shield:generate tetap men-generate &
+        // sinkron permission untuk tiap Resource.
+        'option' => 'permissions',
         'policy_directory' => 'Policies',
         'policy_namespace' => 'Policies',
     ],
