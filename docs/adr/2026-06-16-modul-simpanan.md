@@ -220,11 +220,11 @@ Transisi di-gate permission (`approve`/`disburse`, D7) + ter-log. **`activity_lo
 
 | # | Item | Effort | Parallel? | Status |
 |---|------|--------|-----------|--------|
-| 0 | **Migrasi aditif** (deposits & withdrawals **sudah** punya `idempotency_key`+nomor → tak disentuh): `unique(reversal_of_id)` ×3 tabel; `idempotency_key`+`transaction_number` **hanya** di `shopping_transactions` (D3, D9); `status`/`approved_by`/`approved_at`/`disbursed_at`/**`period_year`** di `savings_withdrawals` (D10, D1 Hari Raya) | S | — | Pending |
-| 1a | `SavingsBalanceService` — saldo net-of-reversal per jenis + saldo belanja dua-sisi + `canWithdraw`/`canSpend`; scope `signed_amount` di 3 model (D1) | M | setelah 0 | Pending |
-| 1b | `ReverseTransaction` Action + interface `Reversible`; guard single-reversal (unique), no-reverse-of-reverse, anggota non-aktif (D3) | M | setelah 0 | Pending |
-| 1c | Generator nomor `STR-`/`TRK-`/`BLJ-` race-safe (model hook, backstop unique) (D2) | S | setelah 0 | Pending |
-| 1d | **Unit test fondasi** — 5 skenario saldo, reversal net-nol, no-reverse-of-reverse, **scoping `period_year` Hari Raya (dua sisi konsisten)**, idempotency level service; **test konkurensi di MySQL** | M | setelah 1a,1b,1c | Pending |
+| 0 | **Migrasi aditif** (deposits & withdrawals **sudah** punya `idempotency_key`+nomor → tak disentuh): `unique(reversal_of_id)` ×3 tabel; `idempotency_key`+`transaction_number` **hanya** di `shopping_transactions` (D3, D9); `status`/`approved_by`/`approved_at`/`disbursed_at`/**`period_year`** di `savings_withdrawals` (D10, D1 Hari Raya) | S | — | **Done** |
+| 1a | `SavingsBalanceService` — saldo net-of-reversal per jenis + saldo belanja dua-sisi + `canWithdraw`/`canSpend`; scope `signed_amount` di 3 model (D1) | M | setelah 0 | **Done** |
+| 1b | `ReverseTransaction` Action + interface `Reversible`; guard single-reversal (unique), no-reverse-of-reverse, anggota non-aktif (D3) | M | setelah 0 | **Done** |
+| 1c | Generator nomor `STR-`/`TRK-`/`BLJ-` race-safe (model hook, backstop unique) (D2) | S | setelah 0 | **Done** |
+| 1d | **Unit test fondasi** — 5 skenario saldo, reversal net-nol, no-reverse-of-reverse, **scoping `period_year` Hari Raya (dua sisi konsisten)**, idempotency level service; **test konkurensi di MySQL** | M | setelah 1a,1b,1c | **Done** (konkurensi MySQL: lihat catatan) |
 | 2a | `SavingsDepositResource` — setoran tunggal + idempotency Hidden-uuid (D4) + Policy (incl. `reverse()`) | M | setelah 1d | Pending |
 | 2b | Aksi **Reversal** di Resource setoran (gate Pengurus+) | S | setelah 2a,1b | Pending |
 | 2c | **Slip setoran PDF** (DomPDF) — *defer-able ke Minggu 4 bila waktu sempit* | M | setelah 2a | Pending |
@@ -240,6 +240,8 @@ Transisi di-gate permission (`approve`/`disburse`, D7) + ter-log. **`activity_lo
 
 **Effort:** S < 1 jam, M 1-3 jam, L > 3 jam, — non-code.
 
+> **⚠️ Catatan 1d — gap konkurensi MySQL (jujur):** 22 test fondasi (saldo, reversal net-nol, no-reverse-of-reverse, single-reversal guard, `period_year` dua-sisi, idempotency level-service) **GREEN di SQLite**. Yang **terbukti engine-agnostic**: single-reversal guard `unique(reversal_of_id)` (unique constraint berlaku di kedua engine — backstop sejati). Yang **BELUM diuji konkuren**: race generator nomor `STR-`/`TRK-`/`BLJ-` (1c) — `lockForUpdate` no-op di SQLite, sehingga klaim "race-safe" hanya bersandar pada `unique(transaction_number)` backstop, bukan lock. Test konkurensi paralel sungguhan (2 proses) terhadap MySQL **belum dijalankan**; serialize-lock anti-overdraw disburse adalah item **4b-1** (belum dikerjakan). Turunkan klaim 1c jadi "best-effort lock + unique backstop" sampai harness MySQL paralel berdiri.
+
 > **Dependency:** Item **0 (migrasi) & 1 (fondasi) gerbang segalanya**; 1d harus hijau (termasuk **konkurensi di MySQL**) sebelum Resource. Policy dibuat per-Resource (bukan ditunda ke 6).
 >
 > **⚠️ Invariant finansial terdistribusi (koreksi v5):** premis "kebenaran keuangan ter-unit-test di 1d sebelum CRUD" tak sepenuhnya tercapai — sebagian guard hidup di layer atas: **idempotency UI** (2a/3a-2), **disburse serialize-lock anti-overdraw** (4b-1), **state machine + batch dup-check** (4b-1/3a-2). Tiap-tiap **wajib punya test di item-nya sendiri** (bukan ditunda), dan **invariant konkurensi wajib MySQL**. 1d menutup invariant level-service; item Resource menutup invariant level-write. Tak boleh ada guard finansial tanpa rumah test. **Jalur pemangkasan timeline (temuan critic #5):** bila 5 hari mepet, tunda **2c, 3b, 4a** (presentasi murni, tak sentuh kebenaran saldo) ke Minggu 4 — pertahankan 0/1/2a/2b/3a/4b/5a/6 (core korektnes + keamanan).
@@ -250,10 +252,17 @@ Transisi di-gate permission (`approve`/`disburse`, D7) + ter-log. **`activity_lo
 
 | File | Fungsi |
 |------|--------|
-| `database/migrations/*_add_reversal_unique_and_shopping_idempotency.php` | **Baru** — item 0 (D3, D9) |
-| `app/Services/SavingsBalanceService.php` | **Baru** — saldo net per jenis (1a, D1) |
-| `app/Actions/ReverseTransaction.php` + `app/Contracts/Reversible.php` | **Baru** — reversal generik (1b, D3) |
-| `app/Models/SavingsDeposit.php`, `SavingsWithdrawal.php`, `ShoppingTransaction.php` | ✅ Ada — scope `signed_amount`, generator nomor, implement `Reversible` |
+| `database/migrations/2026_06_17_000001_add_reversal_unique_to_savings_deposits.php` | ✅ item 0 — unique(reversal_of_id) (D3) |
+| `database/migrations/2026_06_17_000002_add_status_and_reversal_unique_to_savings_withdrawals.php` | ✅ item 0 — status workflow + period_year + unique (D10, D1, D3) |
+| `database/migrations/2026_06_17_000003_add_idempotency_and_reversal_unique_to_shopping_transactions.php` | ✅ item 0 — idempotency_key + nomor + unique (D9, D3) |
+| `tests/Feature/SavingsSchemaMigrationTest.php` | ✅ item 0 — schema + guard single-reversal |
+| `app/Services/SavingsBalanceService.php` | ✅ 1a — saldo net per jenis (D1) |
+| `app/Actions/ReverseTransaction.php` + `app/Contracts/Reversible.php` | ✅ 1b — reversal generik (D3) |
+| `app/Exceptions/UnsupportedSavingsType.php`, `CannotReverseTransaction.php` | ✅ 1a/1b — domain exceptions |
+| `app/Models/Concerns/HasSignedAmount.php` (scope D1), `GeneratesTransactionNumber.php` (1c, D2) | ✅ Baru — trait dipakai 3 model |
+| `app/Models/SavingsDeposit.php`, `SavingsWithdrawal.php`, `ShoppingTransaction.php` | ✅ 1a-c — pakai trait + `HasFactory`, implement `Reversible`, `reverseClone()` |
+| `database/factories/Savings*Factory.php`, `ShoppingTransactionFactory.php` | ✅ Baru — factory transaksi (dipakai 1d + Resource tests) |
+| `tests/Feature/{TransactionNumberGenerator,SavingsBalanceService,ReverseTransaction}Test.php` | ✅ 1d — 22 test |
 | `app/Models/MemberHolidaySaving.php` | ✅ Ada — config Hari Raya |
 | `app/Filament/Resources/SavingsDepositResource.php` | **Baru** (2a) |
 | `app/Filament/Pages/BatchSalaryDeduction.php` | **Baru** (3a, D5) |

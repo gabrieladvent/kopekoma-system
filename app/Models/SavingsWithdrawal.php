@@ -2,14 +2,22 @@
 
 namespace App\Models;
 
+use App\Contracts\Reversible;
+use App\Models\Concerns\GeneratesTransactionNumber;
+use App\Models\Concerns\HasSignedAmount;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SavingsWithdrawal extends Model
+class SavingsWithdrawal extends Model implements Reversible
 {
+    use GeneratesTransactionNumber;
+    use HasFactory;
+    use HasSignedAmount;
     use HasUuids;
     use LogsActivity;
 
@@ -20,6 +28,11 @@ class SavingsWithdrawal extends Model
         'savings_type',
         'amount',
         'withdrawal_date',
+        'status',
+        'approved_by',
+        'approved_at',
+        'disbursed_at',
+        'period_year',
         'related_loan_id',
         'notes',
         'is_reversal',
@@ -30,6 +43,9 @@ class SavingsWithdrawal extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'withdrawal_date' => 'date',
+        'approved_at' => 'datetime',
+        'disbursed_at' => 'datetime',
+        'period_year' => 'integer',
         'is_reversal' => 'boolean',
     ];
 
@@ -56,5 +72,28 @@ class SavingsWithdrawal extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
+    }
+
+    public function transactionNumberColumn(): string
+    {
+        return 'withdrawal_number';
+    }
+
+    public function transactionNumberPrefix(): string
+    {
+        return 'TRK';
+    }
+
+    public function reverseClone(): array
+    {
+        return [
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $this->member_id,
+            'savings_type' => $this->savings_type,
+            'amount' => $this->amount,
+            'withdrawal_date' => $this->withdrawal_date,
+            'status' => $this->status,
+            'period_year' => $this->period_year,
+        ];
     }
 }
