@@ -122,6 +122,20 @@ class SavingsBalanceService
         ];
     }
 
+    public function totalBalance(Member $member): string
+    {
+        $all = $this->allBalances($member);
+
+        $total = bcadd(bcadd($all['pokok'], $all['wajib'], self::SCALE), $all['sukarela'], self::SCALE);
+        $total = bcadd($total, $all['wajib_belanja'], self::SCALE);
+
+        foreach ($all['hari_raya'] as $balance) {
+            $total = bcadd($total, $balance, self::SCALE);
+        }
+
+        return $total;
+    }
+
     /**
      * @return array<int, string> period_year => saldo
      */

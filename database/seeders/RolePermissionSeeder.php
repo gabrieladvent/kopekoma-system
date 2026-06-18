@@ -10,7 +10,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    private const RESOURCES = ['grade', 'agency', 'member'];
+    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving'];
 
     private const BASE_PREFIXES = ['view', 'view_any', 'create', 'update'];
 
@@ -21,9 +21,21 @@ class RolePermissionSeeder extends Seeder
         'replicate', 'reorder',
     ];
 
+    /**
+     * Ability custom (D7) di luar CRUD yang dihasilkan Shield. Reversal finansial
+     * = Petugas + Pengurus, gating berbasis permission (bukan role hardcoded).
+     * Permission ini artefak kode (Shield tak meng-generate-nya); assignment ke
+     * role custom tetap bisa lewat UI Shield setelah ability ada.
+     */
+    private const CUSTOM_PETUGAS = ['reverse_savings::deposit'];
+
+    private const CUSTOM_PENGURUS = ['reverse_savings::deposit'];
+
     public function run(): void
     {
         Artisan::call('shield:generate', ['--all' => true, '--panel' => 'admin']);
+
+        $this->ensureCustomPermissions();
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
@@ -35,13 +47,24 @@ class RolePermissionSeeder extends Seeder
 
         $superAdmin->givePermissionTo(Permission::all());
 
-        $petugas->syncPermissions($this->permissionsFor(self::BASE_PREFIXES));
+        $petugas->syncPermissions([
+            ...$this->permissionsFor(self::BASE_PREFIXES),
+            ...self::CUSTOM_PETUGAS,
+        ]);
 
-        $pengurus->syncPermissions($this->permissionsFor(
-            array_merge(self::BASE_PREFIXES, self::ELEVATED_PREFIXES)
-        ));
+        $pengurus->syncPermissions([
+            ...$this->permissionsFor(array_merge(self::BASE_PREFIXES, self::ELEVATED_PREFIXES)),
+            ...self::CUSTOM_PENGURUS,
+        ]);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function ensureCustomPermissions(): void
+    {
+        foreach (array_unique([...self::CUSTOM_PETUGAS, ...self::CUSTOM_PENGURUS]) as $name) {
+            Permission::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+        }
     }
 
     /**

@@ -34,7 +34,6 @@ class MembersTemplateExport implements FromArray, ShouldAutoSize, WithHeadings, 
             'hubungan_ahli_waris',
             'no_hp_ahli_waris',
             'status',
-            'simpanan_wajib',
         ];
     }
 
@@ -66,7 +65,6 @@ class MembersTemplateExport implements FromArray, ShouldAutoSize, WithHeadings, 
                 'Istri',
                 '081298765432',
                 'Aktif',
-                '50000',
             ],
             [
                 'NIK 16 digit unik',
@@ -88,7 +86,6 @@ class MembersTemplateExport implements FromArray, ShouldAutoSize, WithHeadings, 
                 'Istri/Suami/Anak/Orang Tua/Saudara Kandung/Lainnya',
                 'wajib',
                 'Aktif/Non-Aktif/Keluar/Meninggal',
-                'opsional, default dari golongan',
             ],
         ];
     }

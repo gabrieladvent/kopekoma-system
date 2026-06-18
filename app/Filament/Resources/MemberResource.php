@@ -8,6 +8,7 @@ use App\Filament\Resources\MemberResource\Pages\CreateMember;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
 use App\Models\Grade;
 use App\Models\Member;
+use App\Services\SavingsBalanceService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -38,6 +39,30 @@ class MemberResource extends Resource
     protected static ?string $pluralModelLabel = 'Anggota';
 
     private const ELEVATED_ROLES = ['super_admin', 'pengurus'];
+
+    /** @var array<string, array<string, mixed>> Per-request memo of allBalances() per member. */
+    protected static array $balanceMemo = [];
+
+    /**
+     * Saldo simpanan anggota (computed-on-read), di-memo per request agar tiap
+     * entry infolist tak memanggil ulang service.
+     *
+     * @return array{pokok:string,wajib:string,sukarela:string,wajib_belanja:string,hari_raya:array<int,string>}
+     */
+    public static function savingsBalances(Member $member): array
+    {
+        return static::$balanceMemo[(string) $member->getKey()] ??= app(SavingsBalanceService::class)->allBalances($member);
+    }
+
+    /** Total saldo Hari Raya semua tahun (string bcmath). */
+    public static function holidayBalanceTotal(Member $member): string
+    {
+        return array_reduce(
+            static::savingsBalances($member)['hari_raya'],
+            fn (string $carry, string $balance): string => bcadd($carry, $balance, 2),
+            '0',
+        );
+    }
 
     public static function canOverrideMandatorySavings(): bool
     {
@@ -331,6 +356,42 @@ class MemberResource extends Resource
                             ]),
                     ]),
 
+                Infolists\Components\Section::make('Ringkasan Simpanan')
+                    ->icon('heroicon-o-wallet')
+                    ->description('Saldo berjalan dihitung otomatis dari transaksi (net setelah reversal & pencairan).')
+                    ->schema([
+                        Infolists\Components\Grid::make(['default' => 2, 'sm' => 3, 'lg' => 6])
+                            ->schema([
+                                Infolists\Components\TextEntry::make('saldo_pokok')
+                                    ->label('Pokok')
+                                    ->money('IDR')
+                                    ->state(fn (Member $record): string => static::savingsBalances($record)['pokok']),
+                                Infolists\Components\TextEntry::make('saldo_wajib')
+                                    ->label('Wajib')
+                                    ->money('IDR')
+                                    ->state(fn (Member $record): string => static::savingsBalances($record)['wajib']),
+                                Infolists\Components\TextEntry::make('saldo_sukarela')
+                                    ->label('Sukarela')
+                                    ->money('IDR')
+                                    ->state(fn (Member $record): string => static::savingsBalances($record)['sukarela']),
+                                Infolists\Components\TextEntry::make('saldo_hari_raya')
+                                    ->label('Hari Raya')
+                                    ->money('IDR')
+                                    ->state(fn (Member $record): string => static::holidayBalanceTotal($record))
+                                    ->helperText('Total semua tahun program.'),
+                                Infolists\Components\TextEntry::make('saldo_wajib_belanja')
+                                    ->label('Wajib Belanja')
+                                    ->money('IDR')
+                                    ->state(fn (Member $record): string => static::savingsBalances($record)['wajib_belanja']),
+                                Infolists\Components\TextEntry::make('saldo_total')
+                                    ->label('Total Simpanan')
+                                    ->money('IDR')
+                                    ->weight('bold')
+                                    ->color('success')
+                                    ->state(fn (Member $record): string => app(SavingsBalanceService::class)->totalBalance($record)),
+                            ]),
+                    ]),
+
                 Infolists\Components\Grid::make(3)
                     ->schema([
                         Infolists\Components\Group::make([
@@ -543,6 +604,7 @@ class MemberResource extends Resource
     public static function getRelations(): array
     {
         return [
+            MemberResource\RelationManagers\SavingsDepositsRelationManager::class,
             MemberResource\RelationManagers\DocumentsRelationManager::class,
             AuditTrailRelationManager::class,
         ];
