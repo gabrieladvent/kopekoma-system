@@ -11,6 +11,7 @@ use App\Models\Member;
 use App\Models\MemberHolidaySaving;
 use App\Models\SavingsDeposit;
 use App\Settings\CooperativeSettings;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms;
 use Filament\Forms\Components\Component;
 use Filament\Forms\Form;
@@ -24,6 +25,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SavingsDepositResource extends Resource
 {
@@ -39,11 +41,6 @@ class SavingsDepositResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Setoran';
 
-    /**
-     * Jenis simpanan yang bisa disetor lewat form tunggal. `swp` &
-     * `tabungan_berjangka` lahir di modul Pinjaman (D1) → tak ada di enum
-     * deposits, jadi tak ditawarkan.
-     */
     public const SAVINGS_TYPES = [
         'pokok' => 'Simpanan Pokok',
         'wajib' => 'Simpanan Wajib',
@@ -62,16 +59,8 @@ class SavingsDepositResource extends Resource
         'bendahara' => 'Bendahara',
     ];
 
-    /**
-     * Jenis dengan nominal terkunci (tak boleh diubah petugas): nilai ditetapkan
-     * dari settings koperasi (pokok, wajib_belanja) atau registrasi (hari_raya).
-     */
     public const LOCKED_AMOUNT_TYPES = ['pokok', 'wajib_belanja', 'hari_raya'];
 
-    /**
-     * Registrasi Hari Raya AKTIF anggota yang rentang pengumpulannya memuat
-     * `deposit_date` (start_date ≤ tanggal ≤ end_date). Null bila tak ada.
-     */
     public static function activeHolidayRegistration(mixed $memberId, mixed $depositDate): ?MemberHolidaySaving
     {
         if (blank($memberId) || blank($depositDate)) {
@@ -106,10 +95,6 @@ class SavingsDepositResource extends Resource
         return $options;
     }
 
-    /**
-     * Nominal bulanan registrasi Hari Raya aktif yang memuat `deposit_date`.
-     * Null bila tak ada program aktif yang mencakup tanggal itu.
-     */
     public static function holidayMonthlyAmount(mixed $memberId, mixed $depositDate): ?string
     {
         $registration = self::activeHolidayRegistration($memberId, $depositDate);
@@ -119,11 +104,6 @@ class SavingsDepositResource extends Resource
             : (string) $registration->monthly_amount;
     }
 
-    /**
-     * Sinkronkan field `amount` di form mengikuti aturan per jenis (UX reaktif).
-     * Locked types → set dari sumber otoritatif; `wajib` → prefill snapshot
-     * (editable); `sukarela` → biarkan input user.
-     */
     public static function syncAmount(?string $type, Get $get, Set $set): void
     {
         if ($type === 'wajib') {
@@ -174,8 +154,7 @@ class SavingsDepositResource extends Resource
 
                 if ($registration !== null) {
                     $data['amount'] = (string) $registration->monthly_amount;
-                    // tag period_month ke tahun program (D1 group per period_year),
-                    // bukan bulan setor literal — agar saldo Hari Raya konsisten.
+
                     $data['period_month'] = sprintf('%04d-01-01', $registration->period_year);
                 }
                 break;
@@ -184,10 +163,6 @@ class SavingsDepositResource extends Resource
         return $data;
     }
 
-    /**
-     * Reversal hanya bisa atas baris asli (bukan reversal), dan gating berbasis
-     * permission Shield (D7): `reverse` = Petugas + Pengurus (uniform).
-     */
     public static function canReverse(SavingsDeposit $record): bool
     {
         return ! $record->is_reversal
@@ -211,9 +186,6 @@ class SavingsDepositResource extends Resource
         ];
     }
 
-    /**
-     * Jalankan reversal via Action class (D3). Domain error ditangkap → notif danger.
-     */
     public static function performReversal(SavingsDeposit $record, array $data): void
     {
         try {
@@ -233,6 +205,24 @@ class SavingsDepositResource extends Resource
         }
     }
 
+    public static function printSlip(SavingsDeposit $deposit): StreamedResponse
+    {
+        $deposit->loadMissing(['member', 'recordedBy']);
+
+        $pdf = Pdf::loadView('pdf.savings-slip', [
+            'deposit' => $deposit,
+            'savingsTypeLabel' => self::SAVINGS_TYPES[$deposit->savings_type] ?? $deposit->savings_type,
+            'depositMethodLabel' => self::DEPOSIT_METHODS[$deposit->deposit_method] ?? $deposit->deposit_method,
+            'depositedByLabel' => self::DEPOSITED_BY[$deposit->deposited_by] ?? $deposit->deposited_by,
+            'printedAt' => now()->format('d M Y H:i'),
+        ]);
+
+        return response()->streamDownload(
+            fn () => print ($pdf->output()),
+            'slip-setoran-'.$deposit->transaction_number.'.pdf',
+        );
+    }
+
     public static function typeColor(string $state): string
     {
         return match ($state) {
@@ -249,8 +239,6 @@ class SavingsDepositResource extends Resource
     {
         return $form
             ->schema([
-                // Idempotency (D4): satu render = satu key (default dievaluasi sekali).
-                // Double-click → key sama → request kedua kena unique.
                 Forms\Components\Hidden::make('idempotency_key')
                     ->default(fn (): string => (string) Str::uuid()),
                 Forms\Components\Section::make('Setoran Simpanan')
@@ -266,7 +254,6 @@ class SavingsDepositResource extends Resource
                             ->required()
                             ->live()
                             ->afterStateUpdated(function (Set $set): void {
-                                // ganti anggota → opsi jenis & nominal harus dihitung ulang.
                                 $set('savings_type', null);
                                 $set('amount', null);
                             })
@@ -300,12 +287,10 @@ class SavingsDepositResource extends Resource
                             ->maxDate(now())
                             ->live()
                             ->afterStateUpdated(function (Get $get, Set $set): void {
-                                // Tanggal pindah → nominal Hari Raya ikut menyesuaikan registrasi.
                                 if ($get('savings_type') === 'hari_raya') {
                                     self::syncAmount('hari_raya', $get, $set);
                                 }
                             })
-                            // Hari Raya: tanggal setor wajib berada di rentang program aktif.
                             ->rule(fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
                                 if ($get('savings_type') === 'hari_raya'
                                     && self::activeHolidayRegistration($get('member_id'), $value) === null) {
@@ -315,7 +300,6 @@ class SavingsDepositResource extends Resource
                         Forms\Components\DatePicker::make('period_month')
                             ->label('Periode (Bulan)')
                             ->displayFormat('F Y')
-                            // Hari Raya: periode di-tag otomatis ke tahun program (server).
                             ->disabled(fn (Get $get): bool => $get('savings_type') === 'hari_raya')
                             ->dehydrated()
                             ->helperText('Opsional. Untuk Hari Raya, periode di-set otomatis ke tahun program.'),
@@ -470,6 +454,11 @@ class SavingsDepositResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('printSlip')
+                        ->label('Cetak Slip')
+                        ->icon('heroicon-o-printer')
+                        ->color('gray')
+                        ->action(fn (SavingsDeposit $record): StreamedResponse => static::printSlip($record)),
                     Tables\Actions\Action::make('reverse')
                         ->label('Reversal')
                         ->icon('heroicon-o-arrow-uturn-left')

@@ -6,6 +6,7 @@ use App\Filament\Resources\SavingsDepositResource;
 use App\Models\SavingsDeposit;
 use Filament\Actions;
 use Filament\Resources\Pages\ViewRecord;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ViewSavingsDeposit extends ViewRecord
 {
@@ -14,6 +15,11 @@ class ViewSavingsDeposit extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('printSlip')
+                ->label('Cetak Slip')
+                ->icon('heroicon-o-printer')
+                ->color('gray')
+                ->action(fn (): StreamedResponse => SavingsDepositResource::printSlip($this->getRecord())),
             Actions\Action::make('reverse')
                 ->label('Reversal')
                 ->icon('heroicon-o-arrow-uturn-left')
