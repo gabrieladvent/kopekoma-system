@@ -16,6 +16,7 @@ use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Spatie\Activitylog\Models\Activity;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 beforeEach(function () {
     asSuperAdmin();
@@ -396,4 +397,26 @@ it('rejects a hari_raya deposit when the deposit date is outside the active rang
         ])
         ->call('create')
         ->assertHasFormErrors(['deposit_date']);
+});
+
+// ── Slip setoran PDF (2c) ─────────────────────────────────────────────
+
+it('streams the deposit slip as a PDF download named by transaction number', function () {
+    $deposit = SavingsDeposit::factory()->create();
+
+    $response = SavingsDepositResource::printSlip($deposit);
+
+    expect($response)->toBeInstanceOf(StreamedResponse::class)
+        ->and($response->headers->get('content-disposition'))
+        ->toContain('slip-setoran-'.$deposit->transaction_number);
+});
+
+it('exposes the print slip action on the view page and table', function () {
+    $deposit = SavingsDeposit::factory()->create();
+
+    Livewire::test(ViewSavingsDeposit::class, ['record' => $deposit->getRouteKey()])
+        ->assertActionExists('printSlip');
+
+    Livewire::test(ListSavingsDeposits::class)
+        ->assertTableActionExists('printSlip');
 });
