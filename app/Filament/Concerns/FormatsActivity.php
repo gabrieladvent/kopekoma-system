@@ -20,6 +20,7 @@ trait FormatsActivity
         'disbursed' => 'Dicairkan',
         'rejected' => 'Ditolak',
         'reversal' => 'Reversal',
+        'batch_potong_gaji' => 'Batch Potong Gaji',
     ];
 
     /** @var array<string, string> */
@@ -32,6 +33,7 @@ trait FormatsActivity
         'disbursed' => 'success',
         'rejected' => 'danger',
         'reversal' => 'danger',
+        'batch_potong_gaji' => 'primary',
     ];
 
     public static function activityEventLabel(?string $state): string

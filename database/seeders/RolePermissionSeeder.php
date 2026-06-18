@@ -34,15 +34,21 @@ class RolePermissionSeeder extends Seeder
         'reverse_savings::withdrawal',
         // Reversal pemakaian Wajib Belanja = uniform Petugas+ (D7).
         'reverse_shopping::transaction',
+        // Batch potong gaji = bulk create setoran (uang masuk) → Petugas+ (D5/D7).
+        // Custom Page tak punya auto-policy Shield → permission dideklarasi manual.
+        'access_batch_salary_deduction',
     ];
 
     private const CUSTOM_PENGURUS = [
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
         'reverse_shopping::transaction',
+        'access_batch_salary_deduction',
         // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
+        // Export/cetak rekap = PII finansial → Pengurus+ saja (D7); export ter-log.
+        'export_savings_recap',
     ];
 
     public function run(): void
