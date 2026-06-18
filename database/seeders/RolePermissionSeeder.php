@@ -10,7 +10,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving', 'savings::withdrawal'];
+    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving', 'savings::withdrawal', 'shopping::transaction'];
 
     private const BASE_PREFIXES = ['view', 'view_any', 'create', 'update'];
 
@@ -32,11 +32,14 @@ class RolePermissionSeeder extends Seeder
         // Reversal pencairan = uniform Petugas+ (D7). Create draft & edit-draft
         // datang dari BASE_PREFIXES; ACC/Cair (approve/disburse) khusus Pengurus+.
         'reverse_savings::withdrawal',
+        // Reversal pemakaian Wajib Belanja = uniform Petugas+ (D7).
+        'reverse_shopping::transaction',
     ];
 
     private const CUSTOM_PENGURUS = [
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
+        'reverse_shopping::transaction',
         // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
