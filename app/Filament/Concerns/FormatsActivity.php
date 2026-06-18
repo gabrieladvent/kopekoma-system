@@ -15,6 +15,11 @@ trait FormatsActivity
         'updated' => 'Diubah',
         'deleted' => 'Dihapus',
         'restored' => 'Dipulihkan',
+        // Event domain keuangan (workflow pencairan + reversal transaksi).
+        'approved' => 'Disetujui (ACC)',
+        'disbursed' => 'Dicairkan',
+        'rejected' => 'Ditolak',
+        'reversal' => 'Reversal',
     ];
 
     /** @var array<string, string> */
@@ -23,6 +28,10 @@ trait FormatsActivity
         'updated' => 'warning',
         'deleted' => 'danger',
         'restored' => 'info',
+        'approved' => 'info',
+        'disbursed' => 'success',
+        'rejected' => 'danger',
+        'reversal' => 'danger',
     ];
 
     public static function activityEventLabel(?string $state): string

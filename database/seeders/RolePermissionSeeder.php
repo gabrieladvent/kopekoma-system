@@ -10,7 +10,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving'];
+    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving', 'savings::withdrawal'];
 
     private const BASE_PREFIXES = ['view', 'view_any', 'create', 'update'];
 
@@ -27,9 +27,20 @@ class RolePermissionSeeder extends Seeder
      * Permission ini artefak kode (Shield tak meng-generate-nya); assignment ke
      * role custom tetap bisa lewat UI Shield setelah ability ada.
      */
-    private const CUSTOM_PETUGAS = ['reverse_savings::deposit'];
+    private const CUSTOM_PETUGAS = [
+        'reverse_savings::deposit',
+        // Reversal pencairan = uniform Petugas+ (D7). Create draft & edit-draft
+        // datang dari BASE_PREFIXES; ACC/Cair (approve/disburse) khusus Pengurus+.
+        'reverse_savings::withdrawal',
+    ];
 
-    private const CUSTOM_PENGURUS = ['reverse_savings::deposit'];
+    private const CUSTOM_PENGURUS = [
+        'reverse_savings::deposit',
+        'reverse_savings::withdrawal',
+        // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
+        'approve_savings::withdrawal',
+        'disburse_savings::withdrawal',
+    ];
 
     public function run(): void
     {

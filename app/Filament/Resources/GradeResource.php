@@ -25,6 +25,8 @@ class GradeResource extends Resource
 
     protected static ?string $navigationLabel = 'Golongan';
 
+    protected static ?int $navigationSort = 90;
+
     protected static ?string $modelLabel = 'Golongan';
 
     protected static ?string $pluralModelLabel = 'Golongan';

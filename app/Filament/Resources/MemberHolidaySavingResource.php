@@ -33,6 +33,8 @@ class MemberHolidaySavingResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Registrasi Hari Raya';
 
+    protected static ?int $navigationSort = 30;
+
     public static function normalizeYear(mixed $value): ?int
     {
         if (blank($value)) {

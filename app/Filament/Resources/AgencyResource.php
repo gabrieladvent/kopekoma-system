@@ -25,6 +25,8 @@ class AgencyResource extends Resource
 
     protected static ?string $navigationLabel = 'OPD / Instansi';
 
+    protected static ?int $navigationSort = 90;
+
     protected static ?string $modelLabel = 'OPD';
 
     protected static ?string $pluralModelLabel = 'OPD';

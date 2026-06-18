@@ -41,6 +41,8 @@ class SavingsDepositResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Setoran';
 
+    protected static ?int $navigationSort = 10;
+
     public const SAVINGS_TYPES = [
         'pokok' => 'Simpanan Pokok',
         'wajib' => 'Simpanan Wajib',

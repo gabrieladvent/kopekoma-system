@@ -69,6 +69,11 @@ class SavingsWithdrawal extends Model implements Reversible
         return $this->belongsTo(User::class, 'recorded_by');
     }
 
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
