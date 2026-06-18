@@ -67,21 +67,32 @@ it('requires member, savings type, and amount', function () {
         ]);
 });
 
-it('requires period_month for hari_raya deposits', function () {
+it('auto-tags period_month to the program year for hari_raya deposits', function () {
     $member = Member::factory()->create();
+    // Rentang melintasi tahun: pembagian (end_date) 2027 → tahun program 2027.
+    MemberHolidaySaving::factory()->range('2026-06-01', '2027-05-31')->create([
+        'member_id' => $member->id,
+        'monthly_amount' => 70000,
+    ]);
 
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
             'savings_type' => 'hari_raya',
-            'amount' => '50000',
-            'deposit_date' => now()->toDateString(),
-            'period_month' => null,
+            'amount' => '1', // tampered — server overwrite dari registrasi
+            'deposit_date' => '2026-06-18', // di dalam rentang
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
         ])
         ->call('create')
-        ->assertHasFormErrors(['period_month' => 'required']);
+        ->assertHasNoFormErrors();
+
+    $deposit = SavingsDeposit::where('member_id', $member->id)
+        ->where('savings_type', 'hari_raya')
+        ->first();
+
+    expect((float) $deposit->amount)->toBe(70000.0)
+        ->and($deposit->period_month->format('Y'))->toBe('2027');
 });
 
 it('dedupes a double-submit with the same idempotency key and identical payload (D4)', function () {
@@ -329,15 +340,20 @@ it('rejects a sukarela amount below the configured minimum', function () {
         ->assertHasFormErrors(['amount']);
 });
 
-it('offers hari_raya only when the member has an active registration', function () {
+it('offers hari_raya only when the deposit date falls inside an active range', function () {
     $registered = Member::factory()->create();
-    MemberHolidaySaving::factory()->year((int) now()->year)->create(['member_id' => $registered->id]);
+    MemberHolidaySaving::factory()->range('2026-01-01', '2026-12-31')->create(['member_id' => $registered->id]);
 
     $unregistered = Member::factory()->create();
 
-    expect(SavingsDepositResource::savingsTypeOptions($registered->id))->toHaveKey('hari_raya')
-        ->and(SavingsDepositResource::savingsTypeOptions($unregistered->id))->not->toHaveKey('hari_raya')
-        ->and(SavingsDepositResource::savingsTypeOptions(null))->not->toHaveKey('hari_raya');
+    $inRange = '2026-06-18';
+    $outOfRange = '2027-06-18';
+
+    expect(SavingsDepositResource::savingsTypeOptions($registered->id, $inRange))->toHaveKey('hari_raya')
+        ->and(SavingsDepositResource::savingsTypeOptions($registered->id, $outOfRange))->not->toHaveKey('hari_raya')
+        ->and(SavingsDepositResource::savingsTypeOptions($registered->id, null))->not->toHaveKey('hari_raya')
+        ->and(SavingsDepositResource::savingsTypeOptions($unregistered->id, $inRange))->not->toHaveKey('hari_raya')
+        ->and(SavingsDepositResource::savingsTypeOptions(null, $inRange))->not->toHaveKey('hari_raya');
 });
 
 it('locks the hari_raya amount to the active registration monthly_amount', function () {
@@ -364,20 +380,20 @@ it('locks the hari_raya amount to the active registration monthly_amount', funct
     expect((float) $deposit->amount)->toBe(85000.0);
 });
 
-it('rejects a hari_raya deposit for a year without an active registration', function () {
+it('rejects a hari_raya deposit when the deposit date is outside the active range', function () {
     $member = Member::factory()->create();
-    MemberHolidaySaving::factory()->year(2026)->create(['member_id' => $member->id]);
+    // Pengumpulan baru mulai 20 Jun 2026 → setoran sebelum itu di luar rentang.
+    MemberHolidaySaving::factory()->range('2026-06-20', '2026-12-31')->create(['member_id' => $member->id]);
 
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
             'savings_type' => 'hari_raya',
             'amount' => '1',
-            'deposit_date' => now()->toDateString(),
-            'period_month' => '2025-06-01', // tahun tanpa registrasi
+            'deposit_date' => '2026-01-10', // sebelum start_date, masih ≤ hari ini
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
         ])
         ->call('create')
-        ->assertHasFormErrors(['period_month']);
+        ->assertHasFormErrors(['deposit_date']);
 });

@@ -4,9 +4,11 @@ namespace App\Filament\Resources;
 
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\MemberHolidaySavingResource\Pages;
+use App\Filament\Resources\MemberHolidaySavingResource\RelationManagers\DepositsRelationManager;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
 use App\Models\Member;
 use App\Models\MemberHolidaySaving;
+use App\Services\SavingsBalanceService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Infolists;
@@ -31,10 +33,6 @@ class MemberHolidaySavingResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Registrasi Hari Raya';
 
-    /**
-     * Normalisasi nilai field tahun (bisa berupa tahun 4-digit atau date string
-     * dari DatePicker) menjadi integer tahun. Null bila kosong.
-     */
     public static function normalizeYear(mixed $value): ?int
     {
         if (blank($value)) {
@@ -79,7 +77,6 @@ class MemberHolidaySavingResource extends Resource
                             ->preload()
                             ->required()
                             ->live()
-                            // unik per (anggota, tahun pembagian) — tahun diturunkan dari end_date.
                             ->rule(fn (Forms\Get $get, ?MemberHolidaySaving $record) => Rule::unique('member_holiday_savings', 'member_id')
                                 ->where('period_year', self::normalizeYear($get('end_date')))
                                 ->ignore($record?->getKey()))
@@ -144,6 +141,15 @@ class MemberHolidaySavingResource extends Resource
                             ->money('IDR')
                             ->weight('bold')
                             ->color('success'),
+                        Infolists\Components\TextEntry::make('balance')
+                            ->label('Saldo Terkumpul')
+                            ->icon('heroicon-o-wallet')
+                            ->money('IDR')
+                            ->weight('bold')
+                            ->color('primary')
+                            ->state(fn (MemberHolidaySaving $record): string => app(SavingsBalanceService::class)
+                                ->holidayBalance($record->member, $record->period_year))
+                            ->helperText('Total setoran dikurangi pencairan untuk tahun program ini.'),
                         Infolists\Components\IconEntry::make('is_active')
                             ->label('Aktif')
                             ->boolean(),
@@ -215,6 +221,7 @@ class MemberHolidaySavingResource extends Resource
     public static function getRelations(): array
     {
         return [
+            DepositsRelationManager::class,
             AuditTrailRelationManager::class,
         ];
     }
