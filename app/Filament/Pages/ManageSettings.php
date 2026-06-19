@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\StoreClient;
 use App\Settings\CooperativeSettings;
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
@@ -11,16 +12,27 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Tables\Actions\Action as TableAction;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
-class ManageSettings extends Page implements HasForms
+class ManageSettings extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
+    use InteractsWithTable;
 
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
 
@@ -202,7 +214,100 @@ class ManageSettings extends Page implements HasForms
                 ->action(function (array $data): void {
                     $this->sendTestEmail($data['recipient']);
                 }),
+            Action::make('createStoreClient')
+                ->label('Tambah Klien Toko')
+                ->icon('heroicon-o-building-storefront')
+                ->modalHeading('Tambah Klien Toko')
+                ->modalDescription('Sistem akan membuat Client ID & Secret otomatis. Secret hanya ditampilkan sekali.')
+                ->form([
+                    TextInput::make('name')
+                        ->label('Nama Toko')
+                        ->required()
+                        ->maxLength(100),
+                    Toggle::make('can_refund')
+                        ->label('Boleh melakukan refund')
+                        ->helperText('Token klien ini akan menyertakan ability shopping:refund.')
+                        ->default(false),
+                ])
+                ->action(function (array $data): void {
+                    $secret = Str::random(40);
+
+                    $client = StoreClient::create([
+                        'name' => $data['name'],
+                        'client_id' => 'store_'.Str::lower(Str::random(20)),
+                        'client_secret' => $secret, // di-hash otomatis oleh cast
+                        'is_active' => true,
+                        'can_refund' => (bool) ($data['can_refund'] ?? false),
+                    ]);
+
+                    $this->notifyCredentials($client->client_id, $secret);
+                }),
         ];
+    }
+
+    /**
+     * Tabel kelola Klien Toko (API). Data tetap di tabel `store_clients` (bukan
+     * `settings`) agar token Sanctum tetap berfungsi — UI-nya saja yang di sini.
+     */
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(StoreClient::query()->latest())
+            ->heading('Klien Toko (API Integrasi)')
+            ->description('Kredensial aplikasi toko untuk mengakses API pemakaian saldo Wajib Belanja.')
+            ->emptyStateHeading('Belum ada klien toko')
+            ->emptyStateDescription('Tambah klien lewat tombol "Tambah Klien Toko" di atas.')
+            ->columns([
+                TextColumn::make('name')
+                    ->label('Nama')
+                    ->searchable(),
+                TextColumn::make('client_id')
+                    ->label('Client ID')
+                    ->badge()
+                    ->color('gray')
+                    ->copyable()
+                    ->copyMessage('Client ID disalin'),
+                ToggleColumn::make('is_active')
+                    ->label('Aktif'),
+                ToggleColumn::make('can_refund')
+                    ->label('Boleh Refund'),
+                TextColumn::make('created_at')
+                    ->label('Dibuat')
+                    ->dateTime('d M Y H:i')
+                    ->sortable(),
+            ])
+            ->actions([
+                TableAction::make('regenerateSecret')
+                    ->label('Reset Secret')
+                    ->icon('heroicon-o-key')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalDescription('Secret lama langsung tak berlaku. Token yang sudah terbit tetap valid sampai kedaluwarsa.')
+                    ->action(function (StoreClient $record): void {
+                        $secret = Str::random(40);
+                        $record->update(['client_secret' => $secret]);
+
+                        $this->notifyCredentials($record->client_id, $secret);
+                    }),
+                DeleteAction::make(),
+            ]);
+    }
+
+    /**
+     * Tampilkan kredensial SEKALI — secret tak bisa dilihat lagi setelah ini.
+     */
+    private function notifyCredentials(string $clientId, string $secret): void
+    {
+        Notification::make()
+            ->title('Kredensial klien — simpan sekarang')
+            ->body(new HtmlString(
+                'Secret hanya ditampilkan sekali ini.<br><br>'
+                .'<strong>Client ID:</strong><br><code>'.e($clientId).'</code><br><br>'
+                .'<strong>Client Secret:</strong><br><code>'.e($secret).'</code>'
+            ))
+            ->success()
+            ->persistent()
+            ->send();
     }
 
     public function save(): void

@@ -22,9 +22,8 @@ class CreateShoppingTransaction extends BaseCreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // recorded_by dipaksa non-null di server (skema nullable — security #M3).
         $data['recorded_by'] = auth()->id();
-        // Minggu 2: hanya pemakaian manual (store_api = Bab 9, di luar scope).
+
         $data['source'] = 'manual';
 
         return $data;
@@ -33,10 +32,8 @@ class CreateShoppingTransaction extends BaseCreateRecord
     protected function handleRecordCreation(array $data): Model
     {
         try {
-            // Engine bersama (D4): lock member + re-cek saldo otoritatif + create.
             return app(RecordShoppingUsage::class)($data);
         } catch (CannotSpendShopping $e) {
-            // Race: saldo berubah antara validasi form dan lock — tolak dengan pesan jelas.
             Notification::make()
                 ->danger()
                 ->title('Saldo tidak mencukupi')

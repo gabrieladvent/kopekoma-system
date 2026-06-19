@@ -12,6 +12,7 @@ API agar aplikasi toko/merchant dapat **memverifikasi akses**, **mengecek saldo*
 - **HTTPS wajib.** NIK adalah data pribadi sensitif — tak boleh lewat kanal tak terenkripsi.
 - **Format:** JSON. Kirim header `Accept: application/json` dan `Content-Type: application/json`.
 - **Autentikasi:** Bearer token (Laravel Sanctum). Ambil token lewat `POST /token`, lalu kirim `Authorization: Bearer <access_token>` di endpoint lain.
+- **Registrasi klien:** `client_id` + `client_secret` dibuat oleh pengurus di panel admin → **Pengaturan → Klien Toko**. Secret ditampilkan sekali saat pembuatan (disimpan ter-hash), dan bisa di-reset dari halaman yang sama.
 
 ### Envelope Response
 

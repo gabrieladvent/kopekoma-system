@@ -8,18 +8,6 @@ use App\Models\ShoppingTransaction;
 use App\Services\SavingsBalanceService;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Engine pemakaian saldo Wajib Belanja — dipakai bersama jalur manual (Filament 5a)
- * dan jalur store_api (controller API). ADR Integrasi API Toko, D4.
- *
- * Invariant anti over-spend: lock baris member → re-cek saldo otoritatif di dalam
- * lock → create. Tanpa lock, dua pemakaian konkuren bisa menembus saldo
- * (tak ada unique-constraint agregat yang menjaga "Σ pakai ≤ saldo").
- *
- * Idempotency (UniqueConstraintViolationException dari `idempotency_key`) sengaja
- * TIDAK ditangani di sini — dibiarkan menjalar ke pemanggil, karena respons
- * idempotensi berbeda per jalur (Filament Halt+notif vs API 200/409 ownership-check).
- */
 class RecordShoppingUsage
 {
     public function __construct(private readonly SavingsBalanceService $balances) {}

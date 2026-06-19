@@ -9,10 +9,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
-/**
- * Penerbitan token bearer untuk klien toko (ADR Integrasi API Toko, D1).
- * Client credentials → token Sanctum ber-ability `shopping:charge`, TTL pendek.
- */
 class StoreAuthController extends Controller
 {
     public function token(Request $request): JsonResponse
@@ -32,8 +28,8 @@ class StoreAuthController extends Controller
 
         $ttlMinutes = (int) config('store.token_ttl_minutes');
 
-        // Ability shopping:refund hanya untuk klien yang berhak (D8).
         $abilities = ['shopping:charge'];
+
         if ($client->can_refund) {
             $abilities[] = 'shopping:refund';
         }

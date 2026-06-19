@@ -6,12 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Additive-only (ADR Integrasi API Toko, item 0 / D5):
-     * - `store_client_id`: atribusi toko untuk source='store_api' (null untuk manual).
-     * - `idempotency_hash`: HMAC payload kanonik (tanpa NIK) untuk deteksi "key sama, payload beda".
-     * Unique global `idempotency_key` SENGAJA tidak diubah (jaga idempotency manual + sifat aditif).
-     */
     public function up(): void
     {
         Schema::table('shopping_transactions', function (Blueprint $table) {

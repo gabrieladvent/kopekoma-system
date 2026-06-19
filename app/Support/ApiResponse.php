@@ -9,14 +9,6 @@ use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
-/**
- * Envelope response API seragam.
- *
- * Sukses : { response_code, response_message, response_data }
- * Error  : { response_code, response_message }
- *
- * `response_code` = HTTP status code (int), sama dengan status response.
- */
 class ApiResponse
 {
     public static function success(mixed $data = null, string $message = 'Berhasil', int $code = 200): JsonResponse
@@ -36,11 +28,6 @@ class ApiResponse
         ], $code);
     }
 
-    /**
-     * Petakan exception ke envelope error seragam (dipakai exception handler
-     * untuk rute api/*). Pesan untuk status non-422 sengaja generik agar tak
-     * membocorkan detail internal.
-     */
     public static function fromException(Throwable $e): JsonResponse
     {
         if ($e instanceof ValidationException) {
@@ -49,7 +36,7 @@ class ApiResponse
 
         $status = match (true) {
             $e instanceof AuthenticationException => 401,
-            $e instanceof AuthorizationException => 403, // termasuk Sanctum MissingAbilityException
+            $e instanceof AuthorizationException => 403,
             $e instanceof HttpExceptionInterface => $e->getStatusCode(),
             default => 500,
         };

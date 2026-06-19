@@ -6,17 +6,10 @@ use App\Models\StoreClient;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
-/**
- * @extends Factory<StoreClient>
- */
 class StoreClientFactory extends Factory
 {
     protected $model = StoreClient::class;
 
-    /**
-     * Secret default (plaintext) — di-hash oleh cast `hashed` saat disimpan.
-     * Tes memakai konstanta ini untuk login: StoreClientFactory::DEFAULT_SECRET.
-     */
     public const DEFAULT_SECRET = 'store-secret';
 
     /**

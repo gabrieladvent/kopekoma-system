@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Hak refund per klien (ADR D8): tak semua toko boleh refund. Token akan
-     * menyertakan ability `shopping:refund` hanya bila klien `can_refund`.
-     */
     public function up(): void
     {
         Schema::table('store_clients', function (Blueprint $table) {

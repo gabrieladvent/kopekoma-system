@@ -10,10 +10,6 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-/**
- * Klien toko/merchant yang menerbitkan token Sanctum untuk jalur store_api
- * (ADR Integrasi API Toko, D1). Hanya model ini yang menjadi `tokenable`.
- */
 class StoreClient extends Model implements HasApiTokensContract
 {
     use HasApiTokens;
@@ -39,7 +35,6 @@ class StoreClient extends Model implements HasApiTokensContract
     ];
 
     protected $casts = [
-        // Hash otomatis saat di-set (Hash::make); cocok untuk Hash::check di endpoint token.
         'client_secret' => 'hashed',
         'is_active' => 'boolean',
         'can_refund' => 'boolean',
@@ -47,7 +42,6 @@ class StoreClient extends Model implements HasApiTokensContract
 
     public function getActivitylogOptions(): LogOptions
     {
-        // Audit perubahan klien tanpa membocorkan secret.
         return LogOptions::defaults()
             ->logOnly(['name', 'client_id', 'is_active'])
             ->logOnlyDirty();

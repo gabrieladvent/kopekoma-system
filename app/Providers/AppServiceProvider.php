@@ -37,9 +37,6 @@ class AppServiceProvider extends ServiceProvider
         $this->configureLogRedaction();
     }
 
-    /**
-     * Redaksi NIK/secret dari log default channel (ADR D3).
-     */
     private function configureLogRedaction(): void
     {
         Log::channel(config('logging.default'))
@@ -47,10 +44,6 @@ class AppServiceProvider extends ServiceProvider
             ->pushProcessor(new RedactSensitiveLogContext);
     }
 
-    /**
-     * Rate limiter API toko (ADR D1/D3): endpoint token anti brute-force secret
-     * (key per client_id + IP), endpoint purchase anti enumerasi/abuse (per token+IP).
-     */
     private function configureRateLimiters(): void
     {
         RateLimiter::for('store-token', function (Request $request): Limit {
@@ -66,10 +59,6 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
-    /**
-     * Ensure every delete action (page header, table row, bulk) shows a
-     * notification with a description, not just a title.
-     */
     private function configureDeleteNotifications(): void
     {
         $single = Notification::make()
@@ -78,6 +67,7 @@ class AppServiceProvider extends ServiceProvider
             ->body('Data telah berhasil dihapus dari sistem.');
 
         PageDeleteAction::configureUsing(fn (PageDeleteAction $action) => $action->successNotification($single));
+
         TableDeleteAction::configureUsing(fn (TableDeleteAction $action) => $action->successNotification($single));
 
         DeleteBulkAction::configureUsing(fn (DeleteBulkAction $action) => $action->successNotification(
@@ -88,11 +78,6 @@ class AppServiceProvider extends ServiceProvider
         ));
     }
 
-    /**
-     * Push the stored general settings into runtime config so the app name and
-     * mail "from" address reflect what the admin set. Guarded so it is a no-op
-     * before the settings table exists (fresh install / migration).
-     */
     private function applyGeneralSettings(): void
     {
         try {

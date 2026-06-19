@@ -11,7 +11,9 @@ Koleksi [Bruno](https://www.usebruno.com/) untuk API Integrasi Toko (pemakaian s
 
 ## Persiapan Data Lokal
 
-Belum ada UI manajemen merchant (lihat ADR — Non-Goal). Buat `StoreClient` + anggota bersaldo via `php artisan tinker`:
+**Cara utama (UI):** panel admin → **Pengaturan** → tabel **"Klien Toko (API Integrasi)"** → tombol **Tambah Klien Toko**. Sistem generate `client_id` + `client_secret`; **secret ditampilkan sekali** — salin untuk dipakai di environment Bruno.
+
+**Alternatif (tinker)** — buat `StoreClient` + anggota bersaldo:
 
 ```php
 use App\Models\StoreClient;

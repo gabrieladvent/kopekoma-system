@@ -24,7 +24,6 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Rute API toko: seragamkan semua error ke envelope { response_code, response_message }.
         $exceptions->render(function (Throwable $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::fromException($e);
