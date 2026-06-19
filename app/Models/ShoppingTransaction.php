@@ -23,11 +23,13 @@ class ShoppingTransaction extends Model implements Reversible
 
     protected $fillable = [
         'idempotency_key',
+        'idempotency_hash',
         'transaction_number',
         'member_id',
         'amount',
         'transaction_date',
         'source',
+        'store_client_id',
         'reference_number',
         'notes',
         'is_reversal',

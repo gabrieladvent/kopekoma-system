@@ -195,7 +195,7 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 
 | # | Item | Effort | Status |
 |---|------|--------|--------|
-| 0 | Migrasi **aditif murni**: tabel `store_clients`; kolom `store_client_id` (nullable) + `idempotency_hash` (nullable) di `shopping_transactions`. **`unique(idempotency_key)` global tidak diubah** (jaga idempotency manual + aditif) | S | Pending |
+| 0 | Migrasi **aditif murni**: tabel `store_clients`; kolom `store_client_id` (nullable) + `idempotency_hash` (nullable) di `shopping_transactions`. **`unique(idempotency_key)` global tidak diubah** (jaga idempotency manual + aditif) | S | **Done** |
 | 1 | `laravel/sanctum` install + config + model `StoreClient` (+factory), `secret` hashed | S | Pending |
 | 2 | `RecordShoppingUsage` action (lock + re-cek + create) + `CannotSpendShopping` exception; **refactor 5a manual pakai action ini** | M | Pending |
 | 3 | `StoreAuthController@token` (verify kredensial → bearer ability `shopping:charge`, TTL) + **rate limit/lockout endpoint token** + rute `routes/api.php` | S | Pending |
