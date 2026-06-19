@@ -37,11 +37,13 @@ class StoreAuthController extends Controller
 
         $ttlMinutes = (int) config('store.token_ttl_minutes');
 
-        $token = $client->createToken(
-            'store-charge',
-            ['shopping:charge'],
-            now()->addMinutes($ttlMinutes),
-        );
+        // Ability shopping:refund hanya untuk klien yang berhak (D8).
+        $abilities = ['shopping:charge'];
+        if ($client->can_refund) {
+            $abilities[] = 'shopping:refund';
+        }
+
+        $token = $client->createToken('store-charge', $abilities, now()->addMinutes($ttlMinutes));
 
         return response()->json([
             'access_token' => $token->plainTextToken,

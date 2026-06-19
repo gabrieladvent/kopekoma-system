@@ -36,4 +36,9 @@ class StoreClientFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => ['is_active' => false]);
     }
+
+    public function canRefund(): static
+    {
+        return $this->state(fn (array $attributes): array => ['can_refund' => true]);
+    }
 }

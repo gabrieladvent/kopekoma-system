@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Actions\RecordShoppingUsage;
+use App\Actions\ReverseTransaction;
+use App\Exceptions\CannotReverseTransaction;
 use App\Exceptions\CannotSpendShopping;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreChargeRequest;
+use App\Http\Requests\Api\StoreRefundRequest;
 use App\Http\Requests\Api\StoreVerifyRequest;
+use App\Http\Resources\RefundResource;
 use App\Http\Resources\StorePurchaseResource;
 use App\Http\Resources\VerifyResource;
 use App\Models\Member;
@@ -104,6 +108,41 @@ class StorePurchaseController extends Controller
             ->log('Pemakaian saldo Wajib Belanja via API toko.');
 
         return (new StorePurchaseResource($tx))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Refund/koreksi via reversal yang sudah ada (D8). Hanya toko asal (match
+     * `store_client_id`) boleh me-refund transaksinya. Idempoten lewat
+     * `unique(reversal_of_id)`: refund konkuren → satu sukses, lainnya 200.
+     */
+    public function refund(StoreRefundRequest $request, string $transactionNumber): JsonResponse
+    {
+        $client = $this->storeClient($request);
+
+        $original = ShoppingTransaction::query()
+            ->where('transaction_number', $transactionNumber)
+            ->where('source', 'store_api')
+            ->where('is_reversal', false)
+            ->first();
+
+        // Bukan transaksi store_api yang valid, atau bukan milik klien ini →
+        // 404 generik (jangan bocorkan transaksi milik klien lain).
+        if ($original === null || (string) $original->store_client_id !== (string) $client->id) {
+            $this->fail(404, 'TRANSACTION_NOT_FOUND', 'Transaksi tidak ditemukan.');
+        }
+
+        try {
+            $reversal = app(ReverseTransaction::class)($original, $request->validated('reason'), null);
+        } catch (CannotReverseTransaction) {
+            // Sudah pernah di-refund (termasuk race konkuren) → idempoten 200.
+            $existing = ShoppingTransaction::query()
+                ->where('reversal_of_id', $original->id)
+                ->firstOrFail();
+
+            return (new RefundResource($existing))->response()->setStatusCode(200);
+        }
+
+        return (new RefundResource($reversal))->response()->setStatusCode(201);
     }
 
     /**

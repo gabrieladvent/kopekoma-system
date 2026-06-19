@@ -26,6 +26,7 @@ class StoreClient extends Model implements HasApiTokensContract
         'client_id',
         'client_secret',
         'is_active',
+        'can_refund',
     ];
 
     /**
@@ -41,6 +42,7 @@ class StoreClient extends Model implements HasApiTokensContract
         // Hash otomatis saat di-set (Hash::make); cocok untuk Hash::check di endpoint token.
         'client_secret' => 'hashed',
         'is_active' => 'boolean',
+        'can_refund' => 'boolean',
     ];
 
     public function getActivitylogOptions(): LogOptions

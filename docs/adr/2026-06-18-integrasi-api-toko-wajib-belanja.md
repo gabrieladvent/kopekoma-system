@@ -202,7 +202,7 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 | 4 | `StorePurchaseController@verify` + **`VerifyResource`** (read-only, whitelist `{affordable}` saja) | S | **Done** |
 | 5 | `StorePurchaseController@charge` + **`StorePurchaseResource`** (idempotency-key + hash + ownership-check, **plafon per-tx di controller**, Action eksekusi, audit `store_charge`, whitelist `{transaction_number, charged}`, JSON error map) | M | **Done** |
 | 6 | Middleware ability + **pembatas `tokenable=StoreClient`** + rate limit & **lockout enumerasi** per klien + **redaksi NIK** di log | S | **Done** |
-| 7 | (Opsional) `@refund` via `ReverseTransaction`, ability `shopping:refund`, **match toko asal**, catch-violation → 200, **`reverseClone()` salin `store_client_id`** | S | Pending |
+| 7 | (Opsional) `@refund` via `ReverseTransaction`, ability `shopping:refund`, **match toko asal**, catch-violation → 200, **`reverseClone()` salin `store_client_id`** | S | **Done** |
 | 8 | Tes feature API (token + **brute-force secret diblok**, verify minim-PII, charge idempoten, **key sama lintas-klien → 409 bukan bocor**, saldo kurang, plafon, `amount` float ditolak, NIK invalid generik, lockout, **tokenable bukan User ditolak**) + **tes konkurensi over-spend di MySQL** | M | Pending |
 
 **Effort:** S < 1 jam, M 1–3 jam.

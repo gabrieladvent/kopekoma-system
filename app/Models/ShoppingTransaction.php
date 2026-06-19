@@ -81,6 +81,8 @@ class ShoppingTransaction extends Model implements Reversible
             'amount' => $this->amount,
             'transaction_date' => $this->transaction_date,
             'source' => $this->source,
+            // Pertahankan atribusi toko pada baris refund store_api (ADR D6/D8).
+            'store_client_id' => $this->store_client_id,
         ];
     }
 }

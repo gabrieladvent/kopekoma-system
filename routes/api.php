@@ -30,6 +30,16 @@ Route::prefix('v1/store')->group(function (): void {
             ->name('api.store.purchases.verify');
         Route::post('purchases', [StorePurchaseController::class, 'charge'])
             ->name('api.store.purchases.charge');
-        // refund ditambah di item 7.
+    });
+
+    // Refund: ability terpisah shopping:refund (tak semua toko boleh — D8).
+    Route::middleware([
+        'auth:sanctum',
+        'abilities:shopping:refund',
+        'store.client',
+        'throttle:store-purchase',
+    ])->group(function (): void {
+        Route::post('purchases/{transaction_number}/refund', [StorePurchaseController::class, 'refund'])
+            ->name('api.store.purchases.refund');
     });
 });
