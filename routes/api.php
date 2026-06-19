@@ -28,6 +28,8 @@ Route::prefix('v1/store')->group(function (): void {
     ])->group(function (): void {
         Route::post('purchases/verify', [StorePurchaseController::class, 'verify'])
             ->name('api.store.purchases.verify');
-        // charge & refund ditambah di item 5/7.
+        Route::post('purchases', [StorePurchaseController::class, 'charge'])
+            ->name('api.store.purchases.charge');
+        // refund ditambah di item 7.
     });
 });

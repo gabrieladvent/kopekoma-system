@@ -4,25 +4,6 @@ use App\Http\Resources\VerifyResource;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\ShoppingTransaction;
-use App\Models\StoreClient;
-
-function storeToken(array $abilities = ['shopping:charge']): string
-{
-    $client = StoreClient::factory()->create();
-
-    return $client->createToken('store-charge', $abilities)->plainTextToken;
-}
-
-function activeMemberWithBalance(string $nik, int $balance): Member
-{
-    $member = Member::factory()->create(['nik' => $nik, 'status' => 'Aktif']);
-    SavingsDeposit::factory()->type('wajib_belanja')->create([
-        'member_id' => $member->id,
-        'amount' => $balance,
-    ]);
-
-    return $member;
-}
 
 it('returns affordable:true and ONLY that key when balance is sufficient', function () {
     activeMemberWithBalance('3201234567890001', 100_000);

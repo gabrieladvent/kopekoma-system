@@ -1,8 +1,12 @@
 <?php
 
+use App\Models\Member;
+use App\Models\SavingsDeposit;
+use App\Models\StoreClient;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -93,4 +97,52 @@ function asPengurus(): User
 function asPetugas(): User
 {
     return asRole('petugas');
+}
+
+/*
+|--------------------------------------------------------------------------
+| Integrasi API Toko — helper bersama (ADR store_api)
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Anggota Aktif dengan saldo Wajib Belanja terisi sebesar $balance.
+ */
+function activeMemberWithBalance(string $nik, int $balance): Member
+{
+    $member = Member::factory()->create(['nik' => $nik, 'status' => 'Aktif']);
+    SavingsDeposit::factory()->type('wajib_belanja')->create([
+        'member_id' => $member->id,
+        'amount' => $balance,
+    ]);
+
+    return $member;
+}
+
+/**
+ * Bearer token untuk StoreClient baru (klien anonim — bila id tak dibutuhkan).
+ *
+ * @param  list<string>  $abilities
+ */
+function storeToken(array $abilities = ['shopping:charge']): string
+{
+    return StoreClient::factory()->create()->createToken('store-charge', $abilities)->plainTextToken;
+}
+
+/**
+ * @return array{0: StoreClient, 1: string} [client, bearerToken]
+ */
+function clientWithToken(): array
+{
+    $client = StoreClient::factory()->create();
+
+    return [$client, $client->createToken('store-charge', ['shopping:charge'])->plainTextToken];
+}
+
+/**
+ * @return array<string, string> header Idempotency-Key (UUID bila tak diberikan)
+ */
+function chargeHeaders(?string $key = null): array
+{
+    return ['Idempotency-Key' => $key ?? (string) Str::uuid()];
 }
