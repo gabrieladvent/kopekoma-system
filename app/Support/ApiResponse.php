@@ -20,11 +20,12 @@ class ApiResponse
         ], $code);
     }
 
-    public static function error(string $message, int $code = 400): JsonResponse
+    public static function error(string $message, int $code = 400, ?array $data = []): JsonResponse
     {
         return response()->json([
             'response_code' => $code,
             'response_message' => $message,
+            'response_data' => $data,
         ], $code);
     }
 

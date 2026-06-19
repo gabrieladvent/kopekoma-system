@@ -10,19 +10,19 @@ post {
   auth: bearer
 }
 
-auth:bearer {
-  token: {{access_token}}
-}
-
 headers {
   Accept: application/json
   Content-Type: application/json
 }
 
+auth:bearer {
+  token: {{access_token}}
+}
+
 body:json {
   {
-    "nik": "{{nik}}",
-    "amount": {{amount}}
+    "nik": "1209837461562790",
+    "amount": 10000 // opsional
   }
 }
 

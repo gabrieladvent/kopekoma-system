@@ -10,27 +10,29 @@ post {
   auth: bearer
 }
 
-auth:bearer {
-  token: {{access_token}}
-}
-
 headers {
   Accept: application/json
   Content-Type: application/json
   Idempotency-Key: {{idempotency_key}}
 }
 
+auth:bearer {
+  token: {{access_token}}
+}
+
 body:json {
   {
-    "nik": "{{nik}}",
-    "amount": {{amount}},
+    "nik": "1209837461562789",
+    "amount": 10000,
     "reference_number": "NOTA-001"
   }
 }
 
 script:pre-request {
-  // UUID baru tiap kirim — backstop anti dobel-potong.
-  bru.setVar("idempotency_key", require("crypto").randomUUID());
+  bru.setVar(
+    "idempotency_key",
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 script:post-response {
