@@ -1,0 +1,55 @@
+meta {
+  name: 03 - Charge
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/purchases
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+headers {
+  Accept: application/json
+  Content-Type: application/json
+  Idempotency-Key: {{idempotency_key}}
+}
+
+body:json {
+  {
+    "nik": "{{nik}}",
+    "amount": {{amount}},
+    "reference_number": "NOTA-001"
+  }
+}
+
+script:pre-request {
+  // UUID baru tiap kirim — backstop anti dobel-potong.
+  bru.setVar("idempotency_key", require("crypto").randomUUID());
+}
+
+script:post-response {
+  const trx = res.body?.response_data?.transaction_number;
+  if (trx) {
+    bru.setEnvVar("transaction_number", trx);
+  }
+}
+
+tests {
+  test("201/200 + transaction_number", function () {
+    expect([200, 201]).to.include(res.status);
+    expect(res.body.response_data).to.have.property("transaction_number");
+    expect(res.body.response_data.charged).to.equal(true);
+  });
+}
+
+docs {
+  Potong saldo Wajib Belanja. Idempotency-Key di-generate otomatis tiap kirim;
+  untuk menguji idempotensi, set manual lewat header. transaction_number
+  otomatis disimpan ke environment untuk dipakai endpoint Refund.
+}

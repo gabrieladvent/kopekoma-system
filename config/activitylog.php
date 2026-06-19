@@ -24,8 +24,14 @@ return [
     /*
      * You can specify an auth driver here that gets user models.
      * If this is null we'll use the current Laravel auth driver.
+     *
+     * Dipaksa ke 'web' (sesi User/petugas): di konteks API toko, guard default
+     * adalah 'sanctum' yang me-resolve StoreClient (UUID) — sedangkan kolom
+     * activity_log.causer_id bertipe bigint, sehingga causer StoreClient bikin
+     * truncation error di MySQL. Dengan 'web', causer di jalur API = null
+     * (tak ada sesi), causer di Filament tetap User. (ADR D6)
      */
-    'default_auth_driver' => null,
+    'default_auth_driver' => 'web',
 
     /*
      * If set to true, the subject returns soft deleted models.

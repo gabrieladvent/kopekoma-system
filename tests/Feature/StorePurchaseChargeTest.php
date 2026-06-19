@@ -129,4 +129,8 @@ it('logs store_charge activity with store_client_id, no NIK, null causer', funct
         ->and($props)->toHaveKey('store_client_id', $client->id)
         ->and($props)->toHaveKey('member_id', $member->id)
         ->and(json_encode($props))->not->toContain('3201000000000008'); // NIK tak ikut tercatat
+
+    // Tak ada activity (termasuk auto-log "created" model) yang memasang causer
+    // di jalur API — causer_id bigint tak bisa menampung UUID StoreClient (D6).
+    expect(Activity::query()->whereNotNull('causer_id')->count())->toBe(0);
 });
