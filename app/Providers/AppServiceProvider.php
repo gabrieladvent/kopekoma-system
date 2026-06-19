@@ -2,12 +2,17 @@
 
 namespace App\Providers;
 
+use App\Logging\RedactSensitiveLogContext;
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
 use Filament\Actions\DeleteAction as PageDeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Actions\DeleteAction as TableDeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,12 +33,32 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->applyGeneralSettings();
         $this->configureDeleteNotifications();
+        $this->configureRateLimiters();
+        $this->configureLogRedaction();
     }
 
-    /**
-     * Ensure every delete action (page header, table row, bulk) shows a
-     * notification with a description, not just a title.
-     */
+    private function configureLogRedaction(): void
+    {
+        Log::channel(config('logging.default'))
+            ->getLogger()
+            ->pushProcessor(new RedactSensitiveLogContext);
+    }
+
+    private function configureRateLimiters(): void
+    {
+        RateLimiter::for('store-token', function (Request $request): Limit {
+            $clientId = (string) $request->input('client_id', '');
+
+            return Limit::perMinute(config('store.rate_limit.token_per_minute'))
+                ->by($clientId.'|'.$request->ip());
+        });
+
+        RateLimiter::for('store-purchase', function (Request $request): Limit {
+            return Limit::perMinute(config('store.rate_limit.purchase_per_minute'))
+                ->by(($request->user()?->getKey() ?? $request->ip()).'|'.$request->ip());
+        });
+    }
+
     private function configureDeleteNotifications(): void
     {
         $single = Notification::make()
@@ -42,6 +67,7 @@ class AppServiceProvider extends ServiceProvider
             ->body('Data telah berhasil dihapus dari sistem.');
 
         PageDeleteAction::configureUsing(fn (PageDeleteAction $action) => $action->successNotification($single));
+
         TableDeleteAction::configureUsing(fn (TableDeleteAction $action) => $action->successNotification($single));
 
         DeleteBulkAction::configureUsing(fn (DeleteBulkAction $action) => $action->successNotification(
@@ -52,11 +78,6 @@ class AppServiceProvider extends ServiceProvider
         ));
     }
 
-    /**
-     * Push the stored general settings into runtime config so the app name and
-     * mail "from" address reflect what the admin set. Guarded so it is a no-op
-     * before the settings table exists (fresh install / migration).
-     */
     private function applyGeneralSettings(): void
     {
         try {

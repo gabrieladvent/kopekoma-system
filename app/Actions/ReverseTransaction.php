@@ -16,12 +16,16 @@ class ReverseTransaction
      * @template T of Model&Reversible
      *
      * @param  T  $original
-     * @param  int|null  $causerId  user id pelaku (default: auth user)
+     * @param  int|string|false|null  $causerId  user id pelaku. `false` (default) =
+     *                                           resolve dari auth user (jalur Filament). `null` eksplisit = anonim/tanpa
+     *                                           causer (jalur API store_api tanpa User — ADR D6/D8).
      * @return T baris reversal yang dibuat
      */
-    public function __invoke(Model&Reversible $original, string $reason, ?int $causerId = null): Model
+    public function __invoke(Model&Reversible $original, string $reason, int|string|false|null $causerId = false): Model
     {
-        $causerId ??= auth()->id();
+        if ($causerId === false) {
+            $causerId = auth()->id();
+        }
 
         if ($original->is_reversal === true) {
             throw CannotReverseTransaction::isAReversal();

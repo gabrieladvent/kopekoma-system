@@ -8,4 +8,6 @@
             </x-filament::button>
         </div>
     </form>
+
+    {{ $this->table }}
 </x-filament-panels::page>

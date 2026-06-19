@@ -55,9 +55,9 @@ Toko / Merchant App                         Koperasi API
   │ ───────────────────────────────────►  verifikasi klien aktif → terbitkan bearer (ability shopping:charge, TTL pendek)
   │ ◄───────────────────────────────────  {access_token, token_type:"Bearer", expires_in}
   │
-  │ 2. POST /api/v1/store/purchases/verify  Bearer + {nik, amount}
-  │ ───────────────────────────────────►  token valid → anggota Aktif by NIK → canSpendShopping (READ-ONLY)
-  │ ◄───────────────────────────────────  {affordable}  (tanpa nama/saldo — minim PII, lihat D2)
+  │ 2. POST /api/v1/store/purchases/verify  Bearer + {nik, amount?}
+  │ ───────────────────────────────────►  token valid → anggota Aktif by NIK → shoppingBalance (READ-ONLY)
+  │ ◄───────────────────────────────────  {balance, affordable?}  (tanpa nama/member_number — lihat D2)
   │
   │ 3. POST /api/v1/store/purchases         Bearer + Idempotency-Key + {nik, amount, reference_number}
   │ ───────────────────────────────────►  lock member → re-cek saldo → potong (ShoppingTransaction source=store_api) → log
@@ -84,7 +84,9 @@ Pakai **Laravel Sanctum** (belum terpasang → tambah `laravel/sanctum`). Model 
 
 Pisahkan **verify** (cek saldo, tak menulis) dari **charge** (potong). Toko memanggil verify untuk menampilkan "saldo cukup?" sebelum gesek, lalu charge untuk mengeksekusi. Saldo bisa berubah di antara dua panggilan → **charge tetap re-cek saldo otoritatif di dalam lock** (verify hanya indikatif).
 
-- **Response minim-PII.** Verify membalas **hanya `{affordable: bool}`** — **tanpa** nama anggota, `member_number`, maupun nominal saldo. Membalas nama/saldo akan menjadikan verify sebuah *oracle*: merchant mana pun bisa menukar NIK → identitas + profil kekayaan anggota, membatalkan mitigasi PII D3. Charge membalas `{transaction_number, charged}` tanpa `new_balance` (toko tak perlu tahu sisa saldo anggota).
+- **Response verify: `{balance}` + `{affordable}` opsional.** Body cukup `{nik}` → balas `{balance}` (saldo Wajib Belanja). Bila `{nik, amount}` → tambah `{affordable}`. **Tetap tanpa** nama anggota & `member_number` (minimisasi identitas dipertahankan). Charge membalas `{transaction_number, charged}` tanpa `new_balance`.
+
+> **Revisi v7 — kenapa saldo akhirnya dibalas:** versi awal menyembunyikan saldo (balas `{affordable}` saja) demi anti-oracle. Tapi proteksi itu **ilusi**: dengan `{affordable}` per `amount`, merchant tetap bisa menemukan saldo persis lewat **binary-search** (beberapa request). Jadi `amount` wajib hanya menambah friksi, bukan menyembunyikan saldo. Proteksi nyata = **lockout + rate-limit** (membatasi enumerasi NIK), yang tetap berlaku. Karena toko sudah memegang NIK & berwenang memotong saldo, membalas saldo langsung = risiko tambahan marginal dengan UX jauh lebih baik (1 request, kasir bisa tampilkan sisa saldo). Nama/`member_number` tetap tak dibalas.
 - **Plafon nominal per transaksi (wajib di v1).** **Controller API** (bukan shared Action — lihat D4b) menolak `amount` di atas plafon per-transaksi (`config('store.max_charge_per_tx')`, mis. Rp 2.000.000) sebelum memanggil Action. Ini membatasi blast-radius bila `client_secret` bocor: penyerang tak bisa kuras saldo besar dalam satu hentakan; jalur manual petugas **tak** terkena plafon ini. Plafon **harian per anggota** menyusul bila pengurus menetapkan (Open Question).
 
 #### D3 — Identifikasi anggota: **NIK** (data sensitif → mitigasi ketat)
@@ -96,7 +98,7 @@ Anggota diidentifikasi lewat **NIK** (keputusan pengurus 2026-06-18). NIK adalah
 - **Rate limit + lockout per klien** terhadap enumerasi NIK. Rate limit biasa (mis. 60/menit) **tidak cukup** — 60/menit ≈ 86 ribu percobaan/hari, sementara ruang tebak NIK menyempit drastis oleh prefix wilayah+tanggal-lahir. Maka tambahkan **lockout**: setelah N kegagalan lookup beruntun (mis. 10) dalam jendela waktu, klien diblokir sementara (cooldown) dan event dicatat untuk audit. Verify dan charge berbagi counter ini. **Penyimpanan counter/lockout:** cache (database-backed, sesuai stack) ber-key `store:lockout:{store_client_id}`; event blokir ditulis ke activity log untuk audit.
 - **Pesan error seragam** saat NIK tak ditemukan vs anggota nonaktif — hindari membocorkan keberadaan NIK (balas `404`/`422` generik "anggota tidak valid untuk transaksi").
 - Lookup `where('nik', $nik)` harus **exact match** + anggota berstatus **Aktif** — ini **satu-satunya tempat** enforce status: anggota tak ada **maupun** non-aktif sama-sama gagal di sini → `404` generik (D4 **tidak** lagi mengecek status, hindari dua jalur untuk kondisi sama).
-- **Residual oracle (diterima eksplisit):** walau verify hanya balas `{affordable}`, NIK valid (`200`) tetap dapat dibedakan dari NIK invalid (`404`). Ini *boolean existence oracle* yang tak terhindarkan dari lookup-by-NIK; mitigasinya **murni lockout + rate limit di atas**, bukan penyamaran response. Risiko ini diterima sadar, bukan terlewat.
+- **Existence + balance oracle (diterima eksplisit):** verify membalas saldo untuk NIK valid (`200`) dan `404` untuk NIK invalid — jadi merchant bisa membedakan keberadaan NIK **dan** tahu saldonya. Ini konsekuensi sadar dari memilih NIK sebagai identifier + membalas saldo (D2 v7); mitigasinya **murni lockout + rate limit**, bukan penyamaran response. Nama/`member_number` tetap tak dibalas.
 
 > **⚠️ Tradeoff (dicatat eksplisit):** memakai NIK mentah sebagai identifier membuat toko **memegang/mengirim NIK** tiap transaksi — permukaan kebocoran PII lebih lebar dibanding token kartu. Alternatif **token/QR kartu** (D-alt) lebih privat tapi butuh tabel kartu + alur penerbitan. Pengurus memilih NIK demi kesederhanaan operasional; mitigasi di atas **wajib** menutup risikonya. Migrasi ke token kartu dicatat sebagai follow-up bila audit privasi menuntut.
 
@@ -125,7 +127,7 @@ Tiga lapis, satu kebijakan satu rumah. Memisahkan **eksekusi** (Action), **orkes
 |---|---|---|
 | **Action `RecordShoppingUsage`** (eksekusi, shared manual+API) | Lock member · re-cek `canSpendShopping` di dalam lock · create `ShoppingTransaction` · return objek domain (transaksi + `shoppingBalance` terbaru). Tak sadar HTTP. | Plafon merchant, bentuk response, kode HTTP, idempotency-key parsing — **tak boleh** ada di sini (kalau ada, jalur manual ikut terkurung). |
 | **Controller API** (orkestrasi, khusus API) | Validasi request (`amount` string/bcmath, NIK) · **enforce plafon per-transaksi** (khusus API) · lookup member by NIK (+ status) · idempotency: ownership-check + hash + map `UniqueConstraintViolation` → `200`/`409` · panggil Action · map `CannotSpendShopping` → `422` · serahkan hasil ke Resource. | Logika saldo/lock (itu milik Action) · merakit JSON tangan (itu milik Resource). |
-| **API Resource** (`JsonResource`, khusus API) | **Whitelist field output** — satu-satunya tempat yang menentukan apa yang keluar. `StorePurchaseResource` → `{transaction_number, charged}`; `VerifyResource` → `{affordable}`. NIK/saldo/nama/`member_number` **tak pernah** ada di whitelist → minim-PII jadi **jaminan struktural**, bukan kedisiplinan tiap controller. | Keputusan bisnis/lock. |
+| **API Resource** (`JsonResource`, khusus API) | **Whitelist field output** — satu-satunya tempat yang menentukan apa yang keluar. `StorePurchaseResource` → `{transaction_number, charged}`; `VerifyResource` → `{balance, affordable?}`. NIK/nama/`member_number` **tak pernah** ada di whitelist → minimisasi identitas jadi **jaminan struktural**, bukan kedisiplinan tiap controller. | Keputusan bisnis/lock. |
 
 Konsekuensi yang dipegang desain ini:
 
@@ -171,7 +173,7 @@ Opsional (boleh fase lanjut): **`POST /api/v1/store/purchases/{transaction_numbe
 
 #### D9 — Keamanan & operasional (ringkas)
 
-HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreClient` · **rate limit/lockout di endpoint token (anti brute-force secret) & verify/charge (anti enumerasi NIK)** · **idempotency wajib** di charge (global unique + ownership-check, hash tanpa NIK) · **plafon nominal per transaksi** · audit tiap charge (tanpa NIK, causer null) · anggota wajib Aktif · validasi server `amount` string/bcmath `> 0`, `≤ saldo`, `≤ plafon` (tolak float) · redaksi NIK di log · response minim-PII (verify hanya `affordable`, charge tanpa saldo).
+HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreClient` · **rate limit/lockout di endpoint token (anti brute-force secret) & verify/charge (anti enumerasi NIK)** · **idempotency wajib** di charge (global unique + ownership-check, hash tanpa NIK) · **plafon nominal per transaksi** · audit tiap charge (tanpa NIK, causer null) · anggota wajib Aktif · validasi server `amount` string/bcmath `> 0`, `≤ saldo`, `≤ plafon` (tolak float) · redaksi NIK di log · response tanpa identitas (verify balas `balance`+`affordable?` tanpa nama/`member_number`, charge tanpa `new_balance`).
 
 ### Alternatives Considered
 
@@ -182,8 +184,9 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 | API key statis per toko | Paling sederhana | Tak bisa rotasi/TTL, rawan bocor | Rejected |
 | Identifier NIK (D3) | Tak perlu tabel kartu | NIK PII tersebar ke toko | **Chosen + mitigasi** |
 | Token/QR kartu | Privat, tak ekspos NIK | Butuh tabel & alur penerbitan kartu | Ditunda (follow-up) |
-| Dua fase verify+charge (D2), verify balas `{affordable}` saja | UX toko jelas; charge tetap otoritatif; tak ekspos PII | 2 round-trip | **Chosen** |
-| Verify balas nama+saldo | UI toko lebih kaya | Oracle NIK→identitas+kekayaan, batalkan mitigasi D3 | Rejected |
+| Dua fase verify+charge (D2), verify balas `{balance, affordable?}` | UX kasir jelas (tampil saldo); charge tetap otoritatif; identitas tak diekspos | 2 round-trip | **Chosen (v7)** |
+| Verify balas `{affordable}` saja (sembunyikan saldo) | Niat anti-oracle | Saldo tetap bisa ditemukan via binary-search → proteksi ilusi, hanya nambah friksi | Rejected (v7) |
+| Verify balas nama+`member_number`+saldo | UI toko paling kaya | Ekspos identitas anggota tak perlu | Rejected |
 | Charge langsung tanpa verify | 1 round-trip | Toko tak bisa pre-cek saldo | Rejected |
 | `unique(idempotency_key)` global + **ownership-check** saat konflik (D5) | Aditif murni; idempotency manual aman; isolasi merchant tetap terjaga | Logika konflik di app, bukan murni DB | **Chosen** |
 | Composite `unique(store_client_id, idempotency_key)` | Isolasi di level DB | `store_client_id` NULL untuk manual → banyak NULL diizinkan MySQL → **idempotency manual jebol**; bukan aditif | Rejected |
@@ -195,15 +198,15 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 
 | # | Item | Effort | Status |
 |---|------|--------|--------|
-| 0 | Migrasi **aditif murni**: tabel `store_clients`; kolom `store_client_id` (nullable) + `idempotency_hash` (nullable) di `shopping_transactions`. **`unique(idempotency_key)` global tidak diubah** (jaga idempotency manual + aditif) | S | Pending |
-| 1 | `laravel/sanctum` install + config + model `StoreClient` (+factory), `secret` hashed | S | Pending |
-| 2 | `RecordShoppingUsage` action (lock + re-cek + create) + `CannotSpendShopping` exception; **refactor 5a manual pakai action ini** | M | Pending |
-| 3 | `StoreAuthController@token` (verify kredensial → bearer ability `shopping:charge`, TTL) + **rate limit/lockout endpoint token** + rute `routes/api.php` | S | Pending |
-| 4 | `StorePurchaseController@verify` + **`VerifyResource`** (read-only, whitelist `{affordable}` saja) | S | Pending |
-| 5 | `StorePurchaseController@charge` + **`StorePurchaseResource`** (idempotency-key + hash + ownership-check, **plafon per-tx di controller**, Action eksekusi, audit `store_charge`, whitelist `{transaction_number, charged}`, JSON error map) | M | Pending |
-| 6 | Middleware ability + **pembatas `tokenable=StoreClient`** + rate limit & **lockout enumerasi** per klien + **redaksi NIK** di log | S | Pending |
-| 7 | (Opsional) `@refund` via `ReverseTransaction`, ability `shopping:refund`, **match toko asal**, catch-violation → 200, **`reverseClone()` salin `store_client_id`** | S | Pending |
-| 8 | Tes feature API (token + **brute-force secret diblok**, verify minim-PII, charge idempoten, **key sama lintas-klien → 409 bukan bocor**, saldo kurang, plafon, `amount` float ditolak, NIK invalid generik, lockout, **tokenable bukan User ditolak**) + **tes konkurensi over-spend di MySQL** | M | Pending |
+| 0 | Migrasi **aditif murni**: tabel `store_clients`; kolom `store_client_id` (nullable) + `idempotency_hash` (nullable) di `shopping_transactions`. **`unique(idempotency_key)` global tidak diubah** (jaga idempotency manual + aditif) | S | **Done** |
+| 1 | `laravel/sanctum` install + config + model `StoreClient` (+factory), `secret` hashed | S | **Done** |
+| 2 | `RecordShoppingUsage` action (lock + re-cek + create) + `CannotSpendShopping` exception; **refactor 5a manual pakai action ini** | M | **Done** |
+| 3 | `StoreAuthController@token` (verify kredensial → bearer ability `shopping:charge`, TTL) + **rate limit/lockout endpoint token** + rute `routes/api.php` | S | **Done** |
+| 4 | `StorePurchaseController@verify` + **`VerifyResource`** (read-only, whitelist `{balance, affordable?}`; tanpa nama/`member_number`) | S | **Done** |
+| 5 | `StorePurchaseController@charge` + **`StorePurchaseResource`** (idempotency-key + hash + ownership-check, **plafon per-tx di controller**, Action eksekusi, audit `store_charge`, whitelist `{transaction_number, charged}`, JSON error map) | M | **Done** |
+| 6 | Middleware ability + **pembatas `tokenable=StoreClient`** + rate limit & **lockout enumerasi** per klien + **redaksi NIK** di log | S | **Done** |
+| 7 | (Opsional) `@refund` via `ReverseTransaction`, ability `shopping:refund`, **match toko asal**, catch-violation → 200, **`reverseClone()` salin `store_client_id`** | S | **Done** |
+| 8 | Tes feature API (token + **brute-force secret diblok**, verify minim-PII, charge idempoten, **key sama lintas-klien → 409 bukan bocor**, saldo kurang, plafon, `amount` float ditolak, NIK invalid generik, lockout, **tokenable bukan User ditolak**) + **tes konkurensi over-spend di MySQL** | M | **Done** |
 
 **Effort:** S < 1 jam, M 1–3 jam.
 
@@ -211,24 +214,26 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 
 ## Verification
 
-- [ ] Token hanya terbit untuk klien aktif dengan kredensial benar; token kadaluarsa/ability salah ditolak (D1). <!-- source: code -->
-- [ ] Token dengan `tokenable=User` (manusia) ditolak di rute store; hanya `StoreClient` diterima (D1). <!-- source: code -->
-- [ ] Verify membalas **`{affordable}` saja** — tanpa nama/`member_number`/saldo — dan tak menulis transaksi apa pun (D2). <!-- source: code -->
-- [ ] **`JsonResource` hanya emit field whitelist** — uji terisolasi `VerifyResource`/`StorePurchaseResource` tak pernah keluarkan `nik`/saldo/nama walau diberi model lengkap (D4b). <!-- source: code -->
-- [ ] **Plafon di-enforce di controller API, bukan Action** — charge manual (5a) tak terkena plafon (D2/D4b). <!-- source: code -->
-- [ ] Charge memotong saldo, membuat `ShoppingTransaction(source=store_api, store_client_id, recorded_by=null)`, saldo ter-update (D4/D6). <!-- source: code -->
-- [ ] Charge dengan saldo kurang ditolak `422`; `amount ≤ 0` ditolak; **`amount` > plafon per-tx ditolak `422`** (D2/D4/D7). <!-- source: code -->
-- [ ] `Idempotency-Key` sama + hash sama (klien sama) → tak dobel-potong; hash beda → `409` (D5). <!-- source: code -->
-- [ ] **Key sama dari klien lain → `409` generik** (ownership-check, isi transaksi klien lain tak bocor) (D5). <!-- source: code -->
-- [ ] `idempotency_hash` **tidak berisi/membocorkan NIK** (HMAC atas `member_id`, bukan NIK) (D3/D5). <!-- source: code -->
-- [ ] Idempotency jalur **manual** masih utuh (unique global tak diubah) (D5). <!-- source: code -->
-- [ ] Endpoint token: **brute-force `client_secret` diblok** rate limit/lockout (D1). <!-- source: code -->
-- [ ] `amount` non-numerik/float invalid ditolak; diolah sebagai string bcmath (D4). <!-- source: code -->
-- [ ] **Dua charge konkuren member sama tak bisa over-spend** (lock, diuji di MySQL) (D4). <!-- source: code -->
-- [ ] NIK tak ditemukan & anggota nonaktif → pesan generik (tak bocorkan keberadaan NIK); **NIK tak muncul di log** (D3). <!-- source: code -->
-- [ ] Rate limit **dan lockout enumerasi** per klien aktif pada verify/charge (D3/D9). <!-- source: code -->
-- [ ] Tiap charge ter-log event `store_charge` dengan `store_client_id` (tanpa NIK) (D6). <!-- source: code -->
-- [ ] (Bila ada) Refund mengembalikan saldo via reversal; gated `shopping:refund`; hanya toko asal; refund konkuren → satu sukses, lainnya `200` idempoten (D8). <!-- source: code -->
+> **Validasi 2026-06-19** (`/adr:validate`, source: code): **18/18 passed** — seluruh key item (0–8) selesai. Suite default **246 passed, 1 skipped** (tes konkurensi MySQL-only); tes konkurensi terverifikasi terpisah terhadap `kopekoma_test` (MySQL).
+
+- [x] Token hanya terbit untuk klien aktif dengan kredensial benar; token kadaluarsa/ability salah ditolak (D1). <!-- source: code --> <!-- StoreAuthTokenTest, StorePurchaseVerifyTest (403 tanpa ability) -->
+- [x] Token dengan `tokenable=User` (manusia) ditolak di rute store; hanya `StoreClient` diterima (D1). <!-- source: code --> <!-- StoreClientMiddlewareTest (401 auth + 403 guard) -->
+- [x] Verify membalas **`{balance}`** (+`affordable` bila `amount` dikirim), **tanpa** nama/`member_number`, dan tak menulis transaksi apa pun (D2 v7). <!-- source: code --> <!-- StorePurchaseVerifyTest -->
+- [x] **`JsonResource` hanya emit field whitelist** — uji terisolasi `VerifyResource`/`StorePurchaseResource` tak pernah keluarkan `nik`/saldo/nama walau diberi model lengkap (D4b). <!-- source: code --> <!-- StorePurchaseVerifyTest "VerifyResource whitelists" -->
+- [x] **Plafon di-enforce di controller API, bukan Action** — charge manual (5a) tak terkena plafon (D2/D4b). <!-- source: code --> <!-- StorePurchaseChargeTest plafon; RecordShoppingUsageTest tanpa plafon -->
+- [x] Charge memotong saldo, membuat `ShoppingTransaction(source=store_api, store_client_id, recorded_by=null)`, saldo ter-update (D4/D6). <!-- source: code --> <!-- StorePurchaseChargeTest -->
+- [x] Charge dengan saldo kurang ditolak `422`; `amount ≤ 0` ditolak; **`amount` > plafon per-tx ditolak `422`** (D2/D4/D7). <!-- source: code --> <!-- StorePurchaseChargeTest + StoreChargeRequest -->
+- [x] `Idempotency-Key` sama + hash sama (klien sama) → tak dobel-potong; hash beda → `409` (D5). <!-- source: code --> <!-- StorePurchaseChargeTest idempoten + payload-mismatch -->
+- [x] **Key sama dari klien lain → `409` generik** (ownership-check, isi transaksi klien lain tak bocor) (D5). <!-- source: code --> <!-- StorePurchaseChargeTest cross-merchant -->
+- [x] `idempotency_hash` **tidak berisi/membocorkan NIK** (HMAC atas `member_id`, bukan NIK) (D3/D5). <!-- source: code --> <!-- StorePurchaseController::idempotencyHash (member_id, bukan nik) -->
+- [x] Idempotency jalur **manual** masih utuh (unique global tak diubah) (D5). <!-- source: code --> <!-- validated: 2026-06-19, RecordShoppingUsageTest + 5a tests -->
+- [x] Endpoint token: **brute-force `client_secret` diblok** rate limit/lockout (D1). <!-- source: code --> <!-- validated: 2026-06-19, StoreAuthTokenTest "throttles brute-force" → 429 -->
+- [x] `amount` non-numerik/float invalid ditolak; diolah sebagai string bcmath (D4). <!-- source: code --> <!-- StoreVerifyRequest/StoreChargeRequest numeric gt:0; RecordShoppingUsage bccomp -->
+- [x] **Dua charge konkuren member sama tak bisa over-spend** (lock, diuji di MySQL) (D4). <!-- source: code --> <!-- StoreChargeConcurrencyTest (pcntl_fork, MySQL) -->
+- [x] NIK tak ditemukan & anggota nonaktif → pesan generik (tak bocorkan keberadaan NIK); **NIK tak muncul di log** (D3). <!-- source: code --> <!-- StorePurchaseVerifyTest 404 generik; RedactSensitiveLogContextTest -->
+- [x] Rate limit **dan lockout enumerasi** per klien aktif pada verify/charge (D3/D9). <!-- source: code --> <!-- StoreEnumerationGuardTest; throttle:store-purchase -->
+- [x] Tiap charge ter-log event `store_charge` dengan `store_client_id` (tanpa NIK) (D6). <!-- source: code --> <!-- StorePurchaseChargeTest "logs store_charge" -->
+- [x] (Bila ada) Refund mengembalikan saldo via reversal; gated `shopping:refund`; hanya toko asal; refund konkuren → satu sukses, lainnya `200` idempoten (D8). <!-- source: code --> <!-- StorePurchaseRefundTest -->
 
 ---
 
@@ -238,7 +243,7 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 - **Plafon harian per anggota** — plafon **per-transaksi** sudah wajib di v1 (D2). Apakah perlu plafon **harian** per anggota di atas itu? (Dokumentasi belum menetapkan; default v1: per-transaksi saja).
 - **Refund: siapa boleh** — semua toko atau hanya toko asal transaksi? (default usulan: hanya toko asal, via `store_client_id` match).
 - **Plafon per-merchant vs global** — `max_charge_per_tx` saat ini satu nilai global (D2). Perlukah plafon per `StoreClient` (kios kecil vs toko besar)? (default v1: global).
-- **Registrasi `StoreClient`** — lewat seeder/artisan dulu (Non-Goal UI); kapan butuh CRUD Filament?
+- ~~**Registrasi `StoreClient`** — lewat seeder/artisan dulu (Non-Goal UI); kapan butuh CRUD Filament?~~ **Resolved (v8):** kelola klien lewat halaman **Pengaturan** (tab/tabel "Klien Toko") — buat klien (generate `client_id`+`secret`, secret tampil sekali), toggle aktif/refund, reset secret, hapus. Data tetap di tabel `store_clients` (token Sanctum tak berubah).
 - **Privasi NIK** — bila audit privasi menuntut, migrasi ke token kartu (D3 alt). Konfirmasi pengurus apakah NIK acceptable jangka panjang.
 
 ---
@@ -247,6 +252,9 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 
 - **2026-06-18 v1**: Draft awal. Skema integrasi API toko untuk pemakaian Wajib Belanja: Sanctum token (D1), dua fase verify→charge (D2), identifier **NIK** + mitigasi PII (D3), engine `RecordShoppingUsage` shared (D4), idempotency header (D5), kolom aditif `store_client_id` + audit (D6), kontrak error JSON (D7), refund opsional (D8). Dibangun di atas fondasi `shopping_transactions` (source enum, recorded_by nullable, idempotency, reversal) yang sudah ada dari Modul Simpanan 5a.
 - **2026-06-19 v2**: Perketat keamanan setelah review. (D1) `tokenable` wajib `StoreClient`, catatan blast-radius secret≠token. (D2) verify balas `{affordable}` saja (anti-oracle PII), **plafon nominal per-transaksi wajib di v1**. (D3) tambah **lockout enumerasi** (rate limit saja tak cukup). (D5) idempotency key **di-scope per klien** (`unique(store_client_id, idempotency_key)`) + kolom `idempotency_hash` untuk deteksi "payload beda", urutan tulis vs lock dijelaskan. (D6) `reference_number` dipetakan ke kolom existing. (D8) refund konkuren idempoten + match toko asal. Key Items 0/4/5/6/8 + Verification + Alternatives disesuaikan.
+- **2026-06-20 v8**: Registrasi klien toko via UI — tab/tabel **"Klien Toko"** di halaman **Pengaturan** (`ManageSettings`): buat klien (generate `client_id`+`secret`, secret tampil sekali), toggle aktif/`can_refund`, reset secret, hapus. **Data tetap di tabel `store_clients`** (bukan tabel `settings`) supaya token Sanctum berfungsi normal — hanya UI-nya yang ada di Pengaturan. Open Question registrasi → Resolved.
+- **2026-06-20 v7**: Keputusan pengurus/lead — **verify membalas saldo**. Body `{nik}` → `{balance}`; `{nik, amount}` → `{balance, affordable}`. Membalik anti-oracle D2 awal: proteksi "sembunyikan saldo" terbukti ilusi (binary-search via `affordable` tetap membocorkan saldo); proteksi nyata = lockout/rate-limit yang tetap berlaku. Nama & `member_number` tetap tak dibalas. Selain itu: envelope response API seragam `{response_code, response_message[, response_data]}` via helper `ApiResponse` + exception handler `api/*`. Bugfix MySQL: `activitylog.default_auth_driver=web` (causer_id bigint tak muat UUID StoreClient saat auto-log di jalur sanctum). Docs API (`docs/api/store-api.md`) + koleksi Bruno ditambah. D2/D4b/D9/Alternatives/Verification disesuaikan.
+- **2026-06-19 v6 (Implemented)**: Seluruh key item 0–8 selesai & ter-tes. Verification 18/18 passed. Suite default 246 passed + 1 skipped (tes konkurensi over-spend `pcntl_fork` MySQL-only, terverifikasi terhadap `kopekoma_test`). Branch `feat/store-api-clients-migration`.
 - **2026-06-19 v5 (Accepted)**: Konfirmasi pengurus model `wajib_belanja` = **saldo prepaid** (anggota nabung dulu, belanja sebatas saldo, charge ditolak bila kurang) — bukan kredit/talangan. Background ditambah pernyataan eksplisit ini + validasi `≤ saldo` + lock (D4) dikonfirmasi **wajib**, bukan over-engineering. Pendanaan saldo via `SavingsDepositResource` (sudah ada, di luar scope). D8/item 7: catat `reverseClone()` harus salin `store_client_id` agar refund store_api tak kehilangan atribusi toko. Status: Draft → **Accepted**.
 - **2026-06-19 v4**: Tetapkan arsitektur **Action → Controller → API Resource** (D4b baru): Action = eksekusi shared, Controller = orkestrasi + plafon (khusus API), **`JsonResource` = whitelist output** sehingga minim-PII jadi jaminan struktural. Klarifikasi tersisa: plafon dipindah eksplisit ke controller (manual bebas plafon); status Aktif di-enforce **hanya** di lookup D3 (non-aktif → `404`, bukan `422`); `transaction_number` selalu di-generate; penyimpanan counter lockout (cache) ditetapkan; residual boolean-oracle verify diterima eksplisit. Item 4/5 + Verification + error table disesuaikan.
 - **2026-06-19 v3**: Perbaiki regresi v2 + lubang tersisa. (D5) **batalkan composite unique** — pertahankan `unique(idempotency_key)` global (aditif murni + idempotency manual aman), isolasi merchant via **ownership-check `store_client_id` saat konflik**; `idempotency_hash` jadi **HMAC atas `member_id`, tanpa NIK** (cegah hash di-balik jadi NIK). (D4) perjelas action return saldo tapi controller API membuangnya (hilangkan kontradiksi vs D2); `amount` wajib **string/bcmath, tolak float**. (D1) **rate limit/lockout endpoint token** (anti brute-force `client_secret`). (D6) causer activity log **null** untuk jalur API. (Open Q) plafon per-merchant vs global. Item 0 jadi **aditif murni** (tak drop unique). Alternatives + Verification disesuaikan.
