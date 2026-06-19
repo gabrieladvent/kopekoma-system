@@ -27,11 +27,13 @@ class MemberHolidaySavingResource extends Resource
 
     protected static ?string $navigationGroup = 'Simpanan';
 
-    protected static ?string $navigationLabel = 'Registrasi Hari Raya';
+    protected static ?string $navigationLabel = 'Pendaftaran Hari Raya';
 
-    protected static ?string $modelLabel = 'Registrasi Hari Raya';
+    protected static ?string $modelLabel = 'Pendaftaran Hari Raya';
 
-    protected static ?string $pluralModelLabel = 'Registrasi Hari Raya';
+    protected static ?string $pluralModelLabel = 'Pendaftaran Hari Raya';
+
+    protected static ?int $navigationSort = 30;
 
     public static function normalizeYear(mixed $value): ?int
     {

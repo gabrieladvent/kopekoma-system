@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\ReverseTransaction;
+use App\Filament\Pages\BatchSalaryDeduction;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
 use App\Filament\Resources\SavingsDepositResource;
 use App\Filament\Resources\SavingsDepositResource\Pages\CreateSavingsDeposit;
@@ -27,6 +28,19 @@ it('lists deposits on the index page', function () {
 
     Livewire::test(ListSavingsDeposits::class)
         ->assertCanSeeTableRecords($deposits);
+});
+
+it('exposes the batch potong gaji as a header action, not a separate menu (Dok §4.4)', function () {
+    test()->seed(RolePermissionSeeder::class);
+    asPetugas();
+
+    // "Input kolektif per OPD" diakses lewat tombol di menu Setoran Simpanan...
+    Livewire::test(ListSavingsDeposits::class)
+        ->assertActionExists('batchSalaryDeduction')
+        ->assertActionExists('create');
+
+    // ...dan bukan item navigasi tersendiri.
+    expect(BatchSalaryDeduction::shouldRegisterNavigation())->toBeFalse();
 });
 
 it('creates a single deposit and forces recorded_by to the actor', function () {
