@@ -8,6 +8,9 @@ use Filament\Actions\DeleteAction as PageDeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Actions\DeleteAction as TableDeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,6 +31,26 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->applyGeneralSettings();
         $this->configureDeleteNotifications();
+        $this->configureRateLimiters();
+    }
+
+    /**
+     * Rate limiter API toko (ADR D1/D3): endpoint token anti brute-force secret
+     * (key per client_id + IP), endpoint purchase anti enumerasi/abuse (per token+IP).
+     */
+    private function configureRateLimiters(): void
+    {
+        RateLimiter::for('store-token', function (Request $request): Limit {
+            $clientId = (string) $request->input('client_id', '');
+
+            return Limit::perMinute(config('store.rate_limit.token_per_minute'))
+                ->by($clientId.'|'.$request->ip());
+        });
+
+        RateLimiter::for('store-purchase', function (Request $request): Limit {
+            return Limit::perMinute(config('store.rate_limit.purchase_per_minute'))
+                ->by(($request->user()?->getKey() ?? $request->ip()).'|'.$request->ip());
+        });
     }
 
     /**
