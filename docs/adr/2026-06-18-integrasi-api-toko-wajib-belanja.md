@@ -211,6 +211,8 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 
 ## Verification
 
+> **Validasi 2026-06-19** (`/adr:validate`, source: code): 2/18 fully passed · 3 partial · 13 pending. Sejalan progress eksekusi (4/9 key items done); sisanya tercentang seiring item 4–8 (verify/charge/middleware/tes konkurensi) selesai.
+
 - [ ] Token hanya terbit untuk klien aktif dengan kredensial benar; token kadaluarsa/ability salah ditolak (D1). <!-- source: code -->
 - [ ] Token dengan `tokenable=User` (manusia) ditolak di rute store; hanya `StoreClient` diterima (D1). <!-- source: code -->
 - [ ] Verify membalas **`{affordable}` saja** — tanpa nama/`member_number`/saldo — dan tak menulis transaksi apa pun (D2). <!-- source: code -->
@@ -221,8 +223,8 @@ HTTPS only · token scoped + TTL pendek + revocable · `tokenable` wajib `StoreC
 - [ ] `Idempotency-Key` sama + hash sama (klien sama) → tak dobel-potong; hash beda → `409` (D5). <!-- source: code -->
 - [ ] **Key sama dari klien lain → `409` generik** (ownership-check, isi transaksi klien lain tak bocor) (D5). <!-- source: code -->
 - [ ] `idempotency_hash` **tidak berisi/membocorkan NIK** (HMAC atas `member_id`, bukan NIK) (D3/D5). <!-- source: code -->
-- [ ] Idempotency jalur **manual** masih utuh (unique global tak diubah) (D5). <!-- source: code -->
-- [ ] Endpoint token: **brute-force `client_secret` diblok** rate limit/lockout (D1). <!-- source: code -->
+- [x] Idempotency jalur **manual** masih utuh (unique global tak diubah) (D5). <!-- source: code --> <!-- validated: 2026-06-19, RecordShoppingUsageTest + 5a tests -->
+- [x] Endpoint token: **brute-force `client_secret` diblok** rate limit/lockout (D1). <!-- source: code --> <!-- validated: 2026-06-19, StoreAuthTokenTest "throttles brute-force" → 429 -->
 - [ ] `amount` non-numerik/float invalid ditolak; diolah sebagai string bcmath (D4). <!-- source: code -->
 - [ ] **Dua charge konkuren member sama tak bisa over-spend** (lock, diuji di MySQL) (D4). <!-- source: code -->
 - [ ] NIK tak ditemukan & anggota nonaktif → pesan generik (tak bocorkan keberadaan NIK); **NIK tak muncul di log** (D3). <!-- source: code -->
