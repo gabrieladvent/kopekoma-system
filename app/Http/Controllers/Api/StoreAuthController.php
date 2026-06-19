@@ -26,9 +26,6 @@ class StoreAuthController extends Controller
             ->where('client_id', $data['client_id'])
             ->first();
 
-        // Pesan seragam untuk kredensial salah / klien nonaktif — jangan bocorkan
-        // apakah client_id ada. Hash::check tetap dijalankan saat client null?
-        // Tidak: cukup tolak generik, rate limiter (D1) menjaga brute-force.
         if ($client === null || ! $client->is_active || ! Hash::check($data['client_secret'], $client->client_secret)) {
             throw ValidationException::withMessages([
                 'client_id' => ['Kredensial klien tidak valid atau klien nonaktif.'],
