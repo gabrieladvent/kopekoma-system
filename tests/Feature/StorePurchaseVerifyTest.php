@@ -5,21 +5,30 @@ use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\ShoppingTransaction;
 
-it('returns affordable:true and ONLY that key when balance is sufficient', function () {
+it('returns balance only when amount is omitted', function () {
     activeMemberWithBalance('3201234567890001', 100_000);
 
     $response = $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '3201234567890001',
-        'amount' => 50_000,
     ]);
 
     $response->assertOk()
-        ->assertJsonPath('response_code', 200)
         ->assertExactJson([
             'response_code' => 200,
             'response_message' => 'Pengecekan saldo berhasil.',
-            'response_data' => ['affordable' => true],
+            'response_data' => ['balance' => '100000.00'],
         ]);
+});
+
+it('returns balance and affordable:true when amount fits', function () {
+    activeMemberWithBalance('3201234567890009', 100_000);
+
+    $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
+        'nik' => '3201234567890009',
+        'amount' => 50_000,
+    ])->assertOk()
+        ->assertJsonPath('response_data.balance', '100000.00')
+        ->assertJsonPath('response_data.affordable', true);
 });
 
 it('returns affordable:false when balance is insufficient', function () {
@@ -28,7 +37,9 @@ it('returns affordable:false when balance is insufficient', function () {
     $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '3201234567890002',
         'amount' => 50_000,
-    ])->assertOk()->assertJsonPath('response_data.affordable', false);
+    ])->assertOk()
+        ->assertJsonPath('response_data.balance', '30000.00')
+        ->assertJsonPath('response_data.affordable', false);
 });
 
 it('writes no transaction (read-only)', function () {
@@ -84,13 +95,22 @@ it('validates nik and amount', function () {
     ])->assertStatus(422)->assertJsonPath('response_code', 422)->assertJsonStructure(['response_code', 'response_message']);
 });
 
-it('VerifyResource whitelists only affordable even when given extra fields', function () {
-    $resource = (new VerifyResource([
+it('VerifyResource whitelists balance (+affordable) and drops identity PII', function () {
+    $withAmount = (new VerifyResource([
+        'balance' => '100000.00',
         'affordable' => true,
         'nik' => '3201234567890001',
         'name' => 'Budi',
-        'balance' => '100000',
+        'member_number' => 'KM-1',
     ]))->toArray(request());
 
-    expect($resource)->toBe(['affordable' => true]);
+    expect($withAmount)->toBe(['balance' => '100000.00', 'affordable' => true]);
+
+    // Tanpa amount (affordable null) → hanya balance.
+    $balanceOnly = (new VerifyResource([
+        'balance' => '100000.00',
+        'affordable' => null,
+    ]))->toArray(request());
+
+    expect($balanceOnly)->toBe(['balance' => '100000.00']);
 });

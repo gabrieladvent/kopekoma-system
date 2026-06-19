@@ -5,8 +5,8 @@ namespace App\Http\Requests\Api;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Validasi request verify (ADR D2/D3). `amount` dijaga numerik (diolah bcmath
- * sebagai string di controller/Action, bukan float).
+ * Validasi request verify (ADR D2/D3). `amount` OPSIONAL: bila dikirim, response
+ * menambahkan `affordable`. Tanpa amount, response cukup `balance`.
  */
 class StoreVerifyRequest extends FormRequest
 {
@@ -22,7 +22,7 @@ class StoreVerifyRequest extends FormRequest
     {
         return [
             'nik' => ['required', 'string', 'size:16'],
-            'amount' => ['required', 'numeric', 'gt:0'],
+            'amount' => ['nullable', 'numeric', 'gt:0'],
         ];
     }
 }

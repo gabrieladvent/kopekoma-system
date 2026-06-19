@@ -6,11 +6,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Pembungkus response verify (ADR D2/D4b). Whitelist field — **hanya** `affordable`.
- * Tak pernah mengeluarkan nama/`member_number`/saldo/NIK → minim-PII jadi jaminan
- * struktural, bukan kedisiplinan controller.
+ * Pembungkus response verify (ADR D2/D4b). Whitelist field: `balance` selalu,
+ * `affordable` hanya bila `amount` dikirim. Tetap TIDAK mengeluarkan nama anggota
+ * maupun `member_number` (minim-PII identitas dipertahankan).
  *
- * @property array{affordable: bool} $resource
+ * @property array{balance: string, affordable: bool|null} $resource
  */
 class VerifyResource extends JsonResource
 {
@@ -21,8 +21,12 @@ class VerifyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return [
-            'affordable' => (bool) $this->resource['affordable'],
-        ];
+        $data = ['balance' => (string) $this->resource['balance']];
+
+        if (($this->resource['affordable'] ?? null) !== null) {
+            $data['affordable'] = (bool) $this->resource['affordable'];
+        }
+
+        return $data;
     }
 }

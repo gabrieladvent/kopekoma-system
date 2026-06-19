@@ -27,14 +27,15 @@ body:json {
 }
 
 tests {
-  test("200 + envelope minim-PII", function () {
+  test("200 + saldo, tanpa PII identitas", function () {
     expect(res.status).to.equal(200);
-    expect(res.body.response_data).to.have.property("affordable");
+    expect(res.body.response_data).to.have.property("balance");
     expect(res.body.response_data).to.not.have.property("nik");
-    expect(res.body.response_data).to.not.have.property("balance");
+    expect(res.body.response_data).to.not.have.property("name");
   });
 }
 
 docs {
-  Cek apakah saldo cukup (read-only). Response hanya { affordable }.
+  Cek saldo (read-only). Response { balance }; bila body menyertakan "amount",
+  ditambah { affordable }. Untuk cek saldo saja, hapus baris "amount" di body.
 }

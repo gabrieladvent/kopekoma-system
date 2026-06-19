@@ -104,7 +104,7 @@ curl -X POST https://<host>/api/v1/store/token \
 
 ## 2. Verify (Cek Saldo, Read-only)
 
-Cek apakah saldo Wajib Belanja anggota cukup. **Tidak menulis** transaksi apa pun.
+Cek saldo Wajib Belanja anggota. **Tidak menulis** transaksi apa pun.
 
 ```
 POST /api/v1/store/purchases/verify
@@ -116,9 +116,29 @@ Authorization: Bearer <access_token>
 | Field | Tipe | Wajib | Keterangan |
 |-------|------|-------|------------|
 | `nik` | string(16) | ya | NIK anggota. |
-| `amount` | numeric | ya | Nominal yang akan dicek (> 0). |
+| `amount` | numeric | **tidak** | Bila dikirim (> 0), response menambahkan `affordable`. |
 
-**Contoh request**
+**Contoh request — saldo saja**
+
+```bash
+curl -X POST https://<host>/api/v1/store/purchases/verify \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"nik":"3201234567890001"}'
+```
+
+**Sukses `200`**
+
+```json
+{
+  "response_code": 200,
+  "response_message": "Pengecekan saldo berhasil.",
+  "response_data": { "balance": "100000.00" }
+}
+```
+
+**Contoh request — cek saldo + kecukupan nominal**
 
 ```bash
 curl -X POST https://<host>/api/v1/store/purchases/verify \
@@ -128,22 +148,20 @@ curl -X POST https://<host>/api/v1/store/purchases/verify \
   -d '{"nik":"3201234567890001","amount":50000}'
 ```
 
-**Sukses `200`**
-
 ```json
 {
   "response_code": 200,
   "response_message": "Pengecekan saldo berhasil.",
-  "response_data": { "affordable": true }
+  "response_data": { "balance": "100000.00", "affordable": true }
 }
 ```
 
-> **Minim-PII:** response hanya `affordable` — tanpa nama, nomor anggota, atau nominal saldo.
+> **PII:** response membalas `balance` (saldo), tetapi **tetap tanpa** nama anggota maupun `member_number`. Enumerasi NIK dibatasi rate limit + lockout per klien.
 
 **Error**
 
 - `404` — NIK tak ditemukan atau anggota nonaktif (pesan generik).
-- `422` — validasi gagal (`nik` bukan 16 char, `amount ≤ 0`).
+- `422` — validasi gagal (`nik` bukan 16 char, atau `amount ≤ 0` bila dikirim).
 - `429` — rate limit / lockout enumerasi.
 
 ---
@@ -266,7 +284,7 @@ curl -X POST https://<host>/api/v1/store/purchases/BLJ-2026-000001/refund \
 
 ## Catatan Keamanan
 
-- **NIK** tak pernah muncul di log (di-redaksi) maupun di response.
+- **NIK** tak pernah muncul di log (di-redaksi) maupun di response. Nama anggota & `member_number` juga tak pernah dibalas (verify hanya saldo).
 - **Plafon per transaksi** membatasi blast-radius bila secret bocor.
 - **Rate limit + lockout** per klien mencegah brute-force secret & enumerasi NIK.
 - **Idempotency-Key** di-scope per klien (ownership-check) — tak bocor lintas-merchant.

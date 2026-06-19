@@ -45,10 +45,15 @@ class StorePurchaseController extends Controller
         $this->enumGuard->assertNotLocked($client);
 
         $member = $this->resolveMember($request->validated('nik'), $client);
-        $affordable = $this->balances->canSpendShopping($member, (string) $request->validated('amount'));
+        $balance = $this->balances->shoppingBalance($member);
+
+        $amount = $request->validated('amount');
+        $affordable = $amount !== null
+            ? $this->balances->canSpendShopping($member, (string) $amount)
+            : null;
 
         return ApiResponse::success(
-            (new VerifyResource(['affordable' => $affordable]))->resolve(),
+            (new VerifyResource(['balance' => $balance, 'affordable' => $affordable]))->resolve(),
             'Pengecekan saldo berhasil.',
         );
     }
