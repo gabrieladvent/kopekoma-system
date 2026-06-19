@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\StoreAuthController;
+use App\Http\Controllers\Api\StorePurchaseController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -17,6 +18,16 @@ Route::prefix('v1/store')->group(function (): void {
         ->middleware('throttle:store-token')
         ->name('api.store.token');
 
-    // Rute terproteksi (verify/charge/refund) ditambah di item 4/5/7:
-    // Route::middleware(['auth:sanctum', 'abilities:shopping:charge', ...])->group(...)
+    // Rute terproteksi: bearer Sanctum + ability shopping:charge + klien aktif
+    // + rate limit anti enumerasi/abuse (D1/D3/D9).
+    Route::middleware([
+        'auth:sanctum',
+        'abilities:shopping:charge',
+        'store.client',
+        'throttle:store-purchase',
+    ])->group(function (): void {
+        Route::post('purchases/verify', [StorePurchaseController::class, 'verify'])
+            ->name('api.store.purchases.verify');
+        // charge & refund ditambah di item 5/7.
+    });
 });
