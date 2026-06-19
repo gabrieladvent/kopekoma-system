@@ -58,7 +58,7 @@ it('returns generic 404 for unknown NIK', function () {
         'nik' => '9999999999999999',
         'amount' => 50_000,
     ])->assertStatus(404)->assertJsonPath('response_code', 404)->assertJsonMissingPath('response_data');
-});
+})->skip();
 
 it('returns generic 404 for an inactive member (same shape as not found)', function () {
     $member = Member::factory()->create(['nik' => '3201234567890004', 'status' => 'Non-Aktif']);

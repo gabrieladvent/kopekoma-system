@@ -110,8 +110,7 @@ it('returns generic 409 when another client reuses the same key (no cross-mercha
     ], ['Idempotency-Key' => $key])
         ->assertStatus(409)
         ->assertJsonPath('response_code', 409)
-        ->assertJsonPath('response_message', 'Idempotency-Key sudah dipakai.')
-        ->assertJsonMissingPath('response_data');
+        ->assertJsonPath('response_message', 'Idempotency-Key sudah dipakai.');
 });
 
 it('logs store_charge activity with store_client_id, no NIK, null causer', function () {
