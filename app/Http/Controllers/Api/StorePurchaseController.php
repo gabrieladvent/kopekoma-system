@@ -18,6 +18,7 @@ use App\Models\ShoppingTransaction;
 use App\Models\StoreClient;
 use App\Services\SavingsBalanceService;
 use App\Services\StoreEnumerationGuard;
+use App\Support\ApiResponse;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -38,7 +39,7 @@ class StorePurchaseController extends Controller
     /**
      * Read-only: cek apakah saldo cukup. Tak menulis transaksi apa pun (D2).
      */
-    public function verify(StoreVerifyRequest $request): VerifyResource
+    public function verify(StoreVerifyRequest $request): JsonResponse
     {
         $client = $this->storeClient($request);
         $this->enumGuard->assertNotLocked($client);
@@ -46,7 +47,10 @@ class StorePurchaseController extends Controller
         $member = $this->resolveMember($request->validated('nik'), $client);
         $affordable = $this->balances->canSpendShopping($member, (string) $request->validated('amount'));
 
-        return new VerifyResource(['affordable' => $affordable]);
+        return ApiResponse::success(
+            (new VerifyResource(['affordable' => $affordable]))->resolve(),
+            'Pengecekan saldo berhasil.',
+        );
     }
 
     /**
@@ -59,7 +63,7 @@ class StorePurchaseController extends Controller
 
         $idempotencyKey = trim((string) $request->header('Idempotency-Key'));
         if ($idempotencyKey === '') {
-            $this->fail(422, 'IDEMPOTENCY_KEY_REQUIRED', 'Header Idempotency-Key wajib diisi.');
+            $this->fail(422, 'Header Idempotency-Key wajib diisi.');
         }
 
         $amount = (string) $request->validated('amount');
@@ -67,7 +71,7 @@ class StorePurchaseController extends Controller
         // Plafon per-transaksi di-enforce DI CONTROLLER (D2/D4b) — bukan di Action,
         // agar jalur manual petugas tak ikut terkurung.
         if (bccomp($amount, (string) config('store.max_charge_per_tx'), 2) > 0) {
-            $this->fail(422, 'AMOUNT_EXCEEDS_LIMIT', 'Nominal melebihi plafon per transaksi.');
+            $this->fail(422, 'Nominal melebihi plafon per transaksi.');
         }
 
         $member = $this->resolveMember($request->validated('nik'), $client);
@@ -89,7 +93,7 @@ class StorePurchaseController extends Controller
         try {
             $tx = app(RecordShoppingUsage::class)($attributes);
         } catch (CannotSpendShopping $e) {
-            $this->fail(422, 'INSUFFICIENT_BALANCE', $e->getMessage());
+            $this->fail(422, $e->getMessage());
         } catch (UniqueConstraintViolationException) {
             return $this->idempotentReplay($client, $idempotencyKey, $hash);
         }
@@ -107,7 +111,11 @@ class StorePurchaseController extends Controller
             ])
             ->log('Pemakaian saldo Wajib Belanja via API toko.');
 
-        return (new StorePurchaseResource($tx))->response()->setStatusCode(201);
+        return ApiResponse::success(
+            (new StorePurchaseResource($tx))->resolve(),
+            'Pemakaian saldo berhasil dipotong.',
+            201,
+        );
     }
 
     /**
@@ -128,7 +136,7 @@ class StorePurchaseController extends Controller
         // Bukan transaksi store_api yang valid, atau bukan milik klien ini →
         // 404 generik (jangan bocorkan transaksi milik klien lain).
         if ($original === null || (string) $original->store_client_id !== (string) $client->id) {
-            $this->fail(404, 'TRANSACTION_NOT_FOUND', 'Transaksi tidak ditemukan.');
+            $this->fail(404, 'Transaksi tidak ditemukan.');
         }
 
         try {
@@ -139,10 +147,18 @@ class StorePurchaseController extends Controller
                 ->where('reversal_of_id', $original->id)
                 ->firstOrFail();
 
-            return (new RefundResource($existing))->response()->setStatusCode(200);
+            return ApiResponse::success(
+                (new RefundResource($existing))->resolve(),
+                'Transaksi sudah pernah di-refund.',
+                200,
+            );
         }
 
-        return (new RefundResource($reversal))->response()->setStatusCode(201);
+        return ApiResponse::success(
+            (new RefundResource($reversal))->resolve(),
+            'Refund berhasil.',
+            201,
+        );
     }
 
     /**
@@ -154,14 +170,18 @@ class StorePurchaseController extends Controller
         $existing = ShoppingTransaction::query()->where('idempotency_key', $key)->first();
 
         if ($existing === null || (string) $existing->store_client_id !== (string) $client->id) {
-            $this->fail(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency-Key sudah dipakai.');
+            $this->fail(409, 'Idempotency-Key sudah dipakai.');
         }
 
         if (! hash_equals((string) $existing->idempotency_hash, $hash)) {
-            $this->fail(409, 'IDEMPOTENCY_PAYLOAD_MISMATCH', 'Idempotency-Key dipakai ulang dengan payload berbeda.');
+            $this->fail(409, 'Idempotency-Key dipakai ulang dengan payload berbeda.');
         }
 
-        return (new StorePurchaseResource($existing))->response()->setStatusCode(200);
+        return ApiResponse::success(
+            (new StorePurchaseResource($existing))->resolve(),
+            'Pemakaian saldo sudah pernah tercatat (idempoten).',
+            200,
+        );
     }
 
     /**
@@ -189,7 +209,7 @@ class StorePurchaseController extends Controller
 
         if ($member === null) {
             $this->enumGuard->recordFailure($client);
-            $this->fail(404, 'MEMBER_NOT_FOUND', 'Anggota tidak valid untuk transaksi.');
+            $this->fail(404, 'Anggota tidak valid untuk transaksi.');
         }
 
         $this->enumGuard->clear($client);
@@ -206,14 +226,12 @@ class StorePurchaseController extends Controller
     }
 
     /**
-     * Kontrak error JSON seragam (D7): { message, code }.
+     * Kontrak error JSON seragam (D7): envelope { response_code, response_message }.
      *
      * @return never
      */
-    private function fail(int $status, string $code, string $message): void
+    private function fail(int $status, string $message): void
     {
-        throw new HttpResponseException(
-            response()->json(['message' => $message, 'code' => $code], $status)
-        );
+        throw new HttpResponseException(ApiResponse::error($message, $status));
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\StoreClient;
+use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,10 +22,7 @@ class EnsureActiveStoreClient
         $client = $request->user();
 
         if (! $client instanceof StoreClient || ! $client->is_active) {
-            return response()->json([
-                'message' => 'Klien toko tidak valid atau nonaktif.',
-                'code' => 'STORE_CLIENT_INACTIVE',
-            ], 403);
+            return ApiResponse::error('Klien toko tidak valid atau nonaktif.', 403);
         }
 
         return $next($request);

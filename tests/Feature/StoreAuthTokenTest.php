@@ -13,8 +13,9 @@ it('issues a bearer token for valid active client credentials', function () {
     ]);
 
     $response->assertOk()
-        ->assertJsonStructure(['access_token', 'token_type', 'expires_in'])
-        ->assertJsonPath('token_type', 'Bearer');
+        ->assertJsonPath('response_code', 200)
+        ->assertJsonStructure(['response_code', 'response_message', 'response_data' => ['access_token', 'token_type', 'expires_in']])
+        ->assertJsonPath('response_data.token_type', 'Bearer');
 
     $token = PersonalAccessToken::query()->firstOrFail();
     expect($token->tokenable->is($client))->toBeTrue()
@@ -52,7 +53,8 @@ it('rejects unknown client_id with 401 (no enumeration signal)', function () {
 it('validates required credentials', function () {
     $this->postJson('/api/v1/store/token', [])
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['client_id', 'client_secret']);
+        ->assertJsonPath('response_code', 422)
+        ->assertJsonStructure(['response_code', 'response_message']);
 });
 
 it('throttles brute-force attempts on the token endpoint', function () {

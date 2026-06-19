@@ -40,7 +40,8 @@ it('refunds origin store transaction (201), restores balance, reversal keeps sto
     $this->withToken($token)
         ->postJson("/api/v1/store/purchases/{$tx->transaction_number}/refund", ['reason' => 'barang dikembalikan'])
         ->assertStatus(201)
-        ->assertJsonPath('refunded', true);
+        ->assertJsonPath('response_code', 201)
+        ->assertJsonPath('response_data.refunded', true);
 
     $reversal = ShoppingTransaction::query()->where('reversal_of_id', $tx->id)->firstOrFail();
     expect((string) $reversal->store_client_id)->toBe((string) $client->id)
@@ -56,7 +57,7 @@ it('returns 404 when refunding a transaction owned by another store', function (
 
     $this->withToken($otherToken)
         ->postJson("/api/v1/store/purchases/{$tx->transaction_number}/refund", ['reason' => 'coba refund'])
-        ->assertStatus(404)->assertJsonPath('code', 'TRANSACTION_NOT_FOUND');
+        ->assertStatus(404)->assertJsonPath('response_code', 404);
 });
 
 it('rejects a charge-only token (no shopping:refund ability) with 403', function () {
@@ -84,7 +85,7 @@ it('is idempotent: a second refund returns 200 with a single reversal row', func
 
     $this->withToken($token)
         ->postJson("/api/v1/store/purchases/{$tx->transaction_number}/refund", ['reason' => 'barang dikembalikan'])
-        ->assertStatus(200)->assertJsonPath('refunded', true);
+        ->assertStatus(200)->assertJsonPath('response_data.refunded', true);
 
     expect(ShoppingTransaction::query()->where('reversal_of_id', $tx->id)->count())->toBe(1)
         ->and(app(SavingsBalanceService::class)->shoppingBalance($member->fresh()))->toBe('100000.00');
@@ -97,14 +98,14 @@ it('requires a reason (422)', function () {
 
     $this->withToken($token)
         ->postJson("/api/v1/store/purchases/{$tx->transaction_number}/refund", ['reason' => 'x'])
-        ->assertStatus(422)->assertJsonValidationErrors('reason');
+        ->assertStatus(422)->assertJsonPath('response_code', 422);
 });
 
 it('token endpoint grants shopping:refund only to can_refund clients', function () {
     StoreClient::factory()->canRefund()->create(['client_id' => 'store_ref']);
 
     $token = $this->postJson('/api/v1/store/token', ['client_id' => 'store_ref', 'client_secret' => StoreClientFactory::DEFAULT_SECRET])
-        ->json('access_token');
+        ->json('response_data.access_token');
 
     // Ability refund ada untuk klien can_refund.
     [$id] = explode('|', $token);
@@ -112,7 +113,7 @@ it('token endpoint grants shopping:refund only to can_refund clients', function 
 
     StoreClient::factory()->create(['client_id' => 'store_noref']);
     $token2 = $this->postJson('/api/v1/store/token', ['client_id' => 'store_noref', 'client_secret' => StoreClientFactory::DEFAULT_SECRET])
-        ->json('access_token');
+        ->json('response_data.access_token');
     [$id2] = explode('|', $token2);
     expect(PersonalAccessToken::find($id2)->can('shopping:refund'))->toBeFalse();
 });

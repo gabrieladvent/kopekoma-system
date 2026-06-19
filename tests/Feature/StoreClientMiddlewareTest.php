@@ -40,6 +40,17 @@ it('does not authenticate a User-tokenable token on store routes (User lacks Has
     $this->withToken($pat->id.'|'.$plain)->getJson('/_test/store-guard')->assertStatus(401);
 });
 
+it('guard 403 response uses the envelope shape', function () {
+    $client = StoreClient::factory()->create();
+    $token = $client->createToken('store-charge', ['shopping:charge'])->plainTextToken;
+    $client->update(['is_active' => false]);
+
+    $this->withToken($token)->getJson('/_test/store-guard')
+        ->assertStatus(403)
+        ->assertJsonPath('response_code', 403)
+        ->assertJsonStructure(['response_code', 'response_message']);
+});
+
 it('guard returns 403 for an authenticated non-StoreClient tokenable', function () {
     // Defense-in-depth: bila kelak ada model lain ber-HasApiTokens, guard tetap
     // menolak tokenable selain StoreClient.

@@ -15,10 +15,11 @@ it('charges, returns 201 with only {transaction_number, charged}, and reduces ba
     ], chargeHeaders());
 
     $response->assertStatus(201)
-        ->assertJsonStructure(['transaction_number', 'charged'])
-        ->assertJsonPath('charged', true)
-        ->assertJsonMissingPath('new_balance')
-        ->assertJsonMissingPath('nik');
+        ->assertJsonPath('response_code', 201)
+        ->assertJsonStructure(['response_code', 'response_message', 'response_data' => ['transaction_number', 'charged']])
+        ->assertJsonPath('response_data.charged', true)
+        ->assertJsonMissingPath('response_data.new_balance')
+        ->assertJsonMissingPath('response_data.nik');
 
     $tx = ShoppingTransaction::query()->firstOrFail();
     expect($tx->source)->toBe('store_api')
@@ -34,7 +35,8 @@ it('rejects insufficient balance with 422 INSUFFICIENT_BALANCE', function () {
     $this->withToken($token)->postJson('/api/v1/store/purchases', [
         'nik' => '3201000000000002',
         'amount' => 50_000,
-    ], chargeHeaders())->assertStatus(422)->assertJsonPath('code', 'INSUFFICIENT_BALANCE');
+    ], chargeHeaders())->assertStatus(422)->assertJsonPath('response_code', 422)
+        ->assertJsonPath('response_message', 'Nominal pemakaian (Rp 50000) melebihi saldo Wajib Belanja (Rp 30000.00).');
 });
 
 it('rejects amount above per-transaction plafon with 422 AMOUNT_EXCEEDS_LIMIT', function () {
@@ -45,7 +47,8 @@ it('rejects amount above per-transaction plafon with 422 AMOUNT_EXCEEDS_LIMIT', 
     $this->withToken($token)->postJson('/api/v1/store/purchases', [
         'nik' => '3201000000000003',
         'amount' => 3_000_000,
-    ], chargeHeaders())->assertStatus(422)->assertJsonPath('code', 'AMOUNT_EXCEEDS_LIMIT');
+    ], chargeHeaders())->assertStatus(422)->assertJsonPath('response_code', 422)
+        ->assertJsonPath('response_message', 'Nominal melebihi plafon per transaksi.');
 });
 
 it('requires Idempotency-Key header (422)', function () {
@@ -55,7 +58,8 @@ it('requires Idempotency-Key header (422)', function () {
     $this->withToken($token)->postJson('/api/v1/store/purchases', [
         'nik' => '3201000000000004',
         'amount' => 40_000,
-    ])->assertStatus(422)->assertJsonPath('code', 'IDEMPOTENCY_KEY_REQUIRED');
+    ])->assertStatus(422)->assertJsonPath('response_code', 422)
+        ->assertJsonPath('response_message', 'Header Idempotency-Key wajib diisi.');
 });
 
 it('is idempotent: same key + same payload returns 200 without double-charging', function () {
@@ -82,7 +86,8 @@ it('returns 409 PAYLOAD_MISMATCH for same key + different payload', function () 
 
     $this->withToken($token)->postJson('/api/v1/store/purchases', [
         'nik' => '3201000000000006', 'amount' => 55_000,
-    ], $headers)->assertStatus(409)->assertJsonPath('code', 'IDEMPOTENCY_PAYLOAD_MISMATCH');
+    ], $headers)->assertStatus(409)->assertJsonPath('response_code', 409)
+        ->assertJsonPath('response_message', 'Idempotency-Key dipakai ulang dengan payload berbeda.');
 });
 
 it('returns generic 409 when another client reuses the same key (no cross-merchant leak)', function () {
@@ -104,8 +109,9 @@ it('returns generic 409 when another client reuses the same key (no cross-mercha
         'nik' => '3201000000000007', 'amount' => 40_000,
     ], ['Idempotency-Key' => $key])
         ->assertStatus(409)
-        ->assertJsonPath('code', 'IDEMPOTENCY_CONFLICT')
-        ->assertJsonMissingPath('transaction_number');
+        ->assertJsonPath('response_code', 409)
+        ->assertJsonPath('response_message', 'Idempotency-Key sudah dipakai.')
+        ->assertJsonMissingPath('response_data');
 });
 
 it('logs store_charge activity with store_client_id, no NIK, null causer', function () {

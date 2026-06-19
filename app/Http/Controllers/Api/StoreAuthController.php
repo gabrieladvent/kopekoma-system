@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\StoreClient;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Penerbitan token bearer untuk klien toko (ADR Integrasi API Toko, D1).
@@ -27,9 +27,7 @@ class StoreAuthController extends Controller
             ->first();
 
         if ($client === null || ! $client->is_active || ! Hash::check($data['client_secret'], $client->client_secret)) {
-            throw ValidationException::withMessages([
-                'client_id' => ['Kredensial klien tidak valid atau klien nonaktif.'],
-            ])->status(401);
+            return ApiResponse::error('Kredensial klien tidak valid atau klien nonaktif.', 401);
         }
 
         $ttlMinutes = (int) config('store.token_ttl_minutes');
@@ -42,10 +40,10 @@ class StoreAuthController extends Controller
 
         $token = $client->createToken('store-charge', $abilities, now()->addMinutes($ttlMinutes));
 
-        return response()->json([
+        return ApiResponse::success([
             'access_token' => $token->plainTextToken,
             'token_type' => 'Bearer',
             'expires_in' => $ttlMinutes * 60,
-        ]);
+        ], 'Token berhasil diterbitkan.');
     }
 }

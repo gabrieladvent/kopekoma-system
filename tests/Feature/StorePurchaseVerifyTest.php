@@ -13,7 +13,13 @@ it('returns affordable:true and ONLY that key when balance is sufficient', funct
         'amount' => 50_000,
     ]);
 
-    $response->assertOk()->assertExactJson(['affordable' => true]);
+    $response->assertOk()
+        ->assertJsonPath('response_code', 200)
+        ->assertExactJson([
+            'response_code' => 200,
+            'response_message' => 'Pengecekan saldo berhasil.',
+            'response_data' => ['affordable' => true],
+        ]);
 });
 
 it('returns affordable:false when balance is insufficient', function () {
@@ -22,7 +28,7 @@ it('returns affordable:false when balance is insufficient', function () {
     $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '3201234567890002',
         'amount' => 50_000,
-    ])->assertOk()->assertExactJson(['affordable' => false]);
+    ])->assertOk()->assertJsonPath('response_data.affordable', false);
 });
 
 it('writes no transaction (read-only)', function () {
@@ -40,7 +46,7 @@ it('returns generic 404 for unknown NIK', function () {
     $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '9999999999999999',
         'amount' => 50_000,
-    ])->assertStatus(404)->assertJsonPath('code', 'MEMBER_NOT_FOUND');
+    ])->assertStatus(404)->assertJsonPath('response_code', 404)->assertJsonMissingPath('response_data');
 });
 
 it('returns generic 404 for an inactive member (same shape as not found)', function () {
@@ -50,14 +56,16 @@ it('returns generic 404 for an inactive member (same shape as not found)', funct
     $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '3201234567890004',
         'amount' => 50_000,
-    ])->assertStatus(404)->assertJsonPath('code', 'MEMBER_NOT_FOUND');
+    ])->assertStatus(404)->assertJsonPath('response_code', 404);
 });
 
 it('rejects request without a token (401)', function () {
     $this->postJson('/api/v1/store/purchases/verify', [
         'nik' => '3201234567890001',
         'amount' => 50_000,
-    ])->assertStatus(401);
+    ])->assertStatus(401)
+        ->assertJsonPath('response_code', 401)
+        ->assertJsonStructure(['response_code', 'response_message']);
 });
 
 it('rejects a token lacking shopping:charge ability (403)', function () {
@@ -73,7 +81,7 @@ it('validates nik and amount', function () {
     $this->withToken(storeToken())->postJson('/api/v1/store/purchases/verify', [
         'nik' => '123',
         'amount' => 0,
-    ])->assertStatus(422)->assertJsonValidationErrors(['nik', 'amount']);
+    ])->assertStatus(422)->assertJsonPath('response_code', 422)->assertJsonStructure(['response_code', 'response_message']);
 });
 
 it('VerifyResource whitelists only affordable even when given extra fields', function () {
