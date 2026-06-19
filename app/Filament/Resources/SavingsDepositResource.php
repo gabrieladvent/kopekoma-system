@@ -35,11 +35,11 @@ class SavingsDepositResource extends Resource
 
     protected static ?string $navigationGroup = 'Simpanan';
 
-    protected static ?string $navigationLabel = 'Setoran';
+    protected static ?string $navigationLabel = 'Setoran Simpanan';
 
     protected static ?string $modelLabel = 'Setoran';
 
-    protected static ?string $pluralModelLabel = 'Setoran';
+    protected static ?string $pluralModelLabel = 'Setoran Simpanan';
 
     protected static ?int $navigationSort = 10;
 
@@ -125,7 +125,6 @@ class SavingsDepositResource extends Resource
                 default => null,
             });
         }
-        // sukarela & null → tak diubah (input user).
     }
 
     /**

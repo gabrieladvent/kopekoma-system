@@ -31,11 +31,11 @@ class ShoppingTransactionResource extends Resource
 
     protected static ?string $navigationGroup = 'Simpanan';
 
-    protected static ?string $navigationLabel = 'Pemakaian Wajib Belanja';
+    protected static ?string $navigationLabel = 'Belanja Toko';
 
-    protected static ?string $modelLabel = 'Pemakaian Wajib Belanja';
+    protected static ?string $modelLabel = 'Belanja Toko';
 
-    protected static ?string $pluralModelLabel = 'Pemakaian Wajib Belanja';
+    protected static ?string $pluralModelLabel = 'Belanja Toko';
 
     protected static ?int $navigationSort = 40;
 

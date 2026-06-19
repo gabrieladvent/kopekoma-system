@@ -58,7 +58,7 @@ class SavingsMutationService
             $rows->push($this->normalize(
                 $s->transaction_date, $s->created_at, $s->transaction_number ?? '—', 'shopping',
                 'wajib_belanja', $s->amount, $s->is_reversal,
-                $s->is_reversal ? 'Pembatalan pemakaian belanja' : 'Pemakaian Wajib Belanja',
+                $s->is_reversal ? 'Pembatalan belanja toko' : 'Belanja Toko',
                 outflow: true,
             ));
         }

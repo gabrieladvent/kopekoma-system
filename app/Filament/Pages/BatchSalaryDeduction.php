@@ -19,36 +19,21 @@ use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-/**
- * Setoran batch potong gaji per OPD (item 3a-1, D5). Pilih OPD + periode →
- * tabel anggota aktif dengan nominal prefill snapshot golongan → proses.
- * Engine ada di {@see BatchSalaryDeductionService}; halaman ini murni UI.
- */
 class BatchSalaryDeduction extends Page implements HasForms
 {
     use InteractsWithForms;
 
     public const PERMISSION = 'access_batch_salary_deduction';
 
-    protected static ?string $navigationIcon = 'heroicon-o-users';
-
-    protected static ?string $navigationGroup = 'Simpanan';
-
-    protected static ?string $navigationLabel = 'Batch Potong Gaji';
-
     protected static ?string $title = 'Batch Potong Gaji per OPD';
 
-    protected static ?int $navigationSort = 15;
-
     protected static string $view = 'filament.pages.batch-salary-deduction';
+
+    protected static bool $shouldRegisterNavigation = false;
 
     /** @var array<string, mixed> */
     public ?array $data = [];
 
-    /**
-     * Custom Page tak punya auto-policy Shield → enforce permission eksplisit
-     * (security #C): sembunyikan dari nav + tolak akses bila tak berhak.
-     */
     public static function canAccess(): bool
     {
         return auth()->user()?->can(self::PERMISSION) ?? false;
@@ -56,10 +41,6 @@ class BatchSalaryDeduction extends Page implements HasForms
 
     public const EXPORT_PERMISSION = 'export_savings_recap';
 
-    /**
-     * Rekap (3b): export CSV setoran wajib potong-gaji OPD+periode. PII finansial
-     * → gate Pengurus+ (D7), dan aktivitas export **ter-log**.
-     */
     protected function getHeaderActions(): array
     {
         return [
@@ -90,7 +71,6 @@ class BatchSalaryDeduction extends Page implements HasForms
             ->orderBy('transaction_number')
             ->get();
 
-        // Export ter-log (security #E): aktor, OPD, periode, jumlah baris.
         activity()
             ->causedBy(auth()->id())
             ->event('export')
@@ -254,7 +234,6 @@ class BatchSalaryDeduction extends Page implements HasForms
             ->body("{$result['created']} setoran dibuat, {$result['skipped']} dilewati (sudah disetor periode ini).")
             ->send();
 
-        // Muat ulang daftar (state form) — sekadar refresh prefill nominal.
         $this->data['rows'] = $this->buildRows($state['agency_id']);
     }
 
