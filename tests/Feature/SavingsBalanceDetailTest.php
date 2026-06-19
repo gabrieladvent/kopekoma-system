@@ -1,12 +1,12 @@
 <?php
 
 use App\Filament\Resources\MemberResource\Pages\ViewMember;
-use App\Filament\Resources\MemberResource\RelationManagers\SavingsDepositsRelationManager;
 use App\Filament\Resources\MemberSavingsBalanceResource\Pages\ListMemberSavingsBalances;
 use App\Filament\Widgets\SavingsCashInflowChart;
 use App\Filament\Widgets\SavingsStatsOverview;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
+use App\Models\SavingsWithdrawal;
 use App\Services\SavingsBalanceService;
 use Livewire\Livewire;
 
@@ -30,17 +30,24 @@ it('shows the savings summary with the correct total on the member view', functi
         ->assertSee('Ringkasan Simpanan');
 });
 
-it('lists only the member own deposits in the savings history relation manager', function () {
+it('shows both incoming and outgoing transactions in the member savings passbook', function () {
     $member = Member::factory()->create();
-    $mine = SavingsDeposit::factory()->type('wajib')->create(['member_id' => $member->id]);
-    $other = SavingsDeposit::factory()->type('wajib')->create();
+    $setoran = SavingsDeposit::factory()->type('sukarela')->create([
+        'member_id' => $member->id, 'amount' => '100000', 'deposit_date' => '2026-01-10',
+    ]);
+    $pencairan = SavingsWithdrawal::factory()->type('sukarela')->cair()->create([
+        'member_id' => $member->id, 'amount' => '30000', 'withdrawal_date' => '2026-02-15',
+    ]);
 
-    Livewire::test(SavingsDepositsRelationManager::class, [
-        'ownerRecord' => $member,
-        'pageClass' => ViewMember::class,
-    ])
-        ->assertCanSeeTableRecords([$mine])
-        ->assertCanNotSeeTableRecords([$other]);
+    // Buku tabungan menampilkan uang masuk DAN uang keluar di satu tempat,
+    // plus baris Total (ringkasan) dengan saldo saat ini (100rb − 30rb = 70rb).
+    Livewire::test(ViewMember::class, ['record' => $member->getKey()])
+        ->assertOk()
+        ->assertSee('Riwayat Simpanan')
+        ->assertSee($setoran->transaction_number)   // masuk
+        ->assertSee($pencairan->withdrawal_number)  // keluar
+        ->assertSee('Total')                        // footer ringkasan
+        ->assertSee('Rp 70.000');                   // saldo saat ini
 });
 
 // ── Tabel saldo semua anggota ────────────────────────────────────────

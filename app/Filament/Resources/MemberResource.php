@@ -36,6 +36,8 @@ class MemberResource extends Resource
 
     protected static ?string $modelLabel = 'Anggota';
 
+    protected static ?int $navigationSort = 90;
+
     protected static ?string $pluralModelLabel = 'Anggota';
 
     private const ELEVATED_ROLES = ['super_admin', 'pengurus'];
@@ -392,6 +394,15 @@ class MemberResource extends Resource
                             ]),
                     ]),
 
+                Infolists\Components\Section::make('Riwayat Simpanan')
+                    ->icon('heroicon-o-book-open')
+                    ->description('Buku tabungan: setoran (masuk) & pencairan cair / pemakaian belanja (keluar) urut waktu, dengan saldo berjalan.')
+                    ->schema([
+                        Infolists\Components\ViewEntry::make('mutasi_simpanan')
+                            ->hiddenLabel()
+                            ->view('filament.member-savings-mutation'),
+                    ]),
+
                 Infolists\Components\Grid::make(3)
                     ->schema([
                         Infolists\Components\Group::make([
@@ -604,7 +615,9 @@ class MemberResource extends Resource
     public static function getRelations(): array
     {
         return [
-            MemberResource\RelationManagers\SavingsDepositsRelationManager::class,
+            // Riwayat simpanan masuk+keluar ada di section "Riwayat Simpanan"
+            // (buku mutasi) pada infolist — menggantikan tab setoran-saja yang
+            // dulu menyesatkan (uang keluar tak tampil di sana).
             MemberResource\RelationManagers\DocumentsRelationManager::class,
             AuditTrailRelationManager::class,
         ];
