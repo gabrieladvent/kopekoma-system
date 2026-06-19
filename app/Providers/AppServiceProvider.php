@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Logging\RedactSensitiveLogContext;
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
 use Filament\Actions\DeleteAction as PageDeleteAction;
@@ -10,6 +11,7 @@ use Filament\Tables\Actions\DeleteAction as TableDeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -32,6 +34,17 @@ class AppServiceProvider extends ServiceProvider
         $this->applyGeneralSettings();
         $this->configureDeleteNotifications();
         $this->configureRateLimiters();
+        $this->configureLogRedaction();
+    }
+
+    /**
+     * Redaksi NIK/secret dari log default channel (ADR D3).
+     */
+    private function configureLogRedaction(): void
+    {
+        Log::channel(config('logging.default'))
+            ->getLogger()
+            ->pushProcessor(new RedactSensitiveLogContext);
     }
 
     /**

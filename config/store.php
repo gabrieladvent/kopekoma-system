@@ -22,4 +22,12 @@ return [
         'purchase_per_minute' => (int) env('STORE_RATE_PURCHASE_PER_MINUTE', 60),
     ],
 
+    // Lockout enumerasi NIK (D3): rate limit saja tak cukup. Setelah N kegagalan
+    // lookup beruntun, klien diblok sementara (cooldown). Counter dibagi verify+charge.
+    'lockout' => [
+        'max_failures' => (int) env('STORE_LOCKOUT_MAX_FAILURES', 10),
+        'window_minutes' => (int) env('STORE_LOCKOUT_WINDOW_MINUTES', 5),
+        'cooldown_minutes' => (int) env('STORE_LOCKOUT_COOLDOWN_MINUTES', 15),
+    ],
+
 ];
