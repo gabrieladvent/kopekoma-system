@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\ShoppingTransactionResource\Pages;
 
+use App\Actions\RecordShoppingUsage;
+use App\Exceptions\CannotSpendShopping;
 use App\Filament\Resources\Pages\BaseCreateRecord;
 use App\Filament\Resources\ShoppingTransactionResource;
 use App\Models\ShoppingTransaction;
@@ -31,7 +33,18 @@ class CreateShoppingTransaction extends BaseCreateRecord
     protected function handleRecordCreation(array $data): Model
     {
         try {
-            return ShoppingTransaction::create($data);
+            // Engine bersama (D4): lock member + re-cek saldo otoritatif + create.
+            return app(RecordShoppingUsage::class)($data);
+        } catch (CannotSpendShopping $e) {
+            // Race: saldo berubah antara validasi form dan lock — tolak dengan pesan jelas.
+            Notification::make()
+                ->danger()
+                ->title('Saldo tidak mencukupi')
+                ->body($e->getMessage())
+                ->persistent()
+                ->send();
+
+            throw new Halt;
         } catch (UniqueConstraintViolationException $e) {
             $existing = ShoppingTransaction::query()
                 ->where('idempotency_key', $data['idempotency_key'] ?? '')
