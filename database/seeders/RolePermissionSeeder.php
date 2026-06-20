@@ -51,6 +51,16 @@ class RolePermissionSeeder extends Seeder
         'export_savings_recap',
     ];
 
+    /**
+     * Ability sangat sensitif: hanya super_admin (via Permission::all()). Tidak
+     * di-assign ke petugas/pengurus, tapi tetap perlu "ada" agar bisa diberikan
+     * lewat UI Shield bila diperlukan. Reveal/copy secret klien toko (kredensial
+     * API) → blast radius besar, jadi default admin saja.
+     */
+    private const CUSTOM_ADMIN_ONLY = [
+        'copy_store_client_secret',
+    ];
+
     public function run(): void
     {
         Artisan::call('shield:generate', ['--all' => true, '--panel' => 'admin']);
@@ -82,7 +92,7 @@ class RolePermissionSeeder extends Seeder
 
     private function ensureCustomPermissions(): void
     {
-        foreach (array_unique([...self::CUSTOM_PETUGAS, ...self::CUSTOM_PENGURUS]) as $name) {
+        foreach (array_unique([...self::CUSTOM_PETUGAS, ...self::CUSTOM_PENGURUS, ...self::CUSTOM_ADMIN_ONLY]) as $name) {
             Permission::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
         }
     }

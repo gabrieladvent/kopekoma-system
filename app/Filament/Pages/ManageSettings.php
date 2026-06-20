@@ -46,6 +46,9 @@ class ManageSettings extends Page implements HasForms, HasTable
 
     protected static string $view = 'filament.pages.manage-settings';
 
+    /** Ability sangat sensitif (default super_admin): reveal/copy secret klien. */
+    public const COPY_SECRET_PERMISSION = 'copy_store_client_secret';
+
     public ?array $data = [];
 
     public function mount(): void
@@ -236,6 +239,7 @@ class ManageSettings extends Page implements HasForms, HasTable
                         'name' => $data['name'],
                         'client_id' => 'store_'.Str::lower(Str::random(20)),
                         'client_secret' => $secret, // di-hash otomatis oleh cast
+                        'client_secret_encrypted' => $secret, // di-enkripsi (reversible) untuk copy ulang
                         'is_active' => true,
                         'can_refund' => (bool) ($data['can_refund'] ?? false),
                     ]);
@@ -285,9 +289,34 @@ class ManageSettings extends Page implements HasForms, HasTable
                     ->modalDescription('Secret lama langsung tak berlaku. Token yang sudah terbit tetap valid sampai kedaluwarsa.')
                     ->action(function (StoreClient $record): void {
                         $secret = Str::random(40);
-                        $record->update(['client_secret' => $secret]);
+                        $record->update([
+                            'client_secret' => $secret,
+                            'client_secret_encrypted' => $secret,
+                        ]);
 
                         $this->notifyCredentials($record->client_id, $secret);
+                    }),
+                TableAction::make('copyCredential')
+                    ->label('Copy Kredensial')
+                    ->icon('heroicon-o-clipboard-document')
+                    ->color('gray')
+                    // Hanya admin berizin, dan hanya bila salinan terenkripsi ada
+                    // (klien lama perlu Reset Secret dulu untuk mengisinya).
+                    ->visible(fn (StoreClient $record): bool => (auth()->user()?->can(self::COPY_SECRET_PERMISSION) ?? false)
+                        && filled($record->client_secret_encrypted))
+                    ->modalHeading('Copy Kredensial Klien')
+                    ->modalDescription('Masukkan password akun Anda untuk menampilkan & menyalin kredensial.')
+                    ->modalSubmitActionLabel('Verifikasi & Salin')
+                    ->form([
+                        TextInput::make('password')
+                            ->label('Password Anda')
+                            ->password()
+                            ->required()
+                            ->currentPassword()
+                            ->validationMessages(['current_password' => 'Password Anda salah.']),
+                    ])
+                    ->action(function (StoreClient $record): void {
+                        $this->revealCredentials($record);
                     }),
                 DeleteAction::make(),
             ]);
@@ -303,6 +332,45 @@ class ManageSettings extends Page implements HasForms, HasTable
             ->body(new HtmlString(
                 'Secret hanya ditampilkan sekali ini.<br><br>'
                 .'<strong>Client ID:</strong><br><code>'.e($clientId).'</code><br><br>'
+                .'<strong>Client Secret:</strong><br><code>'.e($secret).'</code>'
+            ))
+            ->success()
+            ->persistent()
+            ->send();
+    }
+
+    /**
+     * Reveal + salin kredensial setelah password admin terverifikasi. Aksi
+     * sensitif → dicatat di audit (siapa, klien apa, kapan).
+     */
+    private function revealCredentials(StoreClient $record): void
+    {
+        $secret = $record->client_secret_encrypted; // di-decrypt otomatis oleh cast
+
+        if (blank($secret)) {
+            Notification::make()
+                ->warning()
+                ->title('Secret belum tersedia')
+                ->body('Lakukan "Reset Secret" lebih dulu agar kredensial bisa disalin.')
+                ->send();
+
+            return;
+        }
+
+        // Salin ke clipboard lewat event browser (listener Alpine di view).
+        $this->dispatch('copy-credential', text: "Client ID: {$record->client_id}\nClient Secret: {$secret}");
+
+        activity()
+            ->causedBy(auth()->user())
+            ->performedOn($record)
+            ->event('reveal_secret')
+            ->log("Copy kredensial klien toko {$record->name}");
+
+        Notification::make()
+            ->title('Kredensial disalin')
+            ->body(new HtmlString(
+                'Sudah disalin ke clipboard. Simpan di tempat aman.<br><br>'
+                .'<strong>Client ID:</strong><br><code>'.e($record->client_id).'</code><br><br>'
                 .'<strong>Client Secret:</strong><br><code>'.e($secret).'</code>'
             ))
             ->success()

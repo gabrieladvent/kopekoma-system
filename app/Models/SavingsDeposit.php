@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -44,6 +45,51 @@ class SavingsDeposit extends Model implements Reversible
         'period_month' => 'date',
         'is_reversal' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        // Jaga flag `pokok_paid` anggota tetap sinkron: pokok dibayar sekali
+        // seumur keanggotaan. Setoran pokok → true; reversal-nya (net = 0) → false.
+        static::created(function (SavingsDeposit $deposit): void {
+            if ($deposit->savings_type === 'pokok' && $deposit->member_id !== null) {
+                Member::query()
+                    ->whereKey($deposit->member_id)
+                    ->update(['pokok_paid' => self::hasActivePokok($deposit->member_id)]);
+            }
+        });
+    }
+
+    /**
+     * Ada setoran AKTIF (net > 0) untuk (anggota, jenis, periode-bulan)?
+     * Dipakai untuk aturan "1x per periode": sembunyikan/kunci jenis yang sudah
+     * disetor. Reversal menjadikan net = 0 → slot kembali terbuka.
+     */
+    public static function hasActiveDeposit(string $memberId, string $type, string $periodMonth): bool
+    {
+        $net = static::query()
+            ->where('member_id', $memberId)
+            ->where('savings_type', $type)
+            ->whereDate('period_month', Carbon::parse($periodMonth)->startOfMonth()->toDateString())
+            ->signedAmount()
+            ->value('net');
+
+        return bccomp((string) ($net ?? '0'), '0', 2) > 0;
+    }
+
+    /**
+     * Pokok sudah dibayar (net > 0) lintas periode? Pokok bersifat sekali seumur
+     * keanggotaan, jadi pengecekannya tidak di-scope per periode.
+     */
+    public static function hasActivePokok(string $memberId): bool
+    {
+        $net = static::query()
+            ->where('member_id', $memberId)
+            ->where('savings_type', 'pokok')
+            ->signedAmount()
+            ->value('net');
+
+        return bccomp((string) ($net ?? '0'), '0', 2) > 0;
+    }
 
     public function member(): BelongsTo
     {

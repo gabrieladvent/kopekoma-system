@@ -61,3 +61,64 @@ it('keeps store client data in the store_clients table, not settings', function 
 
     expect($token->accessToken->tokenable->is($client))->toBeTrue();
 });
+
+// ── Copy Kredensial (gated password admin) ────────────────────────────
+
+it('stores a reversible encrypted copy of the secret on create that matches the hash', function () {
+    Livewire::test(ManageSettings::class)
+        ->callAction('createStoreClient', data: ['name' => 'Toko Salin']);
+
+    $client = StoreClient::query()->firstOrFail();
+
+    // Salinan terenkripsi ada & ter-decrypt ke plaintext yang cocok dengan hash auth.
+    expect($client->client_secret_encrypted)->not->toBeNull()
+        ->and(Hash::check($client->client_secret_encrypted, $client->client_secret))->toBeTrue();
+});
+
+it('refreshes the encrypted copy when the secret is regenerated', function () {
+    $client = StoreClient::factory()->create();
+
+    Livewire::test(ManageSettings::class)
+        ->callTableAction('regenerateSecret', $client);
+
+    $client->refresh();
+
+    expect($client->client_secret_encrypted)->not->toBeNull()
+        ->and(Hash::check($client->client_secret_encrypted, $client->client_secret))->toBeTrue();
+});
+
+it('reveals and copies the credential to a super admin who confirms their password', function () {
+    Livewire::test(ManageSettings::class)
+        ->callAction('createStoreClient', data: ['name' => 'Toko Salin']);
+    $client = StoreClient::query()->firstOrFail();
+
+    Livewire::test(ManageSettings::class)
+        ->callTableAction('copyCredential', $client, data: ['password' => 'password'])
+        ->assertHasNoTableActionErrors()
+        ->assertDispatched('copy-credential')
+        ->assertNotified('Kredensial disalin');
+});
+
+it('rejects the copy when the password is wrong, revealing nothing', function () {
+    Livewire::test(ManageSettings::class)
+        ->callAction('createStoreClient', data: ['name' => 'Toko Salin']);
+    $client = StoreClient::query()->firstOrFail();
+
+    Livewire::test(ManageSettings::class)
+        ->callTableAction('copyCredential', $client, data: ['password' => 'salah-password'])
+        ->assertHasTableActionErrors(['password'])
+        ->assertNotDispatched('copy-credential');
+});
+
+it('hides the copy action for a client without an encrypted secret (legacy, needs reset first)', function () {
+    // Klien lama: hanya hash, belum ada salinan terenkripsi.
+    $client = StoreClient::factory()->create(['client_secret_encrypted' => null]);
+
+    Livewire::test(ManageSettings::class)
+        ->assertTableActionHidden('copyCredential', $client);
+});
+
+it('grants the copy-credential permission to super admin only, not petugas or pengurus', function () {
+    expect(asPetugas()->can(ManageSettings::COPY_SECRET_PERMISSION))->toBeFalse()
+        ->and(asPengurus()->can(ManageSettings::COPY_SECRET_PERMISSION))->toBeFalse();
+});

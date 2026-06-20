@@ -23,6 +23,22 @@ beforeEach(function () {
     asSuperAdmin();
 });
 
+/**
+ * Satu baris jenis simpanan untuk form setoran multi-jenis (Repeater `lines`).
+ *
+ * @return array<string, mixed>
+ */
+function lineFor(string $type, ?string $amount, bool $include = true): array
+{
+    return [
+        'savings_type' => $type,
+        'type_label' => SavingsDepositResource::SAVINGS_TYPES[$type],
+        'include' => $include,
+        'amount' => $amount,
+        'idempotency_key' => (string) Str::uuid(),
+    ];
+}
+
 it('lists deposits on the index page', function () {
     $deposits = SavingsDeposit::factory()->count(3)->create();
 
@@ -50,11 +66,10 @@ it('creates a single deposit and forces recorded_by to the actor', function () {
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'sukarela', // editable amount
-            'amount' => '150000',
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('sukarela', '150000')],
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -67,19 +82,78 @@ it('creates a single deposit and forces recorded_by to the actor', function () {
         ->and((float) $deposit->amount)->toBe(150000.0);
 });
 
-it('requires member, savings type, and amount', function () {
+it('creates several deposits in one process — one row per selected type', function () {
+    $member = Member::factory()->create(['mandatory_savings_amount' => 100000]);
+
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
-            'member_id' => null,
-            'savings_type' => null,
-            'amount' => null,
+            'member_id' => $member->id,
+            'deposit_date' => now()->toDateString(),
+            'deposit_method' => 'potong_gaji',
+            'deposited_by' => 'bendahara',
+            'lines' => [
+                lineFor('wajib', '100000'),
+                lineFor('sukarela', '50000'),
+                lineFor('pokok', '999'), // locked → di-override server
+            ],
         ])
         ->call('create')
-        ->assertHasFormErrors([
-            'member_id' => 'required',
-            'savings_type' => 'required',
-            'amount' => 'required',
-        ]);
+        ->assertHasNoFormErrors();
+
+    $deposits = SavingsDeposit::where('member_id', $member->id)->get();
+
+    expect($deposits)->toHaveCount(3)
+        ->and($deposits->pluck('savings_type')->sort()->values()->all())
+        ->toBe(['pokok', 'sukarela', 'wajib'])
+        // metadata bersama diterapkan ke semua baris.
+        ->and($deposits->pluck('deposit_method')->unique()->all())->toBe(['potong_gaji'])
+        ->and((float) $deposits->firstWhere('savings_type', 'pokok')->amount)
+        ->toBe((float) app(CooperativeSettings::class)->savings_pokok_amount);
+});
+
+it('skips types left unchecked or with zero amount', function () {
+    $member = Member::factory()->create();
+
+    Livewire::test(CreateSavingsDeposit::class)
+        ->fillForm([
+            'member_id' => $member->id,
+            'deposit_date' => now()->toDateString(),
+            'deposit_method' => 'setor_sendiri',
+            'deposited_by' => 'anggota',
+            'lines' => [
+                lineFor('wajib', '100000', include: true),
+                lineFor('sukarela', '50000', include: false), // tak dicentang → dilewati
+            ],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(SavingsDeposit::where('member_id', $member->id)->count())->toBe(1)
+        ->and(SavingsDeposit::where('member_id', $member->id)->first()->savings_type)->toBe('wajib');
+});
+
+it('requires a member', function () {
+    Livewire::test(CreateSavingsDeposit::class)
+        ->fillForm(['member_id' => null])
+        ->call('create')
+        ->assertHasFormErrors(['member_id' => 'required']);
+});
+
+it('warns when no savings type is selected', function () {
+    $member = Member::factory()->create();
+
+    Livewire::test(CreateSavingsDeposit::class)
+        ->fillForm([
+            'member_id' => $member->id,
+            'deposit_date' => now()->toDateString(),
+            'deposit_method' => 'setor_sendiri',
+            'deposited_by' => 'anggota',
+            'lines' => [lineFor('sukarela', '50000', include: false)],
+        ])
+        ->call('create')
+        ->assertNotified('Tidak ada jenis simpanan dipilih');
+
+    expect(SavingsDeposit::where('member_id', $member->id)->count())->toBe(0);
 });
 
 it('auto-tags period_month to the program year for hari_raya deposits', function () {
@@ -93,11 +167,10 @@ it('auto-tags period_month to the program year for hari_raya deposits', function
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'hari_raya',
-            'amount' => '1', // tampered — server overwrite dari registrasi
             'deposit_date' => '2026-06-18', // di dalam rentang
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('hari_raya', '1')], // tampered — server overwrite dari registrasi
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -110,18 +183,16 @@ it('auto-tags period_month to the program year for hari_raya deposits', function
         ->and($deposit->period_month->format('Y'))->toBe('2027');
 });
 
-it('dedupes a double-submit with the same idempotency key and identical payload (D4)', function () {
+it('treats a re-submit with the same line idempotency keys as a no-op', function () {
     $member = Member::factory()->create();
-    $key = (string) Str::uuid();
+    $line = lineFor('wajib', '200000'); // kunci tetap
 
     $payload = [
-        'idempotency_key' => $key,
         'member_id' => $member->id,
-        'savings_type' => 'wajib',
-        'amount' => '200000',
         'deposit_date' => now()->toDateString(),
         'deposit_method' => 'setor_sendiri',
         'deposited_by' => 'anggota',
+        'lines' => [$line],
     ];
 
     Livewire::test(CreateSavingsDeposit::class)
@@ -134,40 +205,7 @@ it('dedupes a double-submit with the same idempotency key and identical payload 
         ->call('create')
         ->assertNotified('Transaksi sudah tercatat');
 
-    expect(SavingsDeposit::where('idempotency_key', $key)->count())->toBe(1);
-});
-
-it('warns on the same key with a different payload, without creating a row (D4)', function () {
-    $member = Member::factory()->create();
-    $key = (string) Str::uuid();
-
-    Livewire::test(CreateSavingsDeposit::class)
-        ->fillForm([
-            'idempotency_key' => $key,
-            'member_id' => $member->id,
-            'savings_type' => 'wajib',
-            'amount' => '200000',
-            'deposit_date' => now()->toDateString(),
-            'deposit_method' => 'setor_sendiri',
-            'deposited_by' => 'anggota',
-        ])
-        ->call('create')
-        ->assertHasNoFormErrors();
-
-    Livewire::test(CreateSavingsDeposit::class)
-        ->fillForm([
-            'idempotency_key' => $key,
-            'member_id' => $member->id,
-            'savings_type' => 'wajib',
-            'amount' => '999000',
-            'deposit_date' => now()->toDateString(),
-            'deposit_method' => 'setor_sendiri',
-            'deposited_by' => 'anggota',
-        ])
-        ->call('create')
-        ->assertNotified('Submission duplikat dengan data berbeda');
-
-    expect(SavingsDeposit::where('idempotency_key', $key)->count())->toBe(1);
+    expect(SavingsDeposit::where('idempotency_key', $line['idempotency_key'])->count())->toBe(1);
 });
 
 it('redirects to the index after creating', function () {
@@ -176,11 +214,10 @@ it('redirects to the index after creating', function () {
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'sukarela',
-            'amount' => '75000',
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('sukarela', '75000')],
         ])
         ->call('create')
         ->assertRedirect(SavingsDepositResource::getUrl('index'));
@@ -283,11 +320,10 @@ it('locks the pokok amount to the cooperative setting, ignoring tampered input',
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'pokok',
-            'amount' => '999', // tampered — harus diabaikan
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('pokok', '999')], // tampered — harus diabaikan
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -302,11 +338,10 @@ it('locks the wajib_belanja amount to the cooperative setting', function () {
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'wajib_belanja',
-            'amount' => '1',
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('wajib_belanja', '1')],
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -321,11 +356,10 @@ it('allows overriding the wajib amount (prefilled from grade snapshot, editable)
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'wajib',
-            'amount' => '70000', // override diperbolehkan
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('wajib', '70000')], // override diperbolehkan
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -345,14 +379,15 @@ it('rejects a sukarela amount below the configured minimum', function () {
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'sukarela',
-            'amount' => '10000',
             'deposit_date' => now()->toDateString(),
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('sukarela', '10000')],
         ])
         ->call('create')
-        ->assertHasFormErrors(['amount']);
+        ->assertHasFormErrors();
+
+    expect(SavingsDeposit::where('member_id', $member->id)->count())->toBe(0);
 });
 
 it('offers hari_raya only when the deposit date falls inside an active range', function () {
@@ -381,12 +416,11 @@ it('locks the hari_raya amount to the active registration monthly_amount', funct
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'hari_raya',
-            'amount' => '1', // tampered
             'deposit_date' => now()->toDateString(),
             'period_month' => '2026-06-01',
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('hari_raya', '1')], // tampered
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -395,7 +429,7 @@ it('locks the hari_raya amount to the active registration monthly_amount', funct
     expect((float) $deposit->amount)->toBe(85000.0);
 });
 
-it('rejects a hari_raya deposit when the deposit date is outside the active range', function () {
+it('rejects a tampered hari_raya line when the deposit date is outside the active range', function () {
     $member = Member::factory()->create();
     // Pengumpulan baru mulai 20 Jun 2026 → setoran sebelum itu di luar rentang.
     MemberHolidaySaving::factory()->range('2026-06-20', '2026-12-31')->create(['member_id' => $member->id]);
@@ -403,14 +437,81 @@ it('rejects a hari_raya deposit when the deposit date is outside the active rang
     Livewire::test(CreateSavingsDeposit::class)
         ->fillForm([
             'member_id' => $member->id,
-            'savings_type' => 'hari_raya',
-            'amount' => '1',
             'deposit_date' => '2026-01-10', // sebelum start_date, masih ≤ hari ini
             'deposit_method' => 'setor_sendiri',
             'deposited_by' => 'anggota',
+            'lines' => [lineFor('hari_raya', '1')],
         ])
         ->call('create')
-        ->assertHasFormErrors(['deposit_date']);
+        ->assertNotified('Hari Raya tidak valid');
+
+    expect(SavingsDeposit::where('member_id', $member->id)->count())->toBe(0);
+});
+
+// ── Aturan 1x per periode + pokok sekali seumur keanggotaan ───────────
+
+it('hides a savings type already deposited for the period, but offers it again next period', function () {
+    $member = Member::factory()->create(['mandatory_savings_amount' => 100000]);
+    SavingsDeposit::factory()->create([
+        'member_id' => $member->id,
+        'savings_type' => 'wajib',
+        'amount' => 100000,
+        'period_month' => '2026-06-01',
+        'is_reversal' => false,
+    ]);
+
+    $juni = collect(SavingsDepositResource::buildLines($member->id, '2026-06-10', '2026-06-01'))->pluck('savings_type');
+    $juli = collect(SavingsDepositResource::buildLines($member->id, '2026-07-10', '2026-07-01'))->pluck('savings_type');
+
+    expect($juni)->not->toContain('wajib')
+        ->and($juli)->toContain('wajib');
+
+    expect(SavingsDepositResource::hiddenTypeLabels($member->id, '2026-06-10', '2026-06-01'))
+        ->toContain('Simpanan Wajib');
+});
+
+it('hides simpanan pokok once it has been paid (pokok_paid flag synced)', function () {
+    $member = Member::factory()->create();
+    $period = now()->startOfMonth()->toDateString();
+
+    expect(collect(SavingsDepositResource::buildLines($member->id, now()->toDateString(), $period))->pluck('savings_type'))
+        ->toContain('pokok');
+
+    SavingsDeposit::factory()->create([
+        'member_id' => $member->id,
+        'savings_type' => 'pokok',
+        'amount' => 250000,
+        'is_reversal' => false,
+    ]);
+
+    expect($member->fresh()->pokok_paid)->toBeTrue()
+        ->and(collect(SavingsDepositResource::buildLines($member->id, now()->toDateString(), $period))->pluck('savings_type'))
+        ->not->toContain('pokok');
+});
+
+it('skips a type already deposited for the period on submit, without duplicating', function () {
+    $member = Member::factory()->create(['mandatory_savings_amount' => 100000]);
+    SavingsDeposit::factory()->create([
+        'member_id' => $member->id,
+        'savings_type' => 'wajib',
+        'amount' => 100000,
+        'period_month' => '2026-06-01',
+        'is_reversal' => false,
+    ]);
+
+    Livewire::test(CreateSavingsDeposit::class)
+        ->fillForm([
+            'member_id' => $member->id,
+            'deposit_date' => '2026-06-10',
+            'period_month' => '2026-06-01',
+            'deposit_method' => 'setor_sendiri',
+            'deposited_by' => 'anggota',
+            'lines' => [lineFor('wajib', '100000')],
+        ])
+        ->call('create')
+        ->assertNotified('Transaksi sudah tercatat');
+
+    expect(SavingsDeposit::where('member_id', $member->id)->where('savings_type', 'wajib')->count())->toBe(1);
 });
 
 // ── Slip setoran PDF (2c) ─────────────────────────────────────────────

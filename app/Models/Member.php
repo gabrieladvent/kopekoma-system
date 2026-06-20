@@ -49,6 +49,7 @@ class Member extends Model implements HasMedia
         'position',
         'grade_id',
         'mandatory_savings_amount',
+        'pokok_paid',
         'employment_status',
         'payroll_account_number',
         'bank_name',
@@ -67,6 +68,7 @@ class Member extends Model implements HasMedia
         'join_date' => 'date',
         'exit_date' => 'date',
         'mandatory_savings_amount' => 'decimal:2',
+        'pokok_paid' => 'boolean',
     ];
 
     protected static function booted(): void
