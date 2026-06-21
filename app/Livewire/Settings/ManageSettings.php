@@ -7,7 +7,6 @@ use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 

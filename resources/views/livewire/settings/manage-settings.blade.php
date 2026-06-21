@@ -17,7 +17,7 @@
             <h2 class="text-2xl font-bold tracking-tight">Pengaturan</h2>
             <p class="mt-1 text-sm text-muted">Kelola tampilan, identitas aplikasi, email, dan parameter koperasi.</p>
         </div>
-        <x-ui.button wire:click="save" wire:loading.attr="disabled" wire:target="save">
+        <x-ui.button x-show="tab !== 'toko'" wire:click="save" wire:loading.attr="disabled" wire:target="save">
             <svg wire:loading wire:target="save" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
             <span wire:loading.remove wire:target="save">Simpan Perubahan</span>
             <span wire:loading wire:target="save">Menyimpan…</span>
@@ -26,7 +26,7 @@
 
     {{-- Tabs (signature underline) --}}
     <div class="flex gap-1 border-b border-border">
-        @foreach (['tampilan' => 'Tampilan', 'aplikasi' => 'Aplikasi', 'email' => 'Email (SMTP)', 'koperasi' => 'Koperasi'] as $key => $label)
+        @foreach (['tampilan' => 'Tampilan', 'aplikasi' => 'Aplikasi', 'email' => 'Email (SMTP)', 'koperasi' => 'Koperasi', 'toko' => 'Klien Toko'] as $key => $label)
             <button type="button" @click="tab = '{{ $key }}'"
                     :class="tab === '{{ $key }}' ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-text'"
                     class="-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition duration-150 ease-out">
@@ -175,6 +175,11 @@
                 <x-ui.input label="Batas Pinjaman Jangka Pendek" type="number" wire:model="loan_short_term_max" :error="$errors->first('loan_short_term_max')" />
             </div>
         </x-ui.card>
+    </div>
+
+    {{-- ===== KLIEN TOKO ===== --}}
+    <div x-show="tab === 'toko'" x-transition.opacity.duration.200ms x-cloak>
+        <livewire:settings.store-clients />
     </div>
 
     {{-- Toasts --}}
