@@ -84,27 +84,55 @@
             <div class="grid gap-5 sm:grid-cols-2">
                 <x-ui.input label="Nama Aplikasi" wire:model="app_name" :error="$errors->first('app_name')" />
                 <div></div>
+                @php
+                    $logoPreview = ($logoUpload && $logoUpload->isPreviewable())
+                        ? $logoUpload->temporaryUrl()
+                        : ($logo_path ? \Illuminate\Support\Facades\Storage::url($logo_path) : null);
+                    $faviconPreview = ($faviconUpload && $faviconUpload->isPreviewable())
+                        ? $faviconUpload->temporaryUrl()
+                        : ($favicon_path ? \Illuminate\Support\Facades\Storage::url($favicon_path) : null);
+                @endphp
                 <div class="space-y-1.5">
                     <label class="block text-sm font-medium text-text">Logo</label>
-                    @if ($logo_path)
-                        <img src="{{ \Illuminate\Support\Facades\Storage::url($logo_path) }}" alt="Logo" class="mb-2 h-12 rounded-lg border border-border bg-surface object-contain p-1">
-                    @endif
-                    <input type="file" wire:model="logoUpload" accept="image/*"
-                           class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
-                    <p class="text-xs text-muted">PNG/SVG, maks 2 MB.</p>
+                    <div class="flex items-center gap-3">
+                        <div class="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-bg">
+                            @if ($logoPreview)
+                                <img src="{{ $logoPreview }}" alt="Pratinjau logo" class="h-full w-full object-contain p-1">
+                            @else
+                                <x-ui.icon name="home" class="h-5 w-5 text-muted" />
+                            @endif
+                            <div wire:loading wire:target="logoUpload" class="absolute inset-0 grid place-items-center bg-surface/70">
+                                <svg class="h-4 w-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                            </div>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <input type="file" wire:model="logoUpload" accept="image/*"
+                                   class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
+                            <p class="mt-1 text-xs text-muted">PNG/SVG, maks 2 MB.</p>
+                        </div>
+                    </div>
                     @error('logoUpload') <p class="text-xs text-danger">{{ $message }}</p> @enderror
-                    <div wire:loading wire:target="logoUpload" class="text-xs text-muted">Mengunggah…</div>
                 </div>
                 <div class="space-y-1.5">
                     <label class="block text-sm font-medium text-text">Favicon</label>
-                    @if ($favicon_path)
-                        <img src="{{ \Illuminate\Support\Facades\Storage::url($favicon_path) }}" alt="Favicon" class="mb-2 h-10 w-10 rounded-lg border border-border bg-surface object-contain p-1">
-                    @endif
-                    <input type="file" wire:model="faviconUpload" accept="image/*"
-                           class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
-                    <p class="text-xs text-muted">.png/.ico 32×32 atau .svg. Maks 1 MB.</p>
+                    <div class="flex items-center gap-3">
+                        <div class="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-bg">
+                            @if ($faviconPreview)
+                                <img src="{{ $faviconPreview }}" alt="Pratinjau favicon" class="h-full w-full object-contain p-2">
+                            @else
+                                <x-ui.icon name="home" class="h-5 w-5 text-muted" />
+                            @endif
+                            <div wire:loading wire:target="faviconUpload" class="absolute inset-0 grid place-items-center bg-surface/70">
+                                <svg class="h-4 w-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                            </div>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <input type="file" wire:model="faviconUpload" accept="image/*"
+                                   class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
+                            <p class="mt-1 text-xs text-muted">.png/.ico 32×32 atau .svg. Maks 1 MB.</p>
+                        </div>
+                    </div>
                     @error('faviconUpload') <p class="text-xs text-danger">{{ $message }}</p> @enderror
-                    <div wire:loading wire:target="faviconUpload" class="text-xs text-muted">Mengunggah…</div>
                 </div>
             </div>
         </x-ui.card>

@@ -4,6 +4,8 @@ use App\Livewire\Settings\ManageSettings;
 use App\Models\User;
 use App\Settings\CooperativeSettings;
 use App\Settings\GeneralSettings;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 it('forbids users without the manage_settings permission', function () {
@@ -64,6 +66,23 @@ it('saves cooperative parameters', function () {
         ->assertHasNoErrors();
 
     expect(app(CooperativeSettings::class)->savings_pokok_amount)->toBe(75000.0);
+});
+
+it('previews and stores an uploaded logo', function () {
+    Storage::fake('public');
+    asSuperAdmin();
+
+    $component = Livewire::test(ManageSettings::class)
+        ->set('logoUpload', UploadedFile::fake()->image('logo.png', 120, 120));
+
+    // Preview tampil (temporaryUrl) sebelum disimpan.
+    $component->assertSee('Pratinjau logo');
+
+    $component->call('save')->assertHasNoErrors();
+
+    $path = app(GeneralSettings::class)->logo_path;
+    expect($path)->not->toBeNull();
+    Storage::disk('public')->assertExists($path);
 });
 
 it('injects the custom theme into rendered pages', function () {
