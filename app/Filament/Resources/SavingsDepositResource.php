@@ -63,6 +63,8 @@ class SavingsDepositResource extends Resource
 
     public const LOCKED_AMOUNT_TYPES = ['pokok', 'wajib_belanja', 'hari_raya'];
 
+    public const DEFAULT_INCLUDED_TYPES = ['wajib', 'hari_raya'];
+
     public static function activeHolidayRegistration(mixed $memberId, mixed $depositDate): ?MemberHolidaySaving
     {
         if (blank($memberId) || blank($depositDate)) {
@@ -106,25 +108,97 @@ class SavingsDepositResource extends Resource
             : (string) $registration->monthly_amount;
     }
 
-    public static function syncAmount(?string $type, Get $get, Set $set): void
+    /**
+     * Bangun baris jenis simpanan untuk anggota + tanggal + periode: satu baris
+     * per jenis yang berlaku DAN belum disetor (aturan 1x per periode; pokok 1x
+     * seumur keanggotaan). hari_raya hanya bila ada program aktif yang memuat
+     * tanggal. Nominal wajib/locked di-prefill; sukarela dibiarkan kosong. State
+     * sebelumnya (centang, nominal, idempotency_key) dipertahankan saat rebuild.
+     *
+     * @param  list<array<string, mixed>>  $existing
+     * @return list<array<string, mixed>>
+     */
+    public static function buildLines(mixed $memberId, mixed $depositDate, mixed $periodMonth = null, array $existing = []): array
     {
-        if ($type === 'wajib') {
-            $amount = Member::find($get('member_id'))?->mandatory_savings_amount;
-            $set('amount', $amount === null ? null : (string) $amount);
-
-            return;
+        if (blank($memberId)) {
+            return [];
         }
 
-        if (in_array($type, self::LOCKED_AMOUNT_TYPES, true)) {
-            $settings = app(CooperativeSettings::class);
+        $previous = collect($existing)->keyBy('savings_type');
 
-            $set('amount', match ($type) {
-                'pokok' => (string) $settings->savings_pokok_amount,
-                'wajib_belanja' => (string) $settings->savings_wajib_belanja_amount,
-                'hari_raya' => self::holidayMonthlyAmount($get('member_id'), $get('deposit_date')),
-                default => null,
-            });
+        return collect(self::savingsTypeOptions($memberId, $depositDate))
+            ->reject(fn (string $label, string $type): bool => self::typeAlreadyDeposited($type, $memberId, $depositDate, $periodMonth))
+            ->map(function (string $label, string $type) use ($memberId, $depositDate, $previous): array {
+                $prior = $previous->get($type);
+
+                return [
+                    'savings_type' => $type,
+                    'type_label' => $label,
+                    'include' => $prior['include'] ?? in_array($type, self::DEFAULT_INCLUDED_TYPES, true),
+                    'amount' => $prior['amount'] ?? self::prefillAmount($type, $memberId, $depositDate),
+                    'idempotency_key' => $prior['idempotency_key'] ?? (string) Str::uuid(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    public static function effectivePeriod(string $type, mixed $memberId, mixed $depositDate, mixed $periodMonth): ?string
+    {
+        if ($type === 'hari_raya') {
+            $registration = self::activeHolidayRegistration($memberId, $depositDate);
+
+            return $registration === null ? null : sprintf('%04d-01-01', $registration->period_year);
         }
+
+        return blank($periodMonth) ? null : Carbon::parse($periodMonth)->startOfMonth()->toDateString();
+    }
+
+    public static function typeAlreadyDeposited(string $type, mixed $memberId, mixed $depositDate, mixed $periodMonth): bool
+    {
+        if (blank($memberId)) {
+            return false;
+        }
+
+        if ($type === 'pokok') {
+            return SavingsDeposit::hasActivePokok($memberId);
+        }
+
+        $period = self::effectivePeriod($type, $memberId, $depositDate, $periodMonth);
+
+        return $period !== null && SavingsDeposit::hasActiveDeposit($memberId, $type, $period);
+    }
+
+    /**
+     * Label jenis yang DISEMBUNYIKAN karena sudah disetor — untuk catatan di form.
+     *
+     * @return list<string>
+     */
+    public static function hiddenTypeLabels(mixed $memberId, mixed $depositDate, mixed $periodMonth): array
+    {
+        if (blank($memberId)) {
+            return [];
+        }
+
+        return collect(self::savingsTypeOptions($memberId, $depositDate))
+            ->filter(fn (string $label, string $type): bool => self::typeAlreadyDeposited($type, $memberId, $depositDate, $periodMonth))
+            ->values()
+            ->all();
+    }
+
+    private static function prefillAmount(string $type, mixed $memberId, mixed $depositDate): ?string
+    {
+        $settings = app(CooperativeSettings::class);
+
+        $amount = match ($type) {
+            'pokok' => $settings->savings_pokok_amount,
+            'wajib_belanja' => $settings->savings_wajib_belanja_amount,
+            'wajib' => Member::find($memberId)?->mandatory_savings_amount,
+            'hari_raya' => self::holidayMonthlyAmount($memberId, $depositDate),
+            default => null,
+        };
+
+        return blank($amount) ? null : (string) (int) round((float) $amount);
     }
 
     /**
@@ -240,10 +314,8 @@ class SavingsDepositResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Hidden::make('idempotency_key')
-                    ->default(fn (): string => (string) Str::uuid()),
-                Forms\Components\Section::make('Setoran Simpanan')
-                    ->icon('heroicon-o-banknotes')
+                Forms\Components\Section::make('Anggota & Info Setoran')
+                    ->icon('heroicon-o-user')
                     ->columns(2)
                     ->schema([
                         Forms\Components\Select::make('member_id')
@@ -254,56 +326,25 @@ class SavingsDepositResource extends Resource
                             ->preload()
                             ->required()
                             ->live()
-                            ->afterStateUpdated(function (Set $set): void {
-                                $set('savings_type', null);
-                                $set('amount', null);
-                            })
+                            ->afterStateUpdated(fn (Get $get, Set $set) => $set('lines', self::buildLines($get('member_id'), $get('deposit_date'), $get('period_month'))))
                             ->helperText('Anggota pemilik setoran.'),
-                        Forms\Components\Select::make('savings_type')
-                            ->label('Jenis Simpanan')
-                            ->options(fn (Get $get): array => self::savingsTypeOptions($get('member_id'), $get('deposit_date')))
-                            ->required()
-                            ->native(false)
-                            ->live()
-                            ->afterStateUpdated(fn (?string $state, Get $get, Set $set) => self::syncAmount($state, $get, $set))
-                            ->helperText('Hari Raya hanya muncul bila tanggal setor berada di dalam rentang program aktif anggota.'),
-                        MoneyInput::make('amount')
-                            ->label('Nominal')
-                            ->required()
-                            ->dehydrated()
-                            ->disabled(fn (Get $get): bool => in_array($get('savings_type'), self::LOCKED_AMOUNT_TYPES, true))
-                            ->minValue(fn (Get $get): int|float => $get('savings_type') === 'sukarela'
-                                ? (float) app(CooperativeSettings::class)->savings_sukarela_min
-                                : 1)
-                            ->helperText(fn (Get $get): string => match ($get('savings_type')) {
-                                'pokok', 'wajib_belanja', 'hari_raya' => 'Nominal terkunci dari ketentuan koperasi/registrasi.',
-                                'sukarela' => 'Minimal sesuai ketentuan koperasi.',
-                                'wajib' => 'Default dari golongan anggota; boleh disesuaikan.',
-                                default => 'Pilih jenis simpanan dulu.',
-                            }),
                         Forms\Components\DatePicker::make('deposit_date')
                             ->label('Tanggal Setor')
                             ->required()
                             ->default(now())
                             ->maxDate(now())
                             ->live()
-                            ->afterStateUpdated(function (Get $get, Set $set): void {
-                                if ($get('savings_type') === 'hari_raya') {
-                                    self::syncAmount('hari_raya', $get, $set);
-                                }
-                            })
-                            ->rule(fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
-                                if ($get('savings_type') === 'hari_raya'
-                                    && self::activeHolidayRegistration($get('member_id'), $value) === null) {
-                                    $fail('Tidak ada program Hari Raya aktif yang memuat tanggal setor ini untuk anggota tersebut.');
-                                }
-                            }),
+                            ->afterStateUpdated(fn (Get $get, Set $set) => $set('lines', self::buildLines($get('member_id'), $get('deposit_date'), $get('period_month'), $get('lines') ?? [])))
+                            ->helperText('Mengubah tanggal memunculkan/menyembunyikan Hari Raya sesuai rentang program aktif.'),
                         Forms\Components\DatePicker::make('period_month')
                             ->label('Periode (Bulan)')
                             ->displayFormat('F Y')
-                            ->disabled(fn (Get $get): bool => $get('savings_type') === 'hari_raya')
+                            ->default(now()->startOfMonth())
+                            ->required()
+                            ->live()
                             ->dehydrated()
-                            ->helperText('Opsional. Untuk Hari Raya, periode di-set otomatis ke tahun program.'),
+                            ->afterStateUpdated(fn (Get $get, Set $set) => $set('lines', self::buildLines($get('member_id'), $get('deposit_date'), $get('period_month'), $get('lines') ?? [])))
+                            ->helperText('Periode penyetoran. Satu jenis hanya boleh sekali per periode. Untuk Hari Raya, periode otomatis ke tahun program.'),
                         Forms\Components\Select::make('deposit_method')
                             ->label('Metode Setor')
                             ->options(self::DEPOSIT_METHODS)
@@ -327,6 +368,51 @@ class SavingsDepositResource extends Resource
                             ->maxLength(65535)
                             ->columnSpanFull()
                             ->placeholder('Opsional'),
+                    ]),
+                Forms\Components\Section::make('Jenis Simpanan')
+                    ->icon('heroicon-o-banknotes')
+                    ->description('Centang jenis simpanan yang disetor dan sesuaikan nominalnya. Minimal satu jenis dengan nominal lebih dari 0.')
+                    ->visible(fn (Get $get): bool => filled($get('member_id')))
+                    ->schema([
+                        Forms\Components\Placeholder::make('already_deposited_note')
+                            ->hiddenLabel()
+                            ->visible(fn (Get $get): bool => self::hiddenTypeLabels($get('member_id'), $get('deposit_date'), $get('period_month')) !== [])
+                            ->content(fn (Get $get): string => 'Disembunyikan karena sudah disetor untuk periode ini: '
+                                .implode(', ', self::hiddenTypeLabels($get('member_id'), $get('deposit_date'), $get('period_month'))).'.'),
+                        Forms\Components\Repeater::make('lines')
+                            ->hiddenLabel()
+                            ->addable(false)
+                            ->deletable(false)
+                            ->reorderable(false)
+                            ->columns(3)
+                            ->schema([
+                                Forms\Components\Hidden::make('savings_type'),
+                                Forms\Components\Hidden::make('idempotency_key'),
+                                Forms\Components\TextInput::make('type_label')
+                                    ->label('Jenis')
+                                    ->disabled()
+                                    ->dehydrated(false),
+                                Forms\Components\Toggle::make('include')
+                                    ->label('Ikut')
+                                    ->inline(false)
+                                    ->live(),
+                                MoneyInput::make('amount')
+                                    ->label('Nominal')
+                                    ->dehydrated()
+                                    ->disabled(fn (Get $get): bool => in_array($get('savings_type'), self::LOCKED_AMOUNT_TYPES, true))
+                                    // Locked types nominalnya di-derive server-side → tak wajib diisi client.
+                                    ->required(fn (Get $get): bool => (bool) $get('include')
+                                        && ! in_array($get('savings_type'), self::LOCKED_AMOUNT_TYPES, true))
+                                    ->minValue(fn (Get $get): int|float => $get('savings_type') === 'sukarela'
+                                        ? (float) app(CooperativeSettings::class)->savings_sukarela_min
+                                        : 1)
+                                    ->helperText(fn (Get $get): string => match ($get('savings_type')) {
+                                        'pokok', 'wajib_belanja', 'hari_raya' => 'Nominal terkunci dari ketentuan koperasi/registrasi.',
+                                        'sukarela' => 'Minimal sesuai ketentuan koperasi.',
+                                        'wajib' => 'Default dari golongan anggota; boleh disesuaikan.',
+                                        default => '',
+                                    }),
+                            ]),
                     ]),
             ]);
     }

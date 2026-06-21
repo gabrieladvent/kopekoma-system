@@ -21,21 +21,26 @@ class StoreClient extends Model implements HasApiTokensContract
         'name',
         'client_id',
         'client_secret',
+        'client_secret_encrypted',
         'is_active',
         'can_refund',
     ];
 
     /**
-     * `client_secret` jangan pernah terekspos lewat serialisasi/array.
+     * Secret (hash & salinan terenkripsi) jangan pernah terekspos lewat
+     * serialisasi/array.
      *
      * @var list<string>
      */
     protected $hidden = [
         'client_secret',
+        'client_secret_encrypted',
     ];
 
     protected $casts = [
         'client_secret' => 'hashed',
+        // Reversible: di-decrypt untuk copy kredensial (gated password admin).
+        'client_secret_encrypted' => 'encrypted',
         'is_active' => 'boolean',
         'can_refund' => 'boolean',
     ];
