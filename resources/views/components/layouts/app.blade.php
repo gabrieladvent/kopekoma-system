@@ -62,7 +62,7 @@
                                    'text-muted hover:bg-border/40 hover:text-text' => ! $active,
                                ])>
                                 <span @class(['w-0.5 self-stretch rounded-full transition', 'bg-primary' => $active, 'bg-transparent' => ! $active])></span>
-                                <x-ui.icon :name="$icon" class="h-[18px] w-[18px] shrink-0" />
+                                <x-ui.icon :name="$icon" class="h-4.5 w-4.5 shrink-0" />
                                 {{ $label }}
                             </a>
                         @endforeach
@@ -71,12 +71,23 @@
             </nav>
 
             <div class="border-t border-border p-3">
+                @php($u = auth()->user())
                 <div class="flex items-center gap-3 rounded-xl px-3 py-2">
-                    <div class="grid h-9 w-9 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">GA</div>
-                    <div class="min-w-0 leading-tight">
-                        <p class="truncate text-sm font-medium">Gabriel A.</p>
-                        <p class="truncate text-xs text-muted">Pengurus</p>
+                    <div class="grid h-9 w-9 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">
+                        {{ $u ? \Illuminate\Support\Str::of($u->name)->explode(' ')->take(2)->map(fn ($p) => mb_substr($p, 0, 1))->implode('') : 'GA' }}
                     </div>
+                    <div class="min-w-0 leading-tight">
+                        <p class="truncate text-sm font-medium">{{ $u?->name ?? 'Pengguna' }}</p>
+                        <p class="truncate text-xs text-muted">{{ $u?->getRoleNames()->first() ?? 'Anggota' }}</p>
+                    </div>
+                    <form method="POST" action="{{ route('logout') }}" class="ml-auto">
+                        @csrf
+                        <button type="submit"
+                                class="grid h-8 w-8 place-items-center rounded-lg text-muted transition duration-150 ease-out hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none"
+                                aria-label="Keluar">
+                            <svg class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"/></svg>
+                        </button>
+                    </form>
                 </div>
             </div>
         </aside>
