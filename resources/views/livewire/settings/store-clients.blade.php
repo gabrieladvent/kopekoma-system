@@ -19,9 +19,8 @@
                         <tr>
                             <th class="px-4 py-3 text-left">Nama</th>
                             <th class="px-4 py-3 text-left">Client ID</th>
-                            <th class="px-4 py-3 text-center">Aktif</th>
-                            <th class="px-4 py-3 text-center">Refund</th>
-                            <th class="px-4 py-3 text-right">Aksi</th>
+                            <th class="px-4 py-3 text-left">Status</th>
+                            <th class="w-12 px-4 py-3 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -37,40 +36,46 @@
                                         {{ $client->client_id }}
                                     </button>
                                 </td>
-                                <td class="px-4 py-3 text-center">
-                                    <button type="button" wire:click="toggleActive('{{ $client->id }}')"
-                                            @class([
-                                                'relative inline-flex h-5 w-9 items-center rounded-full transition',
-                                                'bg-primary' => $client->is_active,
-                                                'bg-border' => ! $client->is_active,
-                                            ])
-                                            role="switch" aria-checked="{{ $client->is_active ? 'true' : 'false' }}" aria-label="Aktif">
-                                        <span @class(['inline-block h-4 w-4 transform rounded-full bg-white shadow transition', 'translate-x-4' => $client->is_active, 'translate-x-0.5' => ! $client->is_active])></span>
-                                    </button>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <button type="button" wire:click="toggleRefund('{{ $client->id }}')"
-                                            @class([
-                                                'relative inline-flex h-5 w-9 items-center rounded-full transition',
-                                                'bg-secondary' => $client->can_refund,
-                                                'bg-border' => ! $client->can_refund,
-                                            ])
-                                            role="switch" aria-checked="{{ $client->can_refund ? 'true' : 'false' }}" aria-label="Boleh refund">
-                                        <span @class(['inline-block h-4 w-4 transform rounded-full bg-white shadow transition', 'translate-x-4' => $client->can_refund, 'translate-x-0.5' => ! $client->can_refund])></span>
-                                    </button>
+                                <td class="px-4 py-3">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <x-ui.badge :color="$client->is_active ? 'success' : 'neutral'">{{ $client->is_active ? 'Aktif' : 'Nonaktif' }}</x-ui.badge>
+                                        @if ($client->can_refund)<x-ui.badge color="primary">Refund</x-ui.badge>@endif
+                                    </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="flex items-center justify-end gap-1">
-                                        <button type="button" wire:click="regenerate('{{ $client->id }}')"
-                                                wire:confirm="Reset Secret? Secret lama langsung tak berlaku. Token yang sudah terbit tetap valid sampai kedaluwarsa."
-                                                class="rounded-lg px-2.5 py-1.5 text-xs font-medium text-warning transition hover:bg-warning/10">Reset Secret</button>
-                                        @if ($canCopy)
-                                            <button type="button" wire:click="openReveal('{{ $client->id }}')"
-                                                    class="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-border/60 hover:text-text">Copy Kredensial</button>
-                                        @endif
-                                        <button type="button" wire:click="deleteClient('{{ $client->id }}')"
-                                                wire:confirm="Hapus klien {{ $client->name }}? Token yang sudah terbit akan ditolak."
-                                                class="rounded-lg px-2.5 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10">Hapus</button>
+                                    <div class="flex justify-end">
+                                        <x-ui.dropdown>
+                                            <x-ui.dropdown-item icon="power" wire:click="toggleActive('{{ $client->id }}')">
+                                                {{ $client->is_active ? 'Nonaktifkan' : 'Aktifkan' }}
+                                            </x-ui.dropdown-item>
+                                            <x-ui.dropdown-item icon="cash" wire:click="toggleRefund('{{ $client->id }}')">
+                                                {{ $client->can_refund ? 'Larang Refund' : 'Izinkan Refund' }}
+                                            </x-ui.dropdown-item>
+
+                                            <div class="my-1 border-t border-border"></div>
+
+                                            <x-ui.dropdown-item icon="key" variant="warning"
+                                                x-on:click="$dispatch('confirm-action', {
+                                                    title: 'Reset Secret?',
+                                                    message: 'Secret lama langsung tak berlaku. Token yang sudah terbit tetap valid sampai kedaluwarsa.',
+                                                    confirmLabel: 'Reset Secret', variant: 'warning',
+                                                    method: 'regenerate', params: ['{{ $client->id }}'],
+                                                })">Reset Secret</x-ui.dropdown-item>
+
+                                            @if ($canCopy)
+                                                <x-ui.dropdown-item icon="clipboard" wire:click="openReveal('{{ $client->id }}')">Copy Kredensial</x-ui.dropdown-item>
+                                            @endif
+
+                                            <div class="my-1 border-t border-border"></div>
+
+                                            <x-ui.dropdown-item icon="trash" variant="danger"
+                                                x-on:click="$dispatch('confirm-action', {
+                                                    title: 'Hapus klien {{ $client->name }}?',
+                                                    message: 'Token yang sudah terbit akan ditolak.',
+                                                    confirmLabel: 'Hapus', variant: 'danger',
+                                                    method: 'deleteClient', params: ['{{ $client->id }}'],
+                                                })">Hapus</x-ui.dropdown-item>
+                                        </x-ui.dropdown>
                                     </div>
                                 </td>
                             </tr>
@@ -161,4 +166,7 @@
             </div>
         </div>
     </div>
+
+    {{-- Popup konfirmasi reusable (Reset Secret / Hapus) --}}
+    <x-ui.confirm-modal />
 </div>
