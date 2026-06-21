@@ -1,16 +1,4 @@
-<div
-    x-data="{
-        tab: 'tampilan',
-        toasts: [],
-        pushToast(e) {
-            const id = Date.now();
-            this.toasts.push({ id, type: e.detail.type || 'success', message: e.detail.message });
-            setTimeout(() => this.toasts = this.toasts.filter(t => t.id !== id), 4000);
-        },
-    }"
-    @toast.window="pushToast($event)"
-    class="space-y-6"
->
+<div x-data="{ tab: 'tampilan' }" class="space-y-6">
     {{-- Header --}}
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -182,15 +170,6 @@
         <livewire:settings.store-clients />
     </div>
 
-    {{-- Toasts --}}
-    <div class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2">
-        <template x-for="t in toasts" :key="t.id">
-            <div x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
-                 class="pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-surface p-4 shadow-lg"
-                 :class="t.type === 'danger' ? 'border-danger/30' : 'border-success/30'">
-                <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full" :class="t.type === 'danger' ? 'bg-danger' : 'bg-success'"></span>
-                <p class="text-sm text-text" x-text="t.message"></p>
-            </div>
-        </template>
-    </div>
+    {{-- Toast (tengah atas) --}}
+    <x-ui.toast-host />
 </div>
