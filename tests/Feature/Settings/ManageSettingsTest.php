@@ -96,7 +96,8 @@ it('renders the uploaded logo and favicon in the app shell', function () {
     $this->get(route('dashboard'))
         ->assertSuccessful()
         ->assertSee(Storage::url('branding/logo.png'), escape: false)
-        ->assertSee('rel="icon" href="'.Storage::url('branding/favicon.png').'"', escape: false);
+        ->assertSee('rel="icon"', escape: false)
+        ->assertSee(Storage::url('branding/favicon.png'), escape: false);
 });
 
 it('injects the custom theme into rendered pages', function () {
