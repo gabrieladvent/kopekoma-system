@@ -2,6 +2,7 @@
 
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
+use App\Livewire\Master\Grades;
 use App\Livewire\Settings\ManageSettings;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +27,10 @@ Route::middleware('auth')->group(function () {
 
         return redirect()->route('login');
     })->name('logout');
+
+    Route::get('/master/golongan', Grades::class)
+        ->middleware('can:view_any_grade')
+        ->name('master.grades');
 
     Route::get('/settings', ManageSettings::class)
         ->middleware('can:manage_settings')

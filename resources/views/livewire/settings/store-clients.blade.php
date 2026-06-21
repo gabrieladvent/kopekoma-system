@@ -87,7 +87,7 @@
     </x-ui.card>
 
     {{-- Modal: Tambah Klien --}}
-    <div x-data="{ show: @entangle('showCreate') }" x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div x-data="{ show: @entangle('showCreate').live }" x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div x-show="show" x-transition.opacity class="absolute inset-0 bg-black/40" @click="show = false"></div>
         <div x-show="show" x-transition
              @keydown.escape.window="show = false"
@@ -111,7 +111,7 @@
     </div>
 
     {{-- Modal: Verifikasi password untuk reveal --}}
-    <div x-data="{ show: @entangle('showReveal') }" x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div x-data="{ show: @entangle('showReveal').live }" x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div x-show="show" x-transition.opacity class="absolute inset-0 bg-black/40" @click="show = false"></div>
         <div x-show="show" x-transition
              @keydown.escape.window="show = false"
