@@ -23,9 +23,7 @@
     </script>
 
     {{-- Custom theme dari Settings (override primary/secondary). Default = token CSS. --}}
-    @isset($brandPrimary)
-        <style>:root{--color-primary:{{ $brandPrimary }};@isset($brandSecondary)--color-secondary:{{ $brandSecondary }};@endisset}</style>
-    @endisset
+    <x-brand-theme />
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet">
@@ -47,15 +45,16 @@
 
             <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-4 text-sm">
                 @php($groups = [
-                    'Utama' => [['Dashboard', 'home', true]],
-                    'Keuangan' => [['Anggota', 'users', false], ['Simpanan', 'wallet', false], ['Pinjaman', 'cash', false], ['Laporan', 'chart', false]],
-                    'Sistem' => [['Pengaturan', 'cog', false]],
+                    'Utama' => [['Dashboard', 'home', 'dashboard']],
+                    'Keuangan' => [['Anggota', 'users', null], ['Simpanan', 'wallet', null], ['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
+                    'Sistem' => [['Pengaturan', 'cog', 'settings']],
                 ])
                 @foreach ($groups as $group => $items)
                     <div class="space-y-1">
                         <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/70">{{ $group }}</p>
-                        @foreach ($items as [$label, $icon, $active])
-                            <a href="#"
+                        @foreach ($items as [$label, $icon, $route])
+                            @php($active = $route && request()->routeIs($route))
+                            <a href="{{ $route ? route($route) : '#' }}" @if($route) wire:navigate @endif
                                @class([
                                    'group flex items-center gap-3 rounded-xl px-3 py-2 font-medium transition duration-150 ease-out',
                                    'bg-primary/10 text-primary' => $active,

@@ -2,17 +2,16 @@
 
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
+use App\Livewire\Settings\ManageSettings;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return redirect()->route('filament.admin.pages.dashboard');
+    return redirect()->route('login');
 });
 
-// Showcase design system Livewire — acuan visual komponen <x-ui.*>.
 Route::view('/styleguide', 'styleguide')->name('styleguide');
 
-// --- Area Livewire (auth sendiri, terpisah dari panel Filament) ---
 Route::middleware('guest')->group(function () {
     Route::get('/login', Login::class)->name('login');
 });
@@ -27,4 +26,8 @@ Route::middleware('auth')->group(function () {
 
         return redirect()->route('login');
     })->name('logout');
+
+    Route::get('/settings', ManageSettings::class)
+        ->middleware('can:manage_settings')
+        ->name('settings');
 });

@@ -19,9 +19,7 @@
         })();
     </script>
 
-    @isset($brandPrimary)
-        <style>:root{--color-primary:{{ $brandPrimary }};@isset($brandSecondary)--color-secondary:{{ $brandSecondary }};@endisset}</style>
-    @endisset
+    <x-brand-theme />
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet">

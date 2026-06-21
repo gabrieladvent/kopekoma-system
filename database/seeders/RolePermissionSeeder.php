@@ -36,6 +36,7 @@ class RolePermissionSeeder extends Seeder
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
         'export_savings_recap',
+        'manage_settings',
     ];
 
     private const CUSTOM_ADMIN_ONLY = [
