@@ -63,7 +63,6 @@ class SavingsDepositResource extends Resource
 
     public const LOCKED_AMOUNT_TYPES = ['pokok', 'wajib_belanja', 'hari_raya'];
 
-    /** Jenis yang dicentang otomatis di form setoran (recurring). */
     public const DEFAULT_INCLUDED_TYPES = ['wajib', 'hari_raya'];
 
     public static function activeHolidayRegistration(mixed $memberId, mixed $depositDate): ?MemberHolidaySaving
@@ -144,10 +143,6 @@ class SavingsDepositResource extends Resource
             ->all();
     }
 
-    /**
-     * Periode efektif penyimpanan untuk satu jenis: hari_raya = tahun program
-     * (YYYY-01-01) bila terdaftar; jenis lain = bulan periode terpilih.
-     */
     public static function effectivePeriod(string $type, mixed $memberId, mixed $depositDate, mixed $periodMonth): ?string
     {
         if ($type === 'hari_raya') {
@@ -159,10 +154,6 @@ class SavingsDepositResource extends Resource
         return blank($periodMonth) ? null : Carbon::parse($periodMonth)->startOfMonth()->toDateString();
     }
 
-    /**
-     * Jenis sudah disetor untuk periode ini (tak boleh diinput lagi)? Pokok dicek
-     * lintas periode (sekali seumur keanggotaan); jenis lain per periode-bulan.
-     */
     public static function typeAlreadyDeposited(string $type, mixed $memberId, mixed $depositDate, mixed $periodMonth): bool
     {
         if (blank($memberId)) {
@@ -207,11 +198,6 @@ class SavingsDepositResource extends Resource
             default => null,
         };
 
-        // Normalisasi ke string bilangan bulat. Cast `decimal:2` mengembalikan
-        // "150000.00"; prefill di-inject via $set('lines', ...) sehingga
-        // formatStateUsing MoneyInput TIDAK berjalan, dan stripCharacters('.')
-        // saat submit menghapus titik desimal itu — "150000.00" -> "15000000"
-        // (100x). Buang pecahan di sumbernya agar tak ada titik yang lolos.
         return blank($amount) ? null : (string) (int) round((float) $amount);
     }
 

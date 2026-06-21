@@ -17,7 +17,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
 {
     protected static string $resource = SavingsDepositResource::class;
 
-    /** Metadata setoran yang dipakai bersama semua jenis dalam satu proses. */
     private const SHARED_FIELDS = [
         'member_id',
         'deposit_date',
@@ -41,7 +40,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
     {
         $shared = Arr::only($data, self::SHARED_FIELDS);
 
-        // Normalisasi periode ke awal bulan agar konsisten dgn cek "1x per periode".
         if (filled($shared['period_month'] ?? null)) {
             $shared['period_month'] = Carbon::parse($shared['period_month'])->startOfMonth()->toDateString();
         }
@@ -52,8 +50,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
                     return false;
                 }
 
-                // Locked types (pokok/wajib_belanja/hari_raya) nominalnya di-derive
-                // server-side, jadi tak bergantung nilai (disabled) dari client.
                 if (in_array($line['savings_type'] ?? null, SavingsDepositResource::LOCKED_AMOUNT_TYPES, true)) {
                     return true;
                 }
@@ -79,8 +75,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
             throw new Halt;
         }
 
-        // Integritas Hari Raya: hanya boleh bila ada program aktif yang memuat
-        // tanggal setor (di UI baris ini tak muncul; ini menjaga jalur tamper).
         foreach ($lines as $line) {
             if (($line['savings_type'] ?? null) === 'hari_raya'
                 && SavingsDepositResource::activeHolidayRegistration($line['member_id'] ?? null, $line['deposit_date'] ?? null) === null) {
@@ -94,8 +88,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
             }
         }
 
-        // Pertahanan server-side aturan "1x per periode": buang jenis yang sudah
-        // disetor (di UI sudah disembunyikan; ini menjaga form basi / tamper).
         [$toCreate, $skippedDone] = collect($lines)->partition(
             fn (array $line): bool => ! SavingsDepositResource::typeAlreadyDeposited(
                 $line['savings_type'],
@@ -108,8 +100,8 @@ class CreateSavingsDeposit extends BaseCreateRecord
         $skippedDoneCount = $skippedDone->count();
 
         if ($toCreate->isEmpty()) {
-            // Semua jenis ternyata sudah disetor → tak ada yang dibuat.
             $this->createdCount = 0;
+
             $this->duplicateCount = $skippedDoneCount;
 
             return SavingsDeposit::query()
@@ -121,9 +113,9 @@ class CreateSavingsDeposit extends BaseCreateRecord
         $result = app(RecordMemberSavingsDeposits::class)($toCreate->values()->all());
 
         $this->createdCount = count($result['created']);
+
         $this->duplicateCount = $result['duplicates'] + $skippedDoneCount;
 
-        // Semua baris ternyata duplikat (submit ganda) → kembalikan baris yang sudah ada.
         if ($result['created'] === []) {
             return SavingsDeposit::query()
                 ->where('member_id', $shared['member_id'])

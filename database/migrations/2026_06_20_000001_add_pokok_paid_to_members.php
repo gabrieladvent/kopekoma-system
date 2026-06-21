@@ -10,12 +10,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('members', function (Blueprint $table) {
-            // Simpanan Pokok dibayar sekali seumur keanggotaan (saat masuk).
-            // `true` → form & batch menyembunyikan/mengunci jenis Pokok.
             $table->boolean('pokok_paid')->default(false)->after('mandatory_savings_amount');
         });
 
-        // Backfill: anggota yang sudah punya setoran pokok AKTIF (net > 0) → true.
         $paidMemberIds = DB::table('savings_deposits')
             ->where('savings_type', 'pokok')
             ->groupBy('member_id')

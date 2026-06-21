@@ -46,7 +46,6 @@ class ManageSettings extends Page implements HasForms, HasTable
 
     protected static string $view = 'filament.pages.manage-settings';
 
-    /** Ability sangat sensitif (default super_admin): reveal/copy secret klien. */
     public const COPY_SECRET_PERMISSION = 'copy_store_client_secret';
 
     public ?array $data = [];
@@ -54,7 +53,9 @@ class ManageSettings extends Page implements HasForms, HasTable
     public function mount(): void
     {
         $general = app(GeneralSettings::class);
+
         $mail = app(MailSettings::class);
+
         $coop = app(CooperativeSettings::class);
 
         $this->form->fill([
@@ -300,8 +301,6 @@ class ManageSettings extends Page implements HasForms, HasTable
                     ->label('Copy Kredensial')
                     ->icon('heroicon-o-clipboard-document')
                     ->color('gray')
-                    // Hanya admin berizin, dan hanya bila salinan terenkripsi ada
-                    // (klien lama perlu Reset Secret dulu untuk mengisinya).
                     ->visible(fn (StoreClient $record): bool => (auth()->user()?->can(self::COPY_SECRET_PERMISSION) ?? false)
                         && filled($record->client_secret_encrypted))
                     ->modalHeading('Copy Kredensial Klien')
@@ -322,9 +321,6 @@ class ManageSettings extends Page implements HasForms, HasTable
             ]);
     }
 
-    /**
-     * Tampilkan kredensial SEKALI — secret tak bisa dilihat lagi setelah ini.
-     */
     private function notifyCredentials(string $clientId, string $secret): void
     {
         Notification::make()
@@ -339,13 +335,9 @@ class ManageSettings extends Page implements HasForms, HasTable
             ->send();
     }
 
-    /**
-     * Reveal + salin kredensial setelah password admin terverifikasi. Aksi
-     * sensitif → dicatat di audit (siapa, klien apa, kapan).
-     */
     private function revealCredentials(StoreClient $record): void
     {
-        $secret = $record->client_secret_encrypted; // di-decrypt otomatis oleh cast
+        $secret = $record->client_secret_encrypted;
 
         if (blank($secret)) {
             Notification::make()
@@ -357,7 +349,6 @@ class ManageSettings extends Page implements HasForms, HasTable
             return;
         }
 
-        // Salin ke clipboard lewat event browser (listener Alpine di view).
         $this->dispatch('copy-credential', text: "Client ID: {$record->client_id}\nClient Secret: {$secret}");
 
         activity()
@@ -416,10 +407,6 @@ class ManageSettings extends Page implements HasForms, HasTable
             ->send();
     }
 
-    /**
-     * Apply the SMTP values currently in the form (even if unsaved) and send a
-     * test email so the admin can verify the configuration immediately.
-     */
     private function sendTestEmail(string $recipient): void
     {
         $data = $this->form->getState();

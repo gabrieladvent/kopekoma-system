@@ -28,12 +28,6 @@ class BatchSalaryDeduction extends Page implements HasForms
 
     public const PERMISSION = 'access_batch_salary_deduction';
 
-    /**
-     * Jenis simpanan tetap yang muncul di tiap baris anggota: `wajib` (nominal
-     * per anggota, editable) + bernominal tetap dari ketentuan koperasi.
-     * `hari_raya` ditambahkan per anggota HANYA bila ada program aktif di periode.
-     * Sukarela dikecualikan (voluntary, bukan potong gaji).
-     */
     public const BATCH_SAVINGS_TYPES = ['wajib', 'pokok', 'wajib_belanja'];
 
     protected static ?string $title = 'Batch Potong Gaji per OPD';
@@ -69,7 +63,9 @@ class BatchSalaryDeduction extends Page implements HasForms
         abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
 
         $state = $this->form->getState();
+
         $agency = Agency::findOrFail($state['agency_id']);
+
         $period = Carbon::parse($state['period_month'])->startOfMonth()->toDateString();
 
         $deposits = SavingsDeposit::query()
@@ -96,6 +92,7 @@ class BatchSalaryDeduction extends Page implements HasForms
 
         return response()->streamDownload(function () use ($deposits): void {
             $out = fopen('php://output', 'w');
+
             fputcsv($out, ['No. Transaksi', 'No. Anggota', 'Nama', 'Nominal', 'Tanggal Setor', 'Periode']);
 
             foreach ($deposits as $d) {
@@ -240,7 +237,9 @@ class BatchSalaryDeduction extends Page implements HasForms
     protected function buildMemberTypeLines(Member $member, mixed $period): array
     {
         $settings = app(CooperativeSettings::class);
+
         $registration = $this->holidayRegistrationFor($member->getKey(), $period);
+
         $periodDate = filled($period) ? Carbon::parse($period)->startOfMonth()->toDateString() : null;
 
         $lines = [
@@ -255,13 +254,12 @@ class BatchSalaryDeduction extends Page implements HasForms
 
         return array_map(function (array $line) use ($member, $periodDate, $registration): array {
             $type = $line['savings_type'];
+
             $done = $this->typeAlreadyDeposited($member->getKey(), $type, $periodDate, $registration);
 
             return [
                 'savings_type' => $type,
-                // Beri penanda jelas pada baris yang sudah disetor.
                 'type_label' => SavingsDepositResource::SAVINGS_TYPES[$type].($done ? ' — sudah disetor' : ''),
-                // Sudah disetor → tak tercentang & terkunci (lihat form).
                 'include' => ! $done && in_array($type, SavingsDepositResource::DEFAULT_INCLUDED_TYPES, true),
                 'amount' => $line['amount'],
                 'done' => $done,
@@ -269,10 +267,6 @@ class BatchSalaryDeduction extends Page implements HasForms
         }, $lines);
     }
 
-    /**
-     * Jenis sudah disetor untuk periode ini? Pokok dicek lintas periode (sekali
-     * seumur keanggotaan); hari_raya per tahun program; lainnya per periode-bulan.
-     */
     protected function typeAlreadyDeposited(string $memberId, string $type, ?string $periodDate, ?MemberHolidaySaving $registration): bool
     {
         if ($type === 'pokok') {
@@ -298,6 +292,7 @@ class BatchSalaryDeduction extends Page implements HasForms
     protected function depositForType(string $memberId, string $type, string $period, ?string $rowAmount): ?array
     {
         $settings = app(CooperativeSettings::class);
+
         $periodDate = Carbon::parse($period)->startOfMonth()->toDateString();
 
         return match ($type) {
@@ -346,6 +341,7 @@ class BatchSalaryDeduction extends Page implements HasForms
         $state = $this->form->getState();
 
         $agency = Agency::findOrFail($state['agency_id']);
+
         $period = $state['period_month'];
 
         $rows = collect($state['rows'] ?? [])
