@@ -85,6 +85,20 @@ it('previews and stores an uploaded logo', function () {
     Storage::disk('public')->assertExists($path);
 });
 
+it('renders the uploaded logo and favicon in the app shell', function () {
+    $general = app(GeneralSettings::class);
+    $general->logo_path = 'branding/logo.png';
+    $general->favicon_path = 'branding/favicon.png';
+    $general->save();
+
+    asSuperAdmin();
+
+    $this->get(route('dashboard'))
+        ->assertSuccessful()
+        ->assertSee(Storage::url('branding/logo.png'), escape: false)
+        ->assertSee('rel="icon" href="'.Storage::url('branding/favicon.png').'"', escape: false);
+});
+
 it('injects the custom theme into rendered pages', function () {
     $general = app(GeneralSettings::class);
     $general->theme_primary = '#ff0000';

@@ -41,10 +41,7 @@
 
         <div class="w-full max-w-sm">
             {{-- Logo (mobile) --}}
-            <div class="mb-8 flex items-center gap-2.5 lg:hidden">
-                <span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-gradient text-sm font-bold text-white">K</span>
-                <span class="text-sm font-bold tracking-tight">KOPEKOMA</span>
-            </div>
+            <x-app-logo class="mb-8 lg:hidden" />
 
             <h1 class="text-2xl font-bold tracking-tight">Masuk ke akun</h1>
             <p class="mt-1.5 text-sm text-muted">Selamat datang kembali. Silakan masukkan kredensial Anda.</p>
