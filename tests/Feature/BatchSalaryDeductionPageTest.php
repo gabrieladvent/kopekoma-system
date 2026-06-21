@@ -53,7 +53,10 @@ it('loads active members of the chosen OPD with per-member savings lines, wajib 
 
     $wajib = collect($rows[0]['lines'])->firstWhere('savings_type', 'wajib');
 
-    expect($wajib['amount'])->toBe('75000.00')
+    // Nominal wajib dibaca sebagai bilangan bulat bersih (cast WholeRupiah) —
+    // BUKAN "75000.00". String desimal akan jadi 100x bila titiknya di-strip
+    // oleh MoneyInput. Lihat App\Casts\WholeRupiah.
+    expect($wajib['amount'])->toBe('75000')
         ->and($wajib['include'])->toBeTrue()
         // pokok & wajib_belanja muncul tapi default tak dicentang.
         ->and(collect($rows[0]['lines'])->pluck('savings_type')->all())

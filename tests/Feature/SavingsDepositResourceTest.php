@@ -368,6 +368,39 @@ it('allows overriding the wajib amount (prefilled from grade snapshot, editable)
     expect((float) $deposit->amount)->toBe(70000.0);
 });
 
+it('prefills the wajib amount as a whole-number string without a decimal point', function () {
+    // Regresi: cast decimal:2 mengembalikan "150000.00". Bila titik desimal lolos
+    // ke MoneyInput (stripCharacters('.')), nominal jadi 100x ("15000000").
+    $member = Member::factory()->create(['mandatory_savings_amount' => 150000]);
+
+    $lines = SavingsDepositResource::buildLines($member->id, now()->toDateString());
+    $wajib = collect($lines)->firstWhere('savings_type', 'wajib');
+
+    expect($wajib['amount'])->toBe('150000');
+});
+
+it('stores the prefilled wajib amount as 150000, not inflated 100x', function () {
+    $member = Member::factory()->create(['mandatory_savings_amount' => 150000]);
+
+    // Tanpa override manual: pakai nominal prefill dari grade snapshot apa adanya.
+    $prefilled = SavingsDepositResource::buildLines($member->id, now()->toDateString());
+    $wajibLine = collect($prefilled)->firstWhere('savings_type', 'wajib');
+
+    Livewire::test(CreateSavingsDeposit::class)
+        ->fillForm([
+            'member_id' => $member->id,
+            'deposit_date' => now()->toDateString(),
+            'deposit_method' => 'setor_sendiri',
+            'deposited_by' => 'anggota',
+            'lines' => [lineFor('wajib', $wajibLine['amount'])],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $deposit = SavingsDeposit::where('member_id', $member->id)->where('savings_type', 'wajib')->first();
+    expect((float) $deposit->amount)->toBe(150000.0);
+});
+
 it('rejects a sukarela amount below the configured minimum', function () {
     $settings = app(CooperativeSettings::class);
     $settings->savings_sukarela_min = 50000;

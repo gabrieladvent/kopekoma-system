@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\WholeRupiah;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,7 +29,7 @@ class MemberHolidaySaving extends Model
         'period_year' => 'integer',
         'start_date' => 'date',
         'end_date' => 'date',
-        'monthly_amount' => 'decimal:2',
+        'monthly_amount' => WholeRupiah::class,
         'is_active' => 'boolean',
     ];
 

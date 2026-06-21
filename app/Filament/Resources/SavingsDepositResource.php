@@ -199,15 +199,20 @@ class SavingsDepositResource extends Resource
     {
         $settings = app(CooperativeSettings::class);
 
-        return match ($type) {
-            'pokok' => (string) $settings->savings_pokok_amount,
-            'wajib_belanja' => (string) $settings->savings_wajib_belanja_amount,
-            'wajib' => ($amount = Member::find($memberId)?->mandatory_savings_amount) === null
-                ? null
-                : (string) $amount,
+        $amount = match ($type) {
+            'pokok' => $settings->savings_pokok_amount,
+            'wajib_belanja' => $settings->savings_wajib_belanja_amount,
+            'wajib' => Member::find($memberId)?->mandatory_savings_amount,
             'hari_raya' => self::holidayMonthlyAmount($memberId, $depositDate),
             default => null,
         };
+
+        // Normalisasi ke string bilangan bulat. Cast `decimal:2` mengembalikan
+        // "150000.00"; prefill di-inject via $set('lines', ...) sehingga
+        // formatStateUsing MoneyInput TIDAK berjalan, dan stripCharacters('.')
+        // saat submit menghapus titik desimal itu — "150000.00" -> "15000000"
+        // (100x). Buang pecahan di sumbernya agar tak ada titik yang lolos.
+        return blank($amount) ? null : (string) (int) round((float) $amount);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\WholeRupiah;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
@@ -19,7 +20,7 @@ class Grade extends Model
     ];
 
     protected $casts = [
-        'mandatory_savings_amount' => 'decimal:2',
+        'mandatory_savings_amount' => WholeRupiah::class,
         'is_active' => 'boolean',
     ];
 
