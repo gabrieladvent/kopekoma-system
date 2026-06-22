@@ -69,15 +69,18 @@ Bangun design system sebagai lapisan presentasi mandiri, **berdampingan** dengan
 
 | Phase | Behavior | Status |
 |-------|----------|--------|
-| 0 | Token + `app.css` + font Plus Jakarta Sans terpasang | Pending |
-| 1 | App shell (`layouts.app`) + dark mode toggle | Pending |
+| 0 | Token + `app.css` + font Plus Jakarta Sans terpasang | Done |
+| 1 | App shell (`layouts.app`) + dark mode toggle | Active |
 | 2 | Komponen `<x-ui.*>` lengkap + halaman `/styleguide` | Pending |
 | 3 | Custom theme dari Settings (inject CSS var) | Pending |
 
 ### Phase Transition Checklist
 
-**Phase 0 → 1:**
-- [ ] `npm run build` sukses; font ter-load; token terbaca sebagai utility.
+**Phase 0 → 1:** ✅ Validated 2026-06-22
+- [x] `npm run build` sukses; font ter-load; token terbaca sebagai utility.
+  <!-- validated: vite v7.3.5 build OK (app-*.css 107.7kB); Bunny Fonts plus-jakarta-sans di app/guest layout; utilities .bg-primary/.text-muted/.border-border/.bg-grid/.bg-brand-gradient ter-generate -->
+  <!-- catatan: fresh clone perlu `rm -rf node_modules package-lock.json && npm install` dulu (bug rollup optional-deps @rollup/rollup-darwin-arm64) -->
+
 
 **Phase 1 → 2:**
 - [ ] Shell render rapi di light & dark; toggle persist; reduced-motion dihormati.
@@ -114,4 +117,4 @@ Bangun design system sebagai lapisan presentasi mandiri, **berdampingan** dengan
 
 - Apakah Settings primary/secondary global (per koperasi) atau per-user? (Asumsi awal: **global**, satu identitas.)
 - Navigasi Livewire baru hidup di prefix route apa, dan bagaimana koeksistensi dengan panel Filament `/admin` selama transisi?
-- Self-host Plus Jakarta Sans (offline-friendly) atau Google Fonts CDN?
+- ~~Self-host Plus Jakarta Sans (offline-friendly) atau Google Fonts CDN?~~ → **Resolved (2026-06-22):** pakai **Bunny Fonts CDN** (`fonts.bunny.net`, privacy-friendly) di app & guest layout. Self-host bisa ditinjau ulang bila butuh offline-friendly.

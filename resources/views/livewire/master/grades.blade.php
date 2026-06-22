@@ -84,7 +84,7 @@
                             <td class="px-5 py-4">
                                 <div class="flex justify-end">
                                     <x-ui.dropdown>
-                                        <x-ui.dropdown-item icon="eye" wire:click="show({{ $grade->id }})">Lihat Detail</x-ui.dropdown-item>
+                                        <x-ui.dropdown-item icon="eye" :href="route('master.grades.show', $grade)" wire:navigate>Lihat Detail</x-ui.dropdown-item>
 
                                         @can('update_grade')
                                             <x-ui.dropdown-item icon="pencil" wire:click="edit({{ $grade->id }})">Edit</x-ui.dropdown-item>
@@ -228,109 +228,6 @@
                     </x-ui.button>
                 </div>
             </form>
-        </div>
-    </div>
-
-    {{-- Modal: Detail (info + audit trail). .live agar tutup client langsung sinkron ke server. --}}
-    <div x-data="{ show: @entangle('showDetail').live }" x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div x-show="show" x-transition.opacity class="absolute inset-0 bg-black/40" @click="show = false"></div>
-        <div x-show="show"
-             x-transition:enter="transition ease-out duration-300"
-             x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-             x-transition:leave="transition ease-in duration-200"
-             x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
-             @keydown.escape.window="show = false"
-             role="dialog" aria-modal="true"
-             class="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
-            @if ($detail)
-                <div class="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <x-ui.badge color="primary" class="font-mono">{{ $detail->code }}</x-ui.badge>
-                            <x-ui.badge :color="$detail->is_active ? 'success' : 'neutral'">{{ $detail->is_active ? 'Aktif' : 'Nonaktif' }}</x-ui.badge>
-                        </div>
-                        <h3 class="mt-2 text-lg font-bold tracking-tight text-text">{{ $detail->name }}</h3>
-                    </div>
-                    <button type="button" @click="show = false" aria-label="Tutup"
-                            class="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-border/50 hover:text-text">
-                        <x-ui.icon name="x" class="h-5 w-5" />
-                    </button>
-                </div>
-
-                {{-- Tabs --}}
-                <div class="flex gap-6 border-b border-border px-6">
-                    @foreach (['info' => 'Info', 'audit' => 'Audit Trail'] as $tab => $label)
-                        <button type="button" wire:click="$set('detailTab', '{{ $tab }}')"
-                                @class([
-                                    '-mb-px border-b-2 py-3 text-sm font-medium transition',
-                                    'border-primary text-primary' => $detailTab === $tab,
-                                    'border-transparent text-muted hover:text-text' => $detailTab !== $tab,
-                                ])>{{ $label }}</button>
-                    @endforeach
-                </div>
-
-                <div class="overflow-y-auto p-6">
-                    {{-- Tab Info --}}
-                    @if ($detailTab === 'info')
-                        <dl class="grid grid-cols-2 gap-x-6 gap-y-5">
-                            <div class="col-span-2">
-                                <dt class="text-xs font-medium uppercase tracking-wide text-muted">Simpanan Wajib / Bulan</dt>
-                                <dd class="mt-1 text-3xl font-bold tabular-nums text-text">Rp {{ number_format((int) $detail->mandatory_savings_amount, 0, ',', '.') }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-xs font-medium uppercase tracking-wide text-muted">Jumlah Anggota</dt>
-                                <dd class="mt-1 text-sm font-semibold text-text">{{ number_format($detail->members_count, 0, ',', '.') }} anggota</dd>
-                            </div>
-                            <div>
-                                <dt class="text-xs font-medium uppercase tracking-wide text-muted">Status</dt>
-                                <dd class="mt-1 text-sm font-medium text-text">{{ $detail->is_active ? 'Aktif' : 'Nonaktif' }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-xs font-medium uppercase tracking-wide text-muted">Dibuat</dt>
-                                <dd class="mt-1 text-sm text-text">{{ $detail->created_at?->translatedFormat('d M Y H:i') }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-xs font-medium uppercase tracking-wide text-muted">Diperbarui</dt>
-                                <dd class="mt-1 text-sm text-text">{{ $detail->updated_at?->translatedFormat('d M Y H:i') }}</dd>
-                            </div>
-                        </dl>
-                    @else
-                        {{-- Tab Audit Trail --}}
-                        @if ($activities->isEmpty())
-                            <div class="flex flex-col items-center justify-center py-10 text-center">
-                                <div class="grid h-12 w-12 place-items-center rounded-2xl bg-border/60 text-muted">
-                                    <x-ui.icon name="clipboard" class="h-6 w-6" />
-                                </div>
-                                <p class="mt-3 text-sm text-muted">Belum ada aktivitas tercatat.</p>
-                            </div>
-                        @else
-                            <ol class="relative space-y-5 border-l border-border pl-5">
-                                @foreach ($activities as $activity)
-                                    @php($color = \App\Livewire\Master\Grades::EVENT_COLORS[$activity->event] ?? 'neutral')
-                                    <li class="relative" wire:key="act-{{ $activity->id }}">
-                                        <span @class([
-                                            'absolute -left-[1.4rem] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-surface',
-                                            'bg-success' => $color === 'success',
-                                            'bg-warning' => $color === 'warning',
-                                            'bg-danger' => $color === 'danger',
-                                            'bg-primary' => $color === 'primary',
-                                            'bg-muted' => $color === 'neutral',
-                                        ])></span>
-                                        <div class="flex items-center gap-2">
-                                            <x-ui.badge :color="$color">{{ \App\Livewire\Master\Grades::EVENT_LABELS[$activity->event] ?? ucfirst((string) $activity->event) }}</x-ui.badge>
-                                            <span class="text-xs text-muted">{{ $activity->created_at?->translatedFormat('d M Y H:i') }}</span>
-                                        </div>
-                                        @if ($activity->description)
-                                            <p class="mt-1 text-sm text-text">{{ $activity->description }}</p>
-                                        @endif
-                                        <p class="mt-0.5 text-xs text-muted">oleh {{ $activity->causer?->name ?? 'Sistem' }}</p>
-                                    </li>
-                                @endforeach
-                            </ol>
-                        @endif
-                    @endif
-                </div>
-            @endif
         </div>
     </div>
 

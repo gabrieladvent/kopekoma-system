@@ -7,12 +7,18 @@
 <div
     x-data="{
         toasts: [],
-        push(e) {
+        add(type, message) {
             const id = Date.now() + Math.random();
-            this.toasts.push({ id, type: e.detail.type || 'success', message: e.detail.message });
+            this.toasts.push({ id, type: type || 'success', message });
             setTimeout(() => this.remove(id), 4000);
         },
+        push(e) { this.add(e.detail.type, e.detail.message); },
         remove(id) { this.toasts = this.toasts.filter(t => t.id !== id); },
+        init() {
+            @if (session()->has('toast'))
+                this.add(@js(session('toast.type')), @js(session('toast.message')));
+            @endif
+        },
     }"
     @toast.window="push($event)"
     class="pointer-events-none fixed inset-x-0 top-4 z-70 flex flex-col items-center gap-2.5 px-4"

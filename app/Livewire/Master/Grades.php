@@ -13,21 +13,6 @@ class Grades extends Component
 {
     use WithPagination;
 
-    /** Label & warna event activity-log (mirror App\Filament\Concerns\FormatsActivity). */
-    public const EVENT_LABELS = [
-        'created' => 'Dibuat',
-        'updated' => 'Diubah',
-        'deleted' => 'Dihapus',
-        'restored' => 'Dipulihkan',
-    ];
-
-    public const EVENT_COLORS = [
-        'created' => 'success',
-        'updated' => 'warning',
-        'deleted' => 'danger',
-        'restored' => 'primary',
-    ];
-
     #[Url(as: 'q')]
     public string $search = '';
 
@@ -46,13 +31,6 @@ class Grades extends Component
     public ?int $mandatory_savings_amount = null;
 
     public bool $is_active = true;
-
-    // Detail modal
-    public bool $showDetail = false;
-
-    public ?int $detailId = null;
-
-    public string $detailTab = 'info';
 
     public function mount(): void
     {
@@ -155,16 +133,6 @@ class Grades extends Component
         $this->dispatch('toast', type: 'success', message: 'Golongan dihapus.');
     }
 
-    public function show(int $id): void
-    {
-        $grade = Grade::findOrFail($id);
-        $this->authorize('view', $grade);
-
-        $this->detailId = $grade->id;
-        $this->detailTab = 'info';
-        $this->showDetail = true;
-    }
-
     public function generateCode(): void
     {
         $this->code = $this->makeCode();
@@ -200,15 +168,8 @@ class Grades extends Component
             ->orderBy('code')
             ->paginate(10);
 
-        $detail = $this->detailId ? Grade::withCount('members')->find($this->detailId) : null;
-        $activities = $detail
-            ? $detail->activities()->with('causer')->latest()->limit(50)->get()
-            : collect();
-
         return view('livewire.master.grades', [
             'grades' => $grades,
-            'detail' => $detail,
-            'activities' => $activities,
         ])->layout('components.layouts.app', ['title' => 'Master Data Golongan']);
     }
 }
