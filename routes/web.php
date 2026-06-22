@@ -9,6 +9,14 @@ use App\Livewire\Master\Grade\Grades;
 use App\Livewire\Master\Member\MemberDetail;
 use App\Livewire\Master\Member\MemberForm;
 use App\Livewire\Master\Member\Members;
+use App\Livewire\Savings\Holiday\HolidayRegistrationDetail;
+use App\Livewire\Savings\Holiday\HolidayRegistrationForm;
+use App\Livewire\Savings\Holiday\HolidayRegistrations;
+use App\Livewire\Savings\MemberBalances;
+use App\Livewire\Savings\MemberSavingsDetail;
+use App\Livewire\Savings\Shopping\ShoppingTransactionDetail;
+use App\Livewire\Savings\Shopping\ShoppingTransactionForm;
+use App\Livewire\Savings\Shopping\ShoppingTransactions;
 use App\Livewire\Settings\ManageSettings;
 use App\Livewire\System\ActivityLogs;
 use App\Livewire\System\RoleForm;
@@ -81,6 +89,43 @@ Route::middleware('auth')->group(function () {
     Route::get('/master/anggota/{member}', MemberDetail::class)
         ->middleware('can:view_member')
         ->name('master.members.show');
+
+    // Simpanan — Pendaftaran Hari Raya. Rute statis (create) didahulukan sebelum {holiday}.
+    Route::get('/simpanan/hari-raya', HolidayRegistrations::class)
+        ->middleware('can:view_any_member::holiday::saving')
+        ->name('savings.holiday');
+
+    Route::get('/simpanan/hari-raya/create', HolidayRegistrationForm::class)
+        ->middleware('can:create_member::holiday::saving')
+        ->name('savings.holiday.create');
+
+    Route::get('/simpanan/hari-raya/{holiday}/edit', HolidayRegistrationForm::class)
+        ->middleware('can:update_member::holiday::saving')
+        ->name('savings.holiday.edit');
+
+    Route::get('/simpanan/hari-raya/{holiday}', HolidayRegistrationDetail::class)
+        ->middleware('can:view_member::holiday::saving')
+        ->name('savings.holiday.show');
+
+    // Simpanan — Belanja Toko (immutable; koreksi via reversal).
+    Route::get('/simpanan/belanja', ShoppingTransactions::class)
+        ->middleware('can:view_any_shopping::transaction')
+        ->name('savings.shopping');
+
+    Route::get('/simpanan/belanja/create', ShoppingTransactionForm::class)
+        ->middleware('can:create_shopping::transaction')
+        ->name('savings.shopping.create');
+
+    Route::get('/simpanan/belanja/{transaction}', ShoppingTransactionDetail::class)
+        ->middleware('can:view_shopping::transaction')
+        ->name('savings.shopping.show');
+
+    // Simpanan — Saldo Anggota (rekap read-only; gating di mount()).
+    Route::get('/simpanan/saldo-anggota', MemberBalances::class)
+        ->name('savings.balances');
+
+    Route::get('/simpanan/saldo-anggota/{member}', MemberSavingsDetail::class)
+        ->name('savings.balances.show');
 
     Route::get('/settings', ManageSettings::class)
         ->middleware('can:manage_settings')
