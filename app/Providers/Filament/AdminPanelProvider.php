@@ -104,7 +104,15 @@ class AdminPanelProvider extends PanelProvider
                 return null;
             }
 
-            return app(GeneralSettings::class);
+            $settings = app(GeneralSettings::class);
+
+            // Paksa hydrate DI DALAM try: settings di-load lazy saat properti
+            // diakses. Jika ada properti baru yang belum termigrasi (mis. saat
+            // `migrate` di-boot sebelum settings migration jalan), jangan sampai
+            // mematahkan boot panel — degrade ke branding fallback.
+            $settings->app_name;
+
+            return $settings;
         } catch (\Throwable) {
             return null;
         }
