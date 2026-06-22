@@ -1,6 +1,7 @@
 @props([
     'variant' => 'primary', // primary | secondary | ghost | danger
     'type' => 'button',
+    'href' => null,
 ])
 
 @php
@@ -12,8 +13,16 @@
         'ghost' => 'border border-border text-text hover:bg-border/50',
         'danger' => 'bg-danger text-white hover:opacity-90',
     ];
+
+    $classes = [$base, $variants[$variant] ?? $variants['primary']];
 @endphp
 
-<button type="{{ $type }}" {{ $attributes->class([$base, $variants[$variant] ?? $variants['primary']]) }}>
-    {{ $slot }}
-</button>
+@if ($href)
+    <a href="{{ $href }}" {{ $attributes->class($classes) }}>
+        {{ $slot }}
+    </a>
+@else
+    <button type="{{ $type }}" {{ $attributes->class($classes) }}>
+        {{ $slot }}
+    </button>
+@endif

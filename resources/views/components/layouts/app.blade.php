@@ -42,8 +42,8 @@
             <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-4 text-sm">
                 @php($groups = [
                     'Utama' => [['Dashboard', 'home', 'dashboard']],
-                    'Keuangan' => [['Anggota', 'users', null], ['Simpanan', 'wallet', null], ['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
-                    'Master' => [['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
+                    'Keuangan' => [['Simpanan', 'wallet', null], ['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
+                    'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
                     'Sistem' => [['Pengaturan', 'cog', 'settings']],
                 ])
                 @foreach ($groups as $group => $items)
