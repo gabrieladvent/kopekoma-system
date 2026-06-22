@@ -1,6 +1,6 @@
 <?php
 
-use App\Livewire\Master\Agencies;
+use App\Livewire\Master\Agency\Agencies;
 use App\Models\Agency;
 use App\Models\Member;
 use App\Models\User;

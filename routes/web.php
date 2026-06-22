@@ -2,14 +2,17 @@
 
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
-use App\Livewire\Master\Agencies;
-use App\Livewire\Master\AgencyDetail;
-use App\Livewire\Master\GradeDetail;
-use App\Livewire\Master\Grades;
-use App\Livewire\Master\MemberDetail;
-use App\Livewire\Master\MemberForm;
-use App\Livewire\Master\Members;
+use App\Livewire\Master\Agency\Agencies;
+use App\Livewire\Master\Agency\AgencyDetail;
+use App\Livewire\Master\Grade\GradeDetail;
+use App\Livewire\Master\Grade\Grades;
+use App\Livewire\Master\Member\MemberDetail;
+use App\Livewire\Master\Member\MemberForm;
+use App\Livewire\Master\Member\Members;
 use App\Livewire\Settings\ManageSettings;
+use App\Livewire\System\ActivityLogs;
+use App\Livewire\System\RoleForm;
+use App\Livewire\System\Roles;
 use App\Models\Member;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Auth;
@@ -82,4 +85,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings', ManageSettings::class)
         ->middleware('can:manage_settings')
         ->name('settings');
+
+    // Sistem — gating ditegakkan di mount() tiap komponen.
+    Route::get('/sistem/log-aktivitas', ActivityLogs::class)->name('system.activity-logs');
+
+    Route::get('/sistem/peran', Roles::class)->name('system.roles');
+    Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
+    Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
 });

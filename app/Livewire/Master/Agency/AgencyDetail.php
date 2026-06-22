@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Agency;
 
 use App\Livewire\Concerns\InteractsWithAuditTrail;
 use App\Models\Agency;
@@ -17,7 +17,6 @@ class AgencyDetail extends Component
 
     public string $agencyId;
 
-    // Edit inline (default read-only)
     public bool $editing = false;
 
     public string $agency_code = '';
@@ -171,7 +170,7 @@ class AgencyDetail extends Component
             ? $agency->activities()->with('causer')->find($this->auditId)
             : null;
 
-        return view('livewire.master.agency-detail', [
+        return view('livewire.master.agency.agency-detail', [
             'agency' => $agency,
             'activities' => $activities,
             'selectedActivity' => $selectedActivity,

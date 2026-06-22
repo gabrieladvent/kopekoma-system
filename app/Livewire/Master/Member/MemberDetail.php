@@ -1,69 +1,24 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Member;
 
 use App\Livewire\Concerns\InteractsWithAuditTrail;
 use App\Models\Member;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
-use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 class MemberDetail extends Component
 {
     use InteractsWithAuditTrail;
-    use WithFileUploads;
     use WithPagination;
 
     public string $memberId;
-
-    /** @var array<int, TemporaryUploadedFile> */
-    public array $uploads = [];
 
     public function mount(Member $member): void
     {
         $this->authorize('view', $member);
         $this->memberId = $member->id;
-    }
-
-    public function uploadDocuments(): void
-    {
-        $member = Member::findOrFail($this->memberId);
-        $this->authorize('update', $member);
-
-        $this->validate([
-            'uploads' => ['required', 'array', 'max:10'],
-            'uploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-        ], [], ['uploads.*' => 'berkas']);
-
-        foreach ($this->uploads as $file) {
-            $member->addMedia($file->getRealPath())
-                ->usingFileName($file->getClientOriginalName())
-                ->usingName(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
-                ->toMediaCollection('documents');
-        }
-
-        $member->logDocumentActivity('Mengunggah '.count($this->uploads).' dokumen.');
-
-        $this->reset('uploads');
-        $this->dispatch('toast', type: 'success', message: 'Dokumen diunggah.');
-    }
-
-    public function deleteDocument(int $mediaId): void
-    {
-        $member = Member::findOrFail($this->memberId);
-        $this->authorize('update', $member);
-
-        $media = $member->getMedia('documents')->firstWhere('id', $mediaId);
-
-        if ($media) {
-            $name = $media->file_name;
-            $media->delete();
-            $member->logDocumentActivity('Menghapus dokumen '.$name.'.');
-        }
-
-        $this->dispatch('toast', type: 'success', message: 'Dokumen dihapus.');
     }
 
     public function delete()
@@ -118,7 +73,7 @@ class MemberDetail extends Component
             ? $member->activities()->with('causer')->find($this->auditId)
             : null;
 
-        return view('livewire.master.member-detail', [
+        return view('livewire.master.member.member-detail', [
             'member' => $member,
             'documents' => $member->getMedia('documents'),
             'activities' => $activities,

@@ -261,6 +261,83 @@
             </div>
         </x-ui.card>
 
+        {{-- ============ Dokumen (opsional) ============ --}}
+        <x-ui.card>
+            <div class="flex items-center gap-2 border-b border-border pb-3">
+                <x-ui.icon name="paper-clip" class="h-5 w-5 text-primary" />
+                <h3 class="text-sm font-semibold text-text">Dokumen <span class="font-normal text-muted">(opsional)</span></h3>
+            </div>
+
+            <div class="mt-4 space-y-4">
+                {{-- Dokumen tersimpan (hanya saat edit) --}}
+                @if ($isEdit && $documents->isNotEmpty())
+                    <div class="divide-y divide-border rounded-xl border border-border">
+                        @foreach ($documents as $doc)
+                            <div class="flex items-center gap-3 px-3 py-2.5" wire:key="exist-{{ $doc->id }}">
+                                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-bg text-muted">
+                                    <x-ui.icon name="document" class="h-5 w-5" />
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-sm font-medium text-text">{{ $doc->file_name }}</p>
+                                    <p class="text-xs text-muted">{{ $doc->human_readable_size }} · {{ $doc->created_at?->translatedFormat('d M Y H:i') }}</p>
+                                </div>
+                                <a href="{{ $doc->getFullUrl() }}" target="_blank" rel="noopener" title="Lihat"
+                                   class="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-border/50 hover:text-text">
+                                    <x-ui.icon name="eye" class="h-4.5 w-4.5" />
+                                </a>
+                                <button type="button" title="Hapus"
+                                        x-on:click="$dispatch('confirm-action', {
+                                            title: 'Hapus dokumen ini?',
+                                            message: '{{ addslashes($doc->file_name) }} akan dihapus permanen.',
+                                            confirmLabel: 'Hapus', variant: 'danger',
+                                            method: 'deleteDocument', params: [{{ $doc->id }}],
+                                        })"
+                                        class="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger">
+                                    <x-ui.icon name="trash" class="h-4.5 w-4.5" />
+                                </button>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                {{-- Tambah berkas baru --}}
+                <div class="space-y-2">
+                    <input type="file" wire:model="uploads" multiple accept="application/pdf,image/jpeg,image/png"
+                           class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
+                    <p class="text-xs text-muted">KTP, SK, formulir, dll. PDF/JPG/PNG, maks 5 MB per berkas. Berkas dilampirkan saat form disimpan.</p>
+                    @error('uploads.*')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                    @error('uploads')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+
+                    <div class="flex items-center gap-2" wire:loading wire:target="uploads">
+                        <svg class="h-4 w-4 animate-spin text-muted" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        <span class="text-xs text-muted">Mengunggah…</span>
+                    </div>
+                </div>
+
+                {{-- Antrean berkas siap diunggah --}}
+                @if (count($uploads))
+                    <div class="space-y-1">
+                        <p class="text-xs font-medium text-muted">{{ count($uploads) }} berkas siap dilampirkan</p>
+                        <div class="divide-y divide-border rounded-xl border border-dashed border-border">
+                            @foreach ($uploads as $i => $file)
+                                <div class="flex items-center gap-3 px-3 py-2" wire:key="pending-{{ $i }}">
+                                    <x-ui.icon name="document" class="h-4.5 w-4.5 shrink-0 text-muted" />
+                                    <span class="min-w-0 flex-1 truncate text-sm text-text">{{ $file->getClientOriginalName() }}</span>
+                                    <button type="button" wire:click="removeUpload({{ $i }})" title="Buang"
+                                            class="grid h-7 w-7 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger">
+                                        <x-ui.icon name="x" class="h-4 w-4" />
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+            </div>
+        </x-ui.card>
+
         {{-- Actions --}}
         <div class="flex items-center justify-end gap-3">
             <x-ui.button variant="ghost" :href="$isEdit ? route('master.members.show', $memberId) : route('master.members')" wire:navigate>Batal</x-ui.button>
@@ -274,5 +351,6 @@
         </div>
     </form>
 
+    <x-ui.confirm-modal />
     <x-ui.toast-host />
 </div>

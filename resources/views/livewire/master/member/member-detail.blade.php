@@ -130,33 +130,7 @@
                 <span class="text-xs text-muted">{{ $documents->count() }} berkas</span>
             </div>
 
-            @can('update_member')
-                <form wire:submit="uploadDocuments" class="mt-4 space-y-2">
-                    <input type="file" wire:model="uploads" multiple accept="application/pdf,image/jpeg,image/png"
-                           class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
-                    <p class="text-xs text-muted">KTP, SK, formulir, dll. PDF/JPG/PNG, maks 5 MB per berkas.</p>
-                    @error('uploads.*')<p class="text-xs text-danger">{{ $message }}</p>@enderror
-                    @error('uploads')<p class="text-xs text-danger">{{ $message }}</p>@enderror
-
-                    <div class="flex items-center gap-2" wire:loading wire:target="uploads">
-                        <svg class="h-4 w-4 animate-spin text-muted" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                        </svg>
-                        <span class="text-xs text-muted">Mengunggah…</span>
-                    </div>
-
-                    @if (count($uploads))
-                        <div class="pt-1">
-                            <x-ui.button type="submit" class="h-9 px-3" wire:loading.attr="disabled" wire:target="uploadDocuments">
-                                <x-ui.icon name="arrow-up-tray" class="h-4 w-4" /> Unggah {{ count($uploads) }} Berkas
-                            </x-ui.button>
-                        </div>
-                    @endif
-                </form>
-            @endcan
-
-            <div class="mt-4 divide-y divide-border">
+            <div class="mt-2 divide-y divide-border">
                 @forelse ($documents as $doc)
                     <div class="flex items-center gap-3 py-3" wire:key="doc-{{ $doc->id }}">
                         <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-bg text-muted">
@@ -170,18 +144,6 @@
                            class="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-border/50 hover:text-text">
                             <x-ui.icon name="eye" class="h-4.5 w-4.5" />
                         </a>
-                        @can('update_member')
-                            <button type="button" title="Hapus"
-                                    x-on:click="$dispatch('confirm-action', {
-                                        title: 'Hapus dokumen ini?',
-                                        message: '{{ addslashes($doc->file_name) }} akan dihapus permanen.',
-                                        confirmLabel: 'Hapus', variant: 'danger',
-                                        method: 'deleteDocument', params: [{{ $doc->id }}],
-                                    })"
-                                    class="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger">
-                                <x-ui.icon name="trash" class="h-4.5 w-4.5" />
-                            </button>
-                        @endcan
                     </div>
                 @empty
                     <div class="flex flex-col items-center justify-center py-10 text-center">
@@ -189,9 +151,24 @@
                             <x-ui.icon name="paper-clip" class="h-6 w-6" />
                         </div>
                         <p class="mt-3 text-sm text-muted">Belum ada dokumen.</p>
+                        @can('update_member')
+                            <a href="{{ route('master.members.edit', $member) }}" wire:navigate
+                               class="mt-2 text-xs font-medium text-primary hover:underline">Tambah lewat halaman Edit</a>
+                        @endcan
                     </div>
                 @endforelse
             </div>
+
+            @can('update_member')
+                @if ($documents->isNotEmpty())
+                    <div class="mt-4 border-t border-border pt-3">
+                        <a href="{{ route('master.members.edit', $member) }}" wire:navigate
+                           class="inline-flex items-center gap-1.5 text-xs font-medium text-muted transition hover:text-primary">
+                            <x-ui.icon name="pencil" class="h-3.5 w-3.5" /> Kelola dokumen di halaman Edit
+                        </a>
+                    </div>
+                @endif
+            @endcan
         </x-ui.card>
 
         {{-- Audit Trail --}}

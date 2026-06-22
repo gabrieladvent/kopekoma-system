@@ -40,29 +40,42 @@
             </div>
 
             <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-4 text-sm">
+                @php($navUser = auth()->user())
+                @php($isSuper = $navUser?->hasRole('super_admin') ?? false)
+                @php($canAudit = $navUser?->hasAnyRole(['super_admin', 'pengurus']) ?? false)
                 @php($groups = [
                     'Utama' => [['Dashboard', 'home', 'dashboard']],
                     'Keuangan' => [['Simpanan', 'wallet', null], ['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
                     'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
-                    'Sistem' => [['Pengaturan', 'cog', 'settings']],
+                    'Sistem' => [
+                        ['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit],
+                        ['Peran & Izin', 'shield', 'system.roles', $isSuper],
+                        ['Pengaturan', 'cog', 'settings', $navUser?->can('manage_settings') ?? false],
+                    ],
                 ])
                 @foreach ($groups as $group => $items)
-                    <div class="space-y-1">
-                        <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/70">{{ $group }}</p>
-                        @foreach ($items as [$label, $icon, $route])
-                            @php($active = $route && request()->routeIs($route))
-                            <a href="{{ $route ? route($route) : '#' }}" @if($route) wire:navigate @endif
-                               @class([
-                                   'group flex items-center gap-3 rounded-xl px-3 py-2 font-medium transition duration-150 ease-out',
-                                   'bg-primary/10 text-primary' => $active,
-                                   'text-muted hover:bg-border/40 hover:text-text' => ! $active,
-                               ])>
-                                <span @class(['w-0.5 self-stretch rounded-full transition', 'bg-primary' => $active, 'bg-transparent' => ! $active])></span>
-                                <x-ui.icon :name="$icon" class="h-4.5 w-4.5 shrink-0" />
-                                {{ $label }}
-                            </a>
-                        @endforeach
-                    </div>
+                    @php($visible = array_filter($items, fn ($i) => $i[3] ?? true))
+                    @if (! empty($visible))
+                        <div class="space-y-1">
+                            <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/70">{{ $group }}</p>
+                            @foreach ($visible as $item)
+                                @php($label = $item[0])
+                                @php($icon = $item[1])
+                                @php($route = $item[2])
+                                @php($active = $route && (request()->routeIs($route) || request()->routeIs($route.'.*')))
+                                <a href="{{ $route ? route($route) : '#' }}" @if($route) wire:navigate @endif
+                                   @class([
+                                       'group flex items-center gap-3 rounded-xl px-3 py-2 font-medium transition duration-150 ease-out',
+                                       'bg-primary/10 text-primary' => $active,
+                                       'text-muted hover:bg-border/40 hover:text-text' => ! $active,
+                                   ])>
+                                    <span @class(['w-0.5 self-stretch rounded-full transition', 'bg-primary' => $active, 'bg-transparent' => ! $active])></span>
+                                    <x-ui.icon :name="$icon" class="h-4.5 w-4.5 shrink-0" />
+                                    {{ $label }}
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
                 @endforeach
             </nav>
 
@@ -100,6 +113,10 @@
                         <input type="search" placeholder="Cari anggota, transaksi…"
                                class="h-9 w-56 rounded-lg border border-border bg-bg pl-9 pr-3 text-sm text-text placeholder:text-muted transition focus-visible:w-72 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
                     </div>
+                    {{-- Bell notifikasi --}}
+                    @auth
+                        @livewire('notification-bell')
+                    @endauth
                     {{-- Theme toggle --}}
                     <button type="button" @click="$store.theme.toggle()"
                             class="grid h-9 w-9 place-items-center rounded-lg text-muted transition duration-150 ease-out hover:bg-border/50 hover:text-text focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"

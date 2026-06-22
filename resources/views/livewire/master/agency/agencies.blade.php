@@ -27,15 +27,24 @@
                    class="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text placeholder:text-muted transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
         </div>
 
-        <div class="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1 text-sm">
-            @foreach (['all' => 'Semua', 'active' => 'Aktif', 'inactive' => 'Non-Aktif'] as $value => $label)
-                <button type="button" wire:click="$set('status', '{{ $value }}')"
-                        @class([
-                            'rounded-lg px-3 py-1.5 font-medium transition duration-150 ease-out',
-                            'bg-primary/10 text-primary' => $status === $value,
-                            'text-muted hover:text-text' => $status !== $value,
-                        ])>{{ $label }}</button>
-            @endforeach
+        <div class="flex items-center gap-2">
+            <div class="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1 text-sm">
+                @foreach (['all' => 'Semua', 'active' => 'Aktif', 'inactive' => 'Non-Aktif'] as $value => $label)
+                    <button type="button" wire:click="$set('status', '{{ $value }}')"
+                            @class([
+                                'rounded-lg px-3 py-1.5 font-medium transition duration-150 ease-out',
+                                'bg-primary/10 text-primary' => $status === $value,
+                                'text-muted hover:text-text' => $status !== $value,
+                            ])>{{ $label }}</button>
+                @endforeach
+            </div>
+
+            @if ($this->hasActiveFilters())
+                <button type="button" wire:click="clearFilters"
+                        class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-danger transition hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none">
+                    <x-ui.icon name="x" class="h-4 w-4" /> Bersihkan
+                </button>
+            @endif
         </div>
     </div>
 

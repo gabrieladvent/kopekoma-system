@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Member;
 
 use App\Models\Agency;
 use App\Models\Grade;
@@ -8,10 +8,22 @@ use App\Models\Member;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
+use Spatie\MediaLibrary\MediaCollections\Exceptions\FileCannotBeAdded;
 
 class MemberForm extends Component
 {
+    use WithFileUploads;
+
     public ?string $memberId = null;
+
+    /**
+     * Berkas baru yang akan dilampirkan saat form disimpan (opsional).
+     *
+     * @var array<int, TemporaryUploadedFile>
+     */
+    public array $uploads = [];
 
     // Identitas
     public string $member_number = '';
@@ -103,12 +115,21 @@ class MemberForm extends Component
     /** Snapshot nominal simpanan wajib dari golongan saat membuat anggota baru. */
     public function updatedGradeId(?string $value): void
     {
-        if ($this->memberId === null && filled($value)) {
-            $grade = Grade::find($value);
+        if (! filled($value)) {
+            return;
+        }
 
-            if ($grade) {
-                $this->mandatory_savings_amount = (int) $grade->mandatory_savings_amount;
-            }
+        // Re-snapshot nominal simpanan wajib dari golongan terpilih. Saat create
+        // selalu; saat edit hanya bila user berhak override — kalau tidak,
+        // nominal tak akan ikut tersimpan, jadi jangan diubah agar tidak menyesatkan.
+        if ($this->memberId !== null && ! $this->canOverrideMandatory()) {
+            return;
+        }
+
+        $grade = Grade::find($value);
+
+        if ($grade) {
+            $this->mandatory_savings_amount = (int) $grade->mandatory_savings_amount;
         }
     }
 
@@ -142,6 +163,8 @@ class MemberForm extends Component
             'heir_name' => ['required', 'string', 'max:100'],
             'heir_relationship' => ['required', Rule::in(array_keys(Member::HEIR_RELATIONSHIPS))],
             'heir_phone_number' => ['required', 'string', 'max:15'],
+            'uploads' => ['nullable', 'array', 'max:10'],
+            'uploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
         ];
     }
 
@@ -169,7 +192,32 @@ class MemberForm extends Component
             'heir_name' => 'nama ahli waris',
             'heir_relationship' => 'hubungan ahli waris',
             'heir_phone_number' => 'no. HP ahli waris',
+            'uploads.*' => 'berkas',
         ];
+    }
+
+    /** Buang satu berkas dari antrean unggah sebelum form disimpan. */
+    public function removeUpload(int $index): void
+    {
+        unset($this->uploads[$index]);
+        $this->uploads = array_values($this->uploads);
+    }
+
+    /** Hapus dokumen yang sudah tersimpan (hanya relevan saat edit). */
+    public function deleteDocument(int $mediaId): void
+    {
+        $member = Member::findOrFail($this->memberId);
+        $this->authorize('update', $member);
+
+        $media = $member->getMedia('documents')->firstWhere('id', $mediaId);
+
+        if ($media) {
+            $name = $media->file_name;
+            $media->delete();
+            $member->logDocumentActivity('Menghapus dokumen '.$name.'.');
+        }
+
+        $this->dispatch('toast', type: 'success', message: 'Dokumen dihapus.');
     }
 
     public function save()
@@ -222,7 +270,43 @@ class MemberForm extends Component
             session()->flash('toast', ['type' => 'success', 'message' => 'Anggota baru ditambahkan.']);
         }
 
+        $this->attachUploads($member);
+
         return $this->redirectRoute('master.members.show', $member, navigate: true);
+    }
+
+    /** Lampirkan berkas yang diunggah ke koleksi media anggota. */
+    private function attachUploads(Member $member): void
+    {
+        if (empty($this->uploads)) {
+            return;
+        }
+
+        $attached = 0;
+        $rejected = 0;
+
+        foreach ($this->uploads as $file) {
+            try {
+                $member->addMedia($file->getRealPath())
+                    ->usingFileName($file->getClientOriginalName())
+                    ->usingName(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
+                    ->toMediaCollection('documents');
+                $attached++;
+            } catch (FileCannotBeAdded $e) {
+                // Mis. isi berkas tidak cocok dengan tipe yang diizinkan koleksi.
+                $rejected++;
+            }
+        }
+
+        if ($attached > 0) {
+            $member->logDocumentActivity('Mengunggah '.$attached.' dokumen.');
+        }
+
+        if ($rejected > 0) {
+            session()->flash('toast', ['type' => 'warning', 'message' => $rejected.' berkas dilewati karena tipe tidak didukung.']);
+        }
+
+        $this->reset('uploads');
     }
 
     /** Normalisasi nomor HP Indonesia ke "+62XXXXXXXXXX". Port dari MemberResource. */
@@ -250,11 +334,16 @@ class MemberForm extends Component
 
     public function render(): View
     {
-        return view('livewire.master.member-form', [
+        $documents = $this->memberId
+            ? Member::findOrFail($this->memberId)->getMedia('documents')
+            : collect();
+
+        return view('livewire.master.member.member-form', [
             'agencyOptions' => Agency::orderBy('agency_name')->pluck('agency_name', 'id'),
             'gradeOptions' => Grade::orderBy('code')->get(['id', 'code', 'name']),
             'heirRelationships' => Member::HEIR_RELATIONSHIPS,
             'canOverride' => $this->canOverrideMandatory(),
+            'documents' => $documents,
         ])->layout('components.layouts.app', [
             'title' => $this->memberId ? 'Edit Anggota' : 'Tambah Anggota',
         ]);

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Member;
 
 use App\Exports\MembersTemplateExport;
 use App\Jobs\ImportMembersJob;
@@ -62,6 +62,17 @@ class Members extends Component
         $this->resetPage();
     }
 
+    public function clearFilters(): void
+    {
+        $this->reset('search', 'status', 'agency', 'grade');
+        $this->resetPage();
+    }
+
+    public function hasActiveFilters(): bool
+    {
+        return $this->search !== '' || $this->status !== 'all' || $this->agency !== '' || $this->grade !== '';
+    }
+
     /** Hanya Pengurus ke atas yang boleh import/export. Port dari MemberResource. */
     public function canManageImportExport(): bool
     {
@@ -120,7 +131,7 @@ class Members extends Component
             ->orderBy('member_number')
             ->paginate(15);
 
-        return view('livewire.master.members', [
+        return view('livewire.master.member.members', [
             'members' => $members,
             'agencyOptions' => Agency::orderBy('agency_name')->pluck('agency_name', 'id'),
             'gradeOptions' => Grade::orderBy('code')->get(['id', 'code', 'name']),

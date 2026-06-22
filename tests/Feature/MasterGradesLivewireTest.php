@@ -1,6 +1,6 @@
 <?php
 
-use App\Livewire\Master\Grades;
+use App\Livewire\Master\Grade\Grades;
 use App\Models\Grade;
 use App\Models\Member;
 use App\Models\User;

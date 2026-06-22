@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Grade;
 
 use App\Livewire\Concerns\InteractsWithAuditTrail;
 use App\Models\Grade;
@@ -139,7 +139,7 @@ class GradeDetail extends Component
             ? $grade->activities()->with('causer')->find($this->auditId)
             : null;
 
-        return view('livewire.master.grade-detail', [
+        return view('livewire.master.grade.grade-detail', [
             'grade' => $grade,
             'activities' => $activities,
             'selectedActivity' => $selectedActivity,

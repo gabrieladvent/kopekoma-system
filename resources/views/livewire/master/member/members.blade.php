@@ -63,6 +63,13 @@
                     <option value="{{ $g->id }}">{{ $g->code }} — {{ $g->name }}</option>
                 @endforeach
             </select>
+
+            @if ($this->hasActiveFilters())
+                <button type="button" wire:click="clearFilters"
+                        class="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-danger transition hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none">
+                    <x-ui.icon name="x" class="h-4 w-4" /> Bersihkan
+                </button>
+            @endif
         </div>
     </div>
 

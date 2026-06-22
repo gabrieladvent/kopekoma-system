@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Agency;
 
 use App\Models\Agency;
 use App\Models\User;
@@ -18,9 +18,8 @@ class Agencies extends Component
     public string $search = '';
 
     #[Url]
-    public string $status = 'all'; // all | active | inactive
+    public string $status = 'all';
 
-    // Form modal (create/edit)
     public bool $showForm = false;
 
     public ?string $editingId = null;
@@ -52,6 +51,17 @@ class Agencies extends Component
         $this->resetPage();
     }
 
+    public function clearFilters(): void
+    {
+        $this->reset('search', 'status');
+        $this->resetPage();
+    }
+
+    public function hasActiveFilters(): bool
+    {
+        return $this->search !== '' || $this->status !== 'all';
+    }
+
     protected function rules(): array
     {
         return [
@@ -81,23 +91,34 @@ class Agencies extends Component
         $this->authorize('create', Agency::class);
 
         $this->resetForm();
+
         $this->agency_code = $this->makeCode();
+
         $this->showForm = true;
     }
 
     public function edit(string $id): void
     {
         $agency = Agency::findOrFail($id);
+
         $this->authorize('update', $agency);
 
         $this->editingId = $agency->id;
+
         $this->agency_code = $agency->agency_code;
+
         $this->agency_name = $agency->agency_name;
+
         $this->address = $agency->address;
+
         $this->payroll_treasurer = $agency->payroll_treasurer;
+
         $this->pic_phone_number = $this->localPhone($agency->pic_phone_number);
+
         $this->statusForm = $agency->status;
+
         $this->resetErrorBag();
+
         $this->showForm = true;
     }
 
@@ -120,29 +141,37 @@ class Agencies extends Component
 
         if ($this->editingId) {
             Agency::findOrFail($this->editingId)->update($data);
+
             $this->dispatch('toast', type: 'success', message: 'OPD diperbarui.');
+
         } else {
             Agency::create($data);
+
             $this->dispatch('toast', type: 'success', message: 'OPD ditambahkan.');
         }
 
         $this->showForm = false;
+
         $this->resetForm();
     }
 
     public function toggleActive(string $id): void
     {
         $agency = Agency::findOrFail($id);
+
         $this->authorize('update', $agency);
 
         $next = $agency->status === 'Aktif' ? 'Non-Aktif' : 'Aktif';
+
         $agency->update(['status' => $next]);
+
         $this->dispatch('toast', type: 'success', message: $next === 'Aktif' ? 'OPD diaktifkan.' : 'OPD dinonaktifkan.');
     }
 
     public function delete(string $id): void
     {
         $agency = Agency::findOrFail($id);
+
         $this->authorize('delete', $agency);
 
         if ($agency->members()->exists()) {
@@ -152,6 +181,7 @@ class Agencies extends Component
         }
 
         $agency->delete();
+
         $this->dispatch('toast', type: 'success', message: 'OPD dihapus.');
     }
 
@@ -160,7 +190,6 @@ class Agencies extends Component
         $this->agency_code = $this->makeCode();
     }
 
-    /** Kode unik OPD (format OPD0001). Port dari AgencyResource. */
     private function makeCode(): string
     {
         do {
@@ -170,17 +199,17 @@ class Agencies extends Component
         return $code;
     }
 
-    /** Normalisasi nomor HP Indonesia ke format "+62XXXXXXXXXX". Port dari AgencyResource. */
     private function normalizePhone(?string $state): ?string
     {
         $digits = preg_replace('/\D/', '', (string) $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
+
         $digits = ltrim((string) $digits, '0');
 
         return $digits === '' ? null : '+62'.$digits;
     }
 
-    /** Hilangkan awalan "+62" untuk ditampilkan di form edit. Port dari AgencyResource. */
     private function localPhone(?string $state): ?string
     {
         if (blank($state)) {
@@ -188,6 +217,7 @@ class Agencies extends Component
         }
 
         $digits = preg_replace('/\D/', '', $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
 
         return ltrim((string) $digits, '0') ?: null;
@@ -196,7 +226,9 @@ class Agencies extends Component
     private function resetForm(): void
     {
         $this->reset('editingId', 'agency_code', 'agency_name', 'address', 'payroll_treasurer', 'pic_phone_number', 'statusForm');
+
         $this->statusForm = 'Aktif';
+
         $this->resetErrorBag();
     }
 
@@ -204,18 +236,18 @@ class Agencies extends Component
     {
         $agencies = Agency::query()
             ->withCount('members')
-            ->when($this->search !== '', function ($q) {
+            ->when($this->search !== '', function ($query) {
                 $term = '%'.$this->search.'%';
-                $q->where(fn ($s) => $s->where('agency_code', 'like', $term)
+                $query->where(fn ($subQuery) => $subQuery->where('agency_code', 'like', $term)
                     ->orWhere('agency_name', 'like', $term)
                     ->orWhere('payroll_treasurer', 'like', $term));
             })
-            ->when($this->status === 'active', fn ($q) => $q->where('status', 'Aktif'))
-            ->when($this->status === 'inactive', fn ($q) => $q->where('status', 'Non-Aktif'))
+            ->when($this->status === 'active', fn ($query) => $query->where('status', 'Aktif'))
+            ->when($this->status === 'inactive', fn ($query) => $query->where('status', 'Non-Aktif'))
             ->orderBy('agency_code')
             ->paginate(10);
 
-        return view('livewire.master.agencies', [
+        return view('livewire.master.agency.agencies', [
             'agencies' => $agencies,
             'treasurers' => User::query()->orderBy('name')->pluck('name', 'name'),
         ])->layout('components.layouts.app', ['title' => 'Master Data OPD / Instansi']);

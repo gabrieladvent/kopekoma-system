@@ -130,6 +130,7 @@ class ManageSettings extends Component
     public function resetTheme(): void
     {
         $this->theme_primary = null;
+
         $this->theme_secondary = null;
     }
 
@@ -138,8 +139,11 @@ class ManageSettings extends Component
         $this->validate();
 
         $general = app(GeneralSettings::class);
+
         $general->theme_primary = $this->theme_primary ?: null;
+
         $general->theme_secondary = $this->theme_secondary ?: null;
+
         $general->app_name = $this->app_name;
 
         if ($this->logoUpload) {

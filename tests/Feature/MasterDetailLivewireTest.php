@@ -1,7 +1,7 @@
 <?php
 
-use App\Livewire\Master\AgencyDetail;
-use App\Livewire\Master\GradeDetail;
+use App\Livewire\Master\Agency\AgencyDetail;
+use App\Livewire\Master\Grade\GradeDetail;
 use App\Models\Agency;
 use App\Models\Grade;
 use App\Models\User;

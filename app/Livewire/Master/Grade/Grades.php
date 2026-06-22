@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Master;
+namespace App\Livewire\Master\Grade;
 
 use App\Models\Grade;
 use Illuminate\Contracts\View\View;
@@ -45,6 +45,17 @@ class Grades extends Component
     public function updatingStatus(): void
     {
         $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('search', 'status');
+        $this->resetPage();
+    }
+
+    public function hasActiveFilters(): bool
+    {
+        return $this->search !== '' || $this->status !== 'all';
     }
 
     protected function rules(): array
@@ -168,7 +179,7 @@ class Grades extends Component
             ->orderBy('code')
             ->paginate(10);
 
-        return view('livewire.master.grades', [
+        return view('livewire.master.grade.grades', [
             'grades' => $grades,
         ])->layout('components.layouts.app', ['title' => 'Master Data Golongan']);
     }
