@@ -154,7 +154,7 @@
             <main class="relative flex-1">
                 {{-- Tekstur grid halus (signature) --}}
                 <div class="bg-grid pointer-events-none absolute inset-x-0 top-0 h-64" aria-hidden="true"></div>
-                <div class="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+                <div class="relative mx-auto max-w-full px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
                     {{ $slot }}
                 </div>
             </main>
