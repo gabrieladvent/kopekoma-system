@@ -1,9 +1,5 @@
 @props(['title' => 'KOPEKOMA'])
 
-{{--
-    App shell Livewire — sidebar + topbar, konsisten & anti-template.
-    Lihat memory livewire-style-guide §6 (signature) & livewire-component-patterns.
---}}
 <!DOCTYPE html>
 <html lang="id" class="scroll-smooth">
 <head>
@@ -12,8 +8,6 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }}</title>
 
-    {{-- Default paksa Light & abaikan preferensi sistem. Hanya hormati pilihan
-         eksplisit user (localStorage 'theme' === 'dark'); tentukan sebelum paint. --}}
     <script>
         (function () {
             if (localStorage.getItem('theme') === 'dark') {
@@ -22,7 +16,6 @@
         })();
     </script>
 
-    {{-- Custom theme dari Settings (override primary/secondary). Default = token CSS. --}}
     <x-brand-theme />
 
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -60,6 +53,7 @@
                 @php($canShopping = $navUser?->can('view_any_shopping::transaction') ?? false)
                 @php($canBalance = $navUser?->can('view_any_member::savings::balance') ?? false)
                 @php($canDeposit = $navUser?->can('view_any_savings::deposit') ?? false)
+                @php($canWithdrawal = $navUser?->can('view_any_savings::withdrawal') ?? false)
                 @php($groups = [
                     'Utama' => [
                         ['Dashboard', 'home', 'dashboard'],
@@ -68,9 +62,9 @@
                     'Simpanan' => [
                         ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
                         ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
+                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
                         ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
                     ],
-                    'Keuangan' => [['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
                     'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
                     'Sistem' => [
                         ['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit],
@@ -160,7 +154,7 @@
             <main class="relative flex-1">
                 {{-- Tekstur grid halus (signature) --}}
                 <div class="bg-grid pointer-events-none absolute inset-x-0 top-0 h-64" aria-hidden="true"></div>
-                <div class="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+                <div class="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
                     {{ $slot }}
                 </div>
             </main>

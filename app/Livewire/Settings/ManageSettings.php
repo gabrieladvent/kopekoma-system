@@ -32,6 +32,14 @@ class ManageSettings extends Component
 
     public $faviconUpload = null;
 
+    /** Path gambar latar login yang sudah tersimpan (urutan = urutan tampil). */
+    public array $login_background_images = [];
+
+    /** Upload gambar latar login baru (ditambahkan saat Simpan). */
+    public $loginImageUploads = [];
+
+    public const MAX_LOGIN_IMAGES = 6;
+
     // --- Email (SMTP) ---
     public string $mail_host = '';
 
@@ -78,6 +86,7 @@ class ManageSettings extends Component
         $this->app_name = $general->app_name;
         $this->logo_path = $general->logo_path;
         $this->favicon_path = $general->favicon_path;
+        $this->login_background_images = array_values($general->login_background_images ?? []);
 
         $this->mail_host = $mail->mail_host;
         $this->mail_port = $mail->mail_port;
@@ -109,6 +118,8 @@ class ManageSettings extends Component
             'app_name' => ['required', 'string', 'max:100'],
             'logoUpload' => ['nullable', 'image', 'max:2048'],
             'faviconUpload' => ['nullable', 'image', 'max:1024'],
+            'loginImageUploads' => ['nullable', 'array'],
+            'loginImageUploads.*' => ['image', 'max:4096'],
             'mail_host' => ['required', 'string'],
             'mail_port' => ['required', 'integer', 'min:1', 'max:65535'],
             'mail_username' => ['nullable', 'string'],
@@ -134,6 +145,39 @@ class ManageSettings extends Component
         $this->theme_secondary = null;
     }
 
+    /**
+     * Hapus satu gambar latar login dari daftar tersimpan (klik Simpan untuk menerapkan).
+     */
+    public function removeLoginImage(int $index): void
+    {
+        unset($this->login_background_images[$index]);
+        $this->login_background_images = array_values($this->login_background_images);
+    }
+
+    /**
+     * Geser urutan gambar (-1 = naik, +1 = turun). Urutan ini dipakai slideshow login.
+     */
+    public function moveLoginImage(int $index, int $direction): void
+    {
+        $target = $index + $direction;
+        if (! isset($this->login_background_images[$index], $this->login_background_images[$target])) {
+            return;
+        }
+
+        [$this->login_background_images[$index], $this->login_background_images[$target]] =
+            [$this->login_background_images[$target], $this->login_background_images[$index]];
+        $this->login_background_images = array_values($this->login_background_images);
+    }
+
+    /**
+     * Kosongkan semua gambar → panel login kembali ke mode teks (gradient brand).
+     */
+    public function clearLoginImages(): void
+    {
+        $this->login_background_images = [];
+        $this->reset('loginImageUploads');
+    }
+
     public function save(): void
     {
         $this->validate();
@@ -154,10 +198,20 @@ class ManageSettings extends Component
             $general->favicon_path = $this->faviconUpload->store('branding', 'public');
         }
 
+        // Tambahkan upload gambar login baru ke daftar (dibatasi MAX_LOGIN_IMAGES).
+        foreach ($this->loginImageUploads as $upload) {
+            if (count($this->login_background_images) >= self::MAX_LOGIN_IMAGES) {
+                break;
+            }
+            $this->login_background_images[] = $upload->store('branding/login', 'public');
+        }
+        $general->login_background_images = array_values($this->login_background_images);
+
         $general->save();
         $this->logo_path = $general->logo_path;
         $this->favicon_path = $general->favicon_path;
-        $this->reset('logoUpload', 'faviconUpload');
+        $this->login_background_images = array_values($general->login_background_images);
+        $this->reset('logoUpload', 'faviconUpload', 'loginImageUploads');
 
         $mail = app(MailSettings::class);
         $mail->mail_host = $this->mail_host;

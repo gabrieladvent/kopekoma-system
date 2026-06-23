@@ -23,6 +23,9 @@ use App\Livewire\Savings\MemberSavingsDetail;
 use App\Livewire\Savings\Shopping\ShoppingTransactionDetail;
 use App\Livewire\Savings\Shopping\ShoppingTransactionForm;
 use App\Livewire\Savings\Shopping\ShoppingTransactions;
+use App\Livewire\Savings\Withdrawal\SavingsWithdrawalDetail;
+use App\Livewire\Savings\Withdrawal\SavingsWithdrawalForm;
+use App\Livewire\Savings\Withdrawal\SavingsWithdrawals;
 use App\Livewire\Settings\ManageSettings;
 use App\Livewire\System\ActivityLogs;
 use App\Livewire\System\RoleForm;
@@ -164,6 +167,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/simpanan/belanja/{transaction}', ShoppingTransactionDetail::class)
         ->middleware('can:view_shopping::transaction')
         ->name('savings.shopping.show');
+
+    // Simpanan — Pencairan. State machine draft → acc → cair/ditolak; immutable,
+    // koreksi via reversal. Rute statis (create) didahulukan sebelum {withdrawal}.
+    Route::get('/simpanan/pencairan', SavingsWithdrawals::class)
+        ->middleware('can:view_any_savings::withdrawal')
+        ->name('savings.withdrawals');
+
+    Route::get('/simpanan/pencairan/create', SavingsWithdrawalForm::class)
+        ->middleware('can:create_savings::withdrawal')
+        ->name('savings.withdrawals.create');
+
+    Route::get('/simpanan/pencairan/{withdrawal}', SavingsWithdrawalDetail::class)
+        ->middleware('can:view_savings::withdrawal')
+        ->name('savings.withdrawals.show');
 
     // Simpanan — Saldo Anggota (rekap read-only; gating di mount()).
     Route::get('/simpanan/saldo-anggota', MemberBalances::class)
