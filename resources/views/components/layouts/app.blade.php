@@ -12,11 +12,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }}</title>
 
-    {{-- Cegah flash dark mode: tentukan class sebelum paint --}}
+    {{-- Default paksa Light & abaikan preferensi sistem. Hanya hormati pilihan
+         eksplisit user (localStorage 'theme' === 'dark'); tentukan sebelum paint. --}}
     <script>
         (function () {
-            var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            if (localStorage.getItem('theme') === 'dark') {
                 document.documentElement.classList.add('dark');
             }
         })();
@@ -59,8 +59,12 @@
                 @php($canHoliday = $navUser?->can('view_any_member::holiday::saving') ?? false)
                 @php($canShopping = $navUser?->can('view_any_shopping::transaction') ?? false)
                 @php($canBalance = $navUser?->can('view_any_member::savings::balance') ?? false)
+                @php($canDeposit = $navUser?->can('view_any_savings::deposit') ?? false)
                 @php($groups = [
-                    'Utama' => [['Dashboard', 'home', 'dashboard']],
+                    'Utama' => [
+                        ['Dashboard', 'home', 'dashboard'],
+                        ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit],
+                    ],
                     'Simpanan' => [
                         ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
                         ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],

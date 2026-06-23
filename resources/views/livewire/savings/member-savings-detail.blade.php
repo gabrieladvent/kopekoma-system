@@ -106,7 +106,10 @@
                 <tbody class="divide-y divide-border">
                     @forelse ($ledger as $row)
                         <tr class="transition hover:bg-bg/60">
-                            <td class="whitespace-nowrap px-6 py-3 text-text">{{ $row['date']->translatedFormat('d M Y') }}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-text">
+                                {{ $row['date']->translatedFormat('d M Y') }}
+                                <span class="block text-xs text-muted">{{ $row['recorded_at']->translatedFormat('H.i') }} WIB</span>
+                            </td>
                             <td class="whitespace-nowrap px-6 py-3 font-mono text-xs text-muted">{{ $row['number'] }}</td>
                             <td class="px-6 py-3 text-text">
                                 {{ $row['description'] }}

@@ -28,6 +28,7 @@ class MemberSavingsDetail extends Component
         $member = Member::with(['agency:id,agency_name', 'grade:id,code,name'])->findOrFail($this->memberId);
 
         $balances = app(SavingsBalanceService::class);
+
         $all = $balances->allBalances($member);
 
         $holidayTotal = array_reduce(
@@ -43,6 +44,7 @@ class MemberSavingsDetail extends Component
         }
 
         $totalMasuk = array_reduce($ledger, fn (string $c, array $r) => bcadd($c, $r['masuk'], 2), '0');
+
         $totalKeluar = array_reduce($ledger, fn (string $c, array $r) => bcadd($c, $r['keluar'], 2), '0');
 
         return view('livewire.savings.member-savings-detail', [

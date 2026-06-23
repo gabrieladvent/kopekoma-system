@@ -39,6 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->login(Login::class)
             ->brandName($appName)
             ->defaultThemeMode(ThemeMode::Light)
+            ->darkMode(false)
             ->databaseNotifications()
             ->databaseNotificationsPolling('30s')
             ->colors([

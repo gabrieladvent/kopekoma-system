@@ -1,22 +1,40 @@
+@php
+    // typeColor resource → warna <x-ui.badge> (info & gray tak ada → primary/neutral).
+    $badgeColor = fn (string $type) => match (\App\Filament\Resources\SavingsDepositResource::typeColor($type)) {
+        'primary', 'info' => 'primary',
+        'success' => 'success',
+        'warning' => 'warning',
+        default => 'neutral',
+    };
+@endphp
+
 <div class="space-y-6">
     {{-- Header --}}
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-start gap-3">
-            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-                <x-ui.icon name="shopping-cart" class="h-6 w-6" />
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-success/10 text-success">
+                <x-ui.icon name="banknotes" class="h-6 w-6" />
             </span>
             <div>
-                <h2 class="text-2xl font-bold tracking-tight text-text">Belanja Toko</h2>
-                <p class="mt-0.5 text-sm text-muted">Pemakaian saldo Wajib Belanja anggota. Dana tidak dapat diuangkan.</p>
+                <h2 class="text-2xl font-bold tracking-tight text-text">Setor Simpanan</h2>
+                <p class="mt-0.5 text-sm text-muted">Riwayat setoran simpanan anggota. Koreksi hanya lewat reversal.</p>
             </div>
         </div>
 
-        @can('create_shopping::transaction')
-            <x-ui.button :href="route('savings.shopping.create')" wire:navigate class="shrink-0">
-                <x-ui.icon name="plus" class="h-4.5 w-4.5" />
-                Catat Pemakaian
-            </x-ui.button>
-        @endcan
+        <div class="flex shrink-0 items-center gap-2">
+            @can('access_batch_salary_deduction')
+                <x-ui.button variant="ghost" :href="route('savings.deposits.batch')" wire:navigate>
+                    <x-ui.icon name="users" class="h-4.5 w-4.5" />
+                    Batch Potong Gaji
+                </x-ui.button>
+            @endcan
+            @can('create_savings::deposit')
+                <x-ui.button :href="route('savings.deposits.create')" wire:navigate>
+                    <x-ui.icon name="plus" class="h-4.5 w-4.5" />
+                    Setoran Baru
+                </x-ui.button>
+            @endcan
+        </div>
     </div>
 
     {{-- Toolbar --}}
@@ -27,11 +45,27 @@
                    class="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text placeholder:text-muted transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <select wire:model.live="type"
+                    class="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
+                <option value="all">Semua Jenis</option>
+                @foreach ($savingsTypes as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+
+            <select wire:model.live="method"
+                    class="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
+                <option value="all">Semua Metode</option>
+                @foreach ($depositMethods as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
+            </select>
+
             <select wire:model.live="reversal"
                     class="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
-                <option value="all">Semua Transaksi</option>
-                <option value="0">Pemakaian</option>
+                <option value="all">Semua Status</option>
+                <option value="0">Setoran</option>
                 <option value="1">Reversal</option>
             </select>
 
@@ -52,9 +86,10 @@
                     <tr>
                         <th class="px-5 py-3 text-left">No. Transaksi</th>
                         <th class="px-5 py-3 text-left">Anggota</th>
+                        <th class="px-5 py-3 text-left">Jenis</th>
                         <th class="px-5 py-3 text-right">Nominal</th>
                         <th class="px-5 py-3 text-left">Tanggal</th>
-                        <th class="px-5 py-3 text-left">Referensi</th>
+                        <th class="px-5 py-3 text-left">Metode</th>
                         <th class="w-12 px-5 py-3 text-right">Aksi</th>
                     </tr>
                 </thead>
@@ -64,6 +99,7 @@
                         <tr>
                             <td class="px-5 py-4"><div class="h-4 w-28 animate-pulse rounded bg-border/60"></div></td>
                             <td class="px-5 py-4"><div class="h-4 w-36 animate-pulse rounded bg-border/60"></div></td>
+                            <td class="px-5 py-4"><div class="h-4 w-20 animate-pulse rounded bg-border/60"></div></td>
                             <td class="px-5 py-4"><div class="ml-auto h-4 w-20 animate-pulse rounded bg-border/60"></div></td>
                             <td class="px-5 py-4"><div class="h-4 w-24 animate-pulse rounded bg-border/60"></div></td>
                             <td class="px-5 py-4"><div class="h-4 w-20 animate-pulse rounded bg-border/60"></div></td>
@@ -73,37 +109,41 @@
                 </tbody>
 
                 <tbody wire:loading.remove class="divide-y divide-border">
-                    @forelse ($transactions as $transaction)
-                        <tr class="transition hover:bg-bg/60" wire:key="trx-{{ $transaction->id }}">
+                    @forelse ($deposits as $deposit)
+                        <tr class="transition hover:bg-bg/60" wire:key="dep-{{ $deposit->id }}">
                             <td class="px-5 py-4">
-                                <a href="{{ route('savings.shopping.show', $transaction) }}" wire:navigate class="font-mono text-xs font-medium text-text hover:text-primary">
-                                    {{ $transaction->transaction_number }}
+                                <a href="{{ route('savings.deposits.show', $deposit) }}" wire:navigate class="font-mono text-xs font-medium text-text hover:text-primary">
+                                    {{ $deposit->transaction_number }}
                                 </a>
-                                @if ($transaction->is_reversal)
+                                @if ($deposit->is_reversal)
                                     <div class="mt-1"><x-ui.badge color="danger">Reversal</x-ui.badge></div>
                                 @endif
                             </td>
                             <td class="px-5 py-4">
-                                <span class="text-text">{{ $transaction->member?->full_name ?? '—' }}</span>
-                                <p class="font-mono text-xs text-muted">{{ $transaction->member?->member_number }}</p>
+                                <span class="text-text">{{ $deposit->member?->full_name ?? '—' }}</span>
+                                <p class="font-mono text-xs text-muted">{{ $deposit->member?->member_number }}</p>
                             </td>
-                            <td class="px-5 py-4 text-right font-medium tabular-nums {{ $transaction->is_reversal ? 'text-success' : 'text-danger' }}">
-                                {{ $transaction->is_reversal ? '+' : '−' }}Rp {{ number_format((float) $transaction->amount, 0, ',', '.') }}
+                            <td class="px-5 py-4">
+                                <x-ui.badge :color="$badgeColor($deposit->savings_type)">{{ $savingsTypes[$deposit->savings_type] ?? $deposit->savings_type }}</x-ui.badge>
+                            </td>
+                            <td class="px-5 py-4 text-right font-medium tabular-nums {{ $deposit->is_reversal ? 'text-danger' : 'text-success' }}">
+                                {{ $deposit->is_reversal ? '−' : '+' }}Rp {{ number_format((float) $deposit->amount, 0, ',', '.') }}
                             </td>
                             <td class="px-5 py-4 text-text">
-                                {{ $transaction->transaction_date?->translatedFormat('d M Y') }}
-                                <span class="block text-xs text-muted">{{ $transaction->created_at?->translatedFormat('H.i') }} WIB</span>
+                                {{ $deposit->deposit_date?->translatedFormat('d M Y') }}
+                                <span class="block text-xs text-muted">{{ $deposit->created_at?->translatedFormat('H.i') }} WIB</span>
                             </td>
-                            <td class="px-5 py-4 text-muted">{{ $transaction->reference_number ?: '—' }}</td>
+                            <td class="px-5 py-4 text-muted">{{ $depositMethods[$deposit->deposit_method] ?? $deposit->deposit_method }}</td>
                             <td class="px-5 py-4">
                                 <div class="flex justify-end">
                                     <x-ui.dropdown>
-                                        <x-ui.dropdown-item icon="eye" :href="route('savings.shopping.show', $transaction)" wire:navigate>Lihat Detail</x-ui.dropdown-item>
+                                        <x-ui.dropdown-item icon="eye" :href="route('savings.deposits.show', $deposit)" wire:navigate>Lihat Detail</x-ui.dropdown-item>
+                                        <x-ui.dropdown-item icon="printer" :href="route('savings.deposits.slip', $deposit)">Cetak Slip</x-ui.dropdown-item>
 
-                                        @if ($this->canReverse($transaction))
+                                        @if ($this->canReverse($deposit))
                                             <div class="my-1 border-t border-border"></div>
                                             <x-ui.dropdown-item icon="arrow-uturn-left" variant="danger"
-                                                wire:click="openReverse('{{ $transaction->id }}')">Reversal</x-ui.dropdown-item>
+                                                wire:click="openReverse('{{ $deposit->id }}')">Reversal</x-ui.dropdown-item>
                                         @endif
                                     </x-ui.dropdown>
                                 </div>
@@ -111,23 +151,23 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-16">
+                            <td colspan="7" class="px-5 py-16">
                                 <div class="flex flex-col items-center justify-center text-center">
-                                    <div class="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
-                                        <x-ui.icon name="shopping-cart" class="h-7 w-7" />
+                                    <div class="grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-success">
+                                        <x-ui.icon name="banknotes" class="h-7 w-7" />
                                     </div>
                                     <h4 class="mt-4 text-sm font-semibold text-text">
-                                        {{ $this->hasActiveFilters() ? 'Tidak ada transaksi yang cocok' : 'Belum ada pemakaian belanja' }}
+                                        {{ $this->hasActiveFilters() ? 'Tidak ada setoran yang cocok' : 'Belum ada setoran simpanan' }}
                                     </h4>
                                     <p class="mt-1 max-w-xs text-xs text-muted">
                                         {{ $this->hasActiveFilters()
                                             ? 'Coba ubah kata kunci atau filter.'
-                                            : 'Catat pemakaian saldo Wajib Belanja anggota pertama.' }}
+                                            : 'Catat setoran simpanan anggota pertama.' }}
                                     </p>
-                                    @can('create_shopping::transaction')
+                                    @can('create_savings::deposit')
                                         @unless ($this->hasActiveFilters())
-                                            <x-ui.button :href="route('savings.shopping.create')" wire:navigate class="mt-4 h-9 px-3">
-                                                <x-ui.icon name="plus" class="h-4 w-4" /> Catat Pemakaian
+                                            <x-ui.button :href="route('savings.deposits.create')" wire:navigate class="mt-4 h-9 px-3">
+                                                <x-ui.icon name="plus" class="h-4 w-4" /> Setoran Baru
                                             </x-ui.button>
                                         @endunless
                                     @endcan
@@ -139,9 +179,9 @@
             </table>
         </div>
 
-        @if ($transactions->hasPages())
+        @if ($deposits->hasPages())
             <div class="border-t border-border px-5 py-3">
-                {{ $transactions->links() }}
+                {{ $deposits->links() }}
             </div>
         @endif
     </x-ui.card>
@@ -162,8 +202,8 @@
                     <x-ui.icon name="arrow-uturn-left" class="h-5 w-5" />
                 </span>
                 <div>
-                    <h3 class="text-base font-semibold tracking-tight text-text">Reversal Pemakaian Belanja</h3>
-                    <p class="mt-1 text-xs text-muted">Membuat transaksi-lawan; saldo Wajib Belanja kembali. Baris asli tidak dihapus.</p>
+                    <h3 class="text-base font-semibold tracking-tight text-text">Reversal Setoran</h3>
+                    <p class="mt-1 text-xs text-muted">Membuat transaksi-lawan; saldo simpanan tersesuaikan. Baris asli tidak dihapus.</p>
                 </div>
             </div>
 
