@@ -1,0 +1,296 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Filament\Forms\Components\MoneyInput;
+use App\Filament\Resources\InstallmentResource\Pages;
+use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
+use App\Models\Installment;
+use App\Models\InstallmentSchedule;
+use App\Models\Loan;
+use App\Models\Member;
+use App\Services\LoanPaymentService;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Forms;
+use Filament\Forms\Components\Component;
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class InstallmentResource extends Resource
+{
+    protected static ?string $model = Installment::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-credit-card';
+
+    protected static ?string $navigationGroup = 'Pinjaman';
+
+    protected static ?string $navigationLabel = 'Angsuran';
+
+    protected static ?string $modelLabel = 'Angsuran';
+
+    protected static ?string $pluralModelLabel = 'Angsuran';
+
+    protected static ?int $navigationSort = 20;
+
+    public const PAYMENT_METHODS = [
+        'potong_gaji' => 'Potong Gaji',
+        'manual' => 'Manual',
+    ];
+
+    public const REFUND_METHODS = [
+        'tunai' => 'Tunai',
+        'transfer' => 'Transfer',
+    ];
+
+    /** @return array<string, string> Pinjaman aktif anggota, dibedakan tgl + nominal. */
+    public static function activeLoanOptions(mixed $memberId): array
+    {
+        if (blank($memberId)) {
+            return [];
+        }
+
+        return Loan::query()
+            ->where('member_id', $memberId)
+            ->where('status', 'Cair')
+            ->orderByDesc('disbursement_date')
+            ->get()
+            ->mapWithKeys(fn (Loan $loan): array => [
+                $loan->id => sprintf(
+                    '%s — cair %s — Rp %s',
+                    $loan->loan_number,
+                    $loan->disbursement_date?->format('d/m/Y'),
+                    number_format((float) $loan->principal_amount, 0, ',', '.'),
+                ),
+            ])
+            ->all();
+    }
+
+    /** @return array<int|string, string> Jadwal belum bayar untuk pinjaman. */
+    public static function unpaidScheduleOptions(mixed $loanId): array
+    {
+        if (blank($loanId)) {
+            return [];
+        }
+
+        // FIFO: hanya angsuran terlama yang belum bayar yang boleh dibayar,
+        // supaya tidak ada gap di urutan pencatatan.
+        return InstallmentSchedule::query()
+            ->where('loan_id', $loanId)
+            ->where('status', 'Belum Bayar')
+            ->orderBy('installment_seq')
+            ->limit(1)
+            ->get()
+            ->mapWithKeys(fn (InstallmentSchedule $s): array => [
+                $s->id => sprintf(
+                    'Angsuran #%d — jatuh tempo %s — tagihan Rp %s',
+                    $s->installment_seq,
+                    $s->due_date?->format('d/m/Y'),
+                    number_format((float) $s->total_due, 0, ',', '.'),
+                ),
+            ])
+            ->all();
+    }
+
+    public static function isFinalUnpaid(mixed $scheduleId): bool
+    {
+        $schedule = InstallmentSchedule::find($scheduleId);
+
+        if ($schedule === null) {
+            return false;
+        }
+
+        return InstallmentSchedule::query()
+            ->where('loan_id', $schedule->loan_id)
+            ->where('status', 'Belum Bayar')
+            ->where('id', '!=', $schedule->id)
+            ->doesntExist();
+    }
+
+    public static function prefillFromSchedule(mixed $scheduleId, Set $set): void
+    {
+        $schedule = InstallmentSchedule::with('loan')->find($scheduleId);
+
+        if ($schedule === null) {
+            return;
+        }
+
+        // MoneyInput (mask presisi 0) memperlakukan ".00" sebagai dua digit → buang desimal saat prefill.
+        $set('principal_paid', self::rupiah($schedule->loan->monthly_principal));
+        $set('interest_paid', self::rupiah($schedule->loan->monthly_interest));
+        $set('time_deposit_saved', self::rupiah($schedule->loan->monthly_time_deposit));
+    }
+
+    private static function rupiah(string|int|float|null $value): string
+    {
+        return (string) (int) round((float) $value);
+    }
+
+    public static function canReverse(Installment $record): bool
+    {
+        return ! $record->is_reversal
+            && (auth()->user()?->can('reverse', $record) ?? false);
+    }
+
+    /** @return array<int, Component> */
+    public static function reverseFormSchema(): array
+    {
+        return [
+            Forms\Components\Textarea::make('reason')
+                ->label('Alasan Reversal')
+                ->required()->minLength(5)->maxLength(65535)
+                ->helperText('Wajib, minimal 5 karakter. Tercatat di audit. Jika pelunasan, pengembalian SWP/Tab ikut dibatalkan.'),
+        ];
+    }
+
+    public static function performReversal(Installment $record, array $data): void
+    {
+        try {
+            app(LoanPaymentService::class)->reverse($record, (string) $data['reason']);
+
+            Notification::make()->success()
+                ->title('Reversal berhasil')
+                ->body('Pembayaran dibatalkan; jadwal kembali Belum Bayar.')
+                ->send();
+        } catch (\Throwable $e) {
+            Notification::make()->danger()->title('Reversal ditolak')->body($e->getMessage())->send();
+        }
+    }
+
+    public static function printReceipt(Installment $installment): StreamedResponse
+    {
+        $installment->loadMissing(['loan.member', 'recordedBy']);
+
+        $pdf = Pdf::loadView('pdf.installment-receipt', [
+            'installment' => $installment,
+            'paymentMethodLabel' => self::PAYMENT_METHODS[$installment->payment_method] ?? $installment->payment_method,
+            'printedAt' => now()->format('d M Y H:i'),
+        ]);
+
+        return response()->streamDownload(
+            fn () => print ($pdf->output()),
+            'kuitansi-angsuran-'.$installment->installment_number.'.pdf',
+        );
+    }
+
+    public static function form(Form $form): Form
+    {
+        return $form->schema([
+            Forms\Components\Hidden::make('idempotency_key')->default(fn (): string => (string) Str::uuid()),
+            Forms\Components\Section::make('Pembayaran Angsuran')
+                ->description('Pilih pinjaman aktif & angsuran, lalu masukkan nominal yang benar-benar diterima.')
+                ->icon('heroicon-o-credit-card')
+                ->columns(2)
+                ->schema([
+                    Forms\Components\Select::make('member_id')
+                        ->label('Anggota')
+                        ->options(fn (): array => Member::query()->orderBy('full_name')->pluck('full_name', 'id')->all())
+                        ->searchable()->preload()->required()->live()->dehydrated(false)
+                        ->afterStateUpdated(fn (Set $set) => $set('loan_id', null) === $set('schedule_id', null)),
+                    Forms\Components\Select::make('loan_id')
+                        ->label('Pinjaman Aktif')
+                        ->options(fn (Get $get): array => self::activeLoanOptions($get('member_id')))
+                        ->required()->live()->dehydrated(false)->native(false)
+                        ->afterStateUpdated(fn (Set $set) => $set('schedule_id', null))
+                        ->helperText('Dibedakan dari tanggal pencairan & nominal.'),
+                    Forms\Components\Select::make('schedule_id')
+                        ->label('Angsuran (jatuh tempo)')
+                        ->options(fn (Get $get): array => self::unpaidScheduleOptions($get('loan_id')))
+                        ->required()->live()->native(false)
+                        ->afterStateUpdated(fn (?string $state, Set $set) => self::prefillFromSchedule($state, $set)),
+                    Forms\Components\Select::make('payment_method')
+                        ->label('Metode Bayar')->options(self::PAYMENT_METHODS)
+                        ->default('potong_gaji')->required()->native(false),
+                    MoneyInput::make('principal_paid')->label('Pokok')->required()
+                        ->helperText('Tidak boleh kurang dari tagihan.'),
+                    MoneyInput::make('interest_paid')->label('Jasa')->required(),
+                    MoneyInput::make('time_deposit_saved')->label('Tabungan Berjangka')->required(),
+                    Forms\Components\DatePicker::make('payment_date')->label('Tanggal Bayar')->default(now())->required(),
+                    Forms\Components\Select::make('refund_method')
+                        ->label('Metode Pengembalian (saat lunas)')
+                        ->options(self::REFUND_METHODS)->default('tunai')->native(false)
+                        ->visible(fn (Get $get): bool => self::isFinalUnpaid($get('schedule_id')))
+                        ->helperText('Jika ini angsuran pelunasan, SWP + Tabungan Berjangka dikembalikan via metode ini.'),
+                    Forms\Components\SpatieMediaLibraryFileUpload::make('bukti')
+                        ->collection('bukti')->label('Bukti Pembayaran')
+                        ->image()->downloadable()->openable()->columnSpanFull()
+                        ->helperText('Slip/foto/kuitansi pendukung nominal diterima.'),
+                ]),
+        ]);
+    }
+
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            Infolists\Components\Section::make()->columns(2)->schema([
+                Infolists\Components\TextEntry::make('installment_number')->label('No. Angsuran')->badge()->color('primary')->copyable(),
+                Infolists\Components\TextEntry::make('loan.loan_number')->label('Pinjaman')->copyable(),
+                Infolists\Components\TextEntry::make('loan.member.full_name')->label('Anggota'),
+                Infolists\Components\TextEntry::make('amount_paid')->label('Dibayar')->money('IDR')->weight('bold')->color('success'),
+                Infolists\Components\TextEntry::make('principal_paid')->label('Pokok')->money('IDR'),
+                Infolists\Components\TextEntry::make('interest_paid')->label('Jasa')->money('IDR'),
+                Infolists\Components\TextEntry::make('time_deposit_saved')->label('Tab. Berjangka')->money('IDR'),
+                Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR'),
+                Infolists\Components\TextEntry::make('payment_date')->label('Tgl Bayar')->date('d M Y'),
+                Infolists\Components\IconEntry::make('is_reversal')->label('Reversal')->boolean(),
+            ]),
+        ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->defaultSort('created_at', 'desc')
+            ->columns([
+                Tables\Columns\TextColumn::make('installment_number')->label('No.')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('loan.member.full_name')->label('Anggota')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('loan.loan_number')->label('Pinjaman')->searchable(),
+                Tables\Columns\TextColumn::make('amount_paid')->label('Dibayar')->money('IDR')->sortable(),
+                Tables\Columns\TextColumn::make('payment_method')->label('Metode')->badge()
+                    ->formatStateUsing(fn (string $state): string => self::PAYMENT_METHODS[$state] ?? $state)->toggleable(),
+                Tables\Columns\TextColumn::make('payment_date')->label('Tanggal')->date('d M Y')->sortable(),
+                Tables\Columns\IconColumn::make('is_reversal')->label('Reversal')->boolean()->toggleable(),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('payment_method')->label('Metode')->options(self::PAYMENT_METHODS),
+                Tables\Filters\TernaryFilter::make('is_reversal')->label('Reversal'),
+            ])
+            ->actions([
+                Tables\Actions\ViewAction::make(),
+                Tables\Actions\Action::make('printReceipt')
+                    ->label('Kuitansi')->icon('heroicon-o-printer')->color('gray')
+                    ->action(fn (Installment $record): StreamedResponse => self::printReceipt($record)),
+                Tables\Actions\Action::make('reverse')
+                    ->label('Reversal')->icon('heroicon-o-arrow-uturn-left')->color('danger')
+                    ->visible(fn (Installment $record): bool => self::canReverse($record))
+                    ->form(self::reverseFormSchema())
+                    ->requiresConfirmation()
+                    ->modalHeading('Reversal Pembayaran')
+                    ->action(fn (Installment $record, array $data) => self::performReversal($record, $data)),
+            ]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            AuditTrailRelationManager::class,
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListInstallments::route('/'),
+            'create' => Pages\CreateInstallment::route('/create'),
+            'view' => Pages\ViewInstallment::route('/{record}'),
+        ];
+    }
+}

@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\GeneratesTransactionNumber;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +16,8 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 class Loan extends Model implements HasMedia
 {
+    use GeneratesTransactionNumber;
+    use HasFactory;
     use HasUuids;
     use InteractsWithMedia;
     use LogsActivity;
@@ -26,6 +31,9 @@ class Loan extends Model implements HasMedia
         'swp_amount',
         'disbursed_amount',
         'term_months',
+        'monthly_principal',
+        'monthly_interest',
+        'monthly_time_deposit',
         'disbursement_date',
         'first_due_date',
         'status',
@@ -39,9 +47,35 @@ class Loan extends Model implements HasMedia
         'swp_amount' => 'decimal:2',
         'disbursed_amount' => 'decimal:2',
         'term_months' => 'integer',
+        'monthly_principal' => 'decimal:2',
+        'monthly_interest' => 'decimal:2',
+        'monthly_time_deposit' => 'decimal:2',
         'disbursement_date' => 'date',
         'first_due_date' => 'date',
     ];
+
+    public function transactionNumberColumn(): string
+    {
+        return 'loan_number';
+    }
+
+    public function transactionNumberPrefix(): string
+    {
+        return 'PJM';
+    }
+
+    /**
+     * Pinjaman yang masih berjalan (belum lunas).
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('status', 'Cair');
+    }
+
+    public function isLunas(): bool
+    {
+        return $this->status === 'Lunas';
+    }
 
     public function member(): BelongsTo
     {

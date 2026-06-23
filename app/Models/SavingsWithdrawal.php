@@ -34,6 +34,7 @@ class SavingsWithdrawal extends Model implements Reversible
         'disbursed_at',
         'period_year',
         'related_loan_id',
+        'disbursement_method',
         'notes',
         'is_reversal',
         'reversal_of_id',
@@ -99,6 +100,8 @@ class SavingsWithdrawal extends Model implements Reversible
             'withdrawal_date' => $this->withdrawal_date,
             'status' => $this->status,
             'period_year' => $this->period_year,
+            'related_loan_id' => $this->related_loan_id,
+            'disbursement_method' => $this->disbursement_method,
         ];
     }
 }

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Exceptions\UnsupportedSavingsType;
+use App\Models\Installment;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
@@ -15,12 +17,16 @@ class SavingsBalanceService
 
     private const DIRECT_TYPES = ['pokok', 'wajib', 'sukarela'];
 
-    private const UNSUPPORTED_TYPES = ['swp', 'tabungan_berjangka'];
-
     public function balanceByType(Member $member, string $type): string
     {
-        if (in_array($type, self::UNSUPPORTED_TYPES, true)) {
-            throw UnsupportedSavingsType::forType($type);
+        // SWP & Tabungan Berjangka: dititipkan modul Pinjaman (ADR D7).
+        // Sumber akumulasi = tabel pinjaman; pengurang = refund withdrawal.
+        if ($type === 'swp') {
+            return $this->loanSwpBalance($member);
+        }
+
+        if ($type === 'tabungan_berjangka') {
+            return $this->timeDepositBalance($member);
         }
 
         if ($type === 'hari_raya') {
@@ -38,6 +44,45 @@ class SavingsBalanceService
         return bcsub(
             $this->depositNet($member, $type),
             $this->withdrawalNet($member, $type),
+            self::SCALE
+        );
+    }
+
+    /**
+     * Saldo SWP anggota (ADR D7): SWP dipotong sekali saat pencairan
+     * (akumulasi dari `loans.swp_amount`), dikurangi refund yang sudah cair.
+     * SATU pengurangan saja (lihat C3) — pinjaman lunas yang sudah di-refund
+     * otomatis ter-net (akumulasi − refund = 0 untuk pinjaman itu).
+     */
+    public function loanSwpBalance(Member $member): string
+    {
+        $accrued = Loan::query()
+            ->where('member_id', $member->id)
+            ->selectRaw('COALESCE(SUM(swp_amount), 0) as total')
+            ->value('total');
+
+        return bcsub(
+            $this->toAmount($accrued),
+            $this->withdrawalNet($member, 'swp'),
+            self::SCALE
+        );
+    }
+
+    /**
+     * Saldo Tabungan Berjangka anggota (ADR D7): terkumpul per angsuran dari
+     * **nominal aktual** yang diinput (`installments.time_deposit_saved`, net
+     * reversal), dikurangi refund yang sudah cair.
+     */
+    public function timeDepositBalance(Member $member): string
+    {
+        $accrued = Installment::query()
+            ->whereHas('loan', fn ($q) => $q->where('member_id', $member->id))
+            ->signedTimeDeposit()
+            ->value('net');
+
+        return bcsub(
+            $this->toAmount($accrued),
+            $this->withdrawalNet($member, 'tabungan_berjangka'),
             self::SCALE
         );
     }

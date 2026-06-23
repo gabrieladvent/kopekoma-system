@@ -10,7 +10,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving', 'savings::withdrawal', 'shopping::transaction'];
+    private const RESOURCES = ['grade', 'agency', 'member', 'savings::deposit', 'member::holiday::saving', 'savings::withdrawal', 'shopping::transaction', 'loan', 'installment', 'loan::blacklist'];
 
     private const BASE_PREFIXES = ['view', 'view_any', 'create', 'update'];
 
@@ -37,6 +37,8 @@ class RolePermissionSeeder extends Seeder
         // Batch potong gaji = bulk create setoran (uang masuk) → Petugas+ (D5/D7).
         // Custom Page tak punya auto-policy Shield → permission dideklarasi manual.
         'access_batch_salary_deduction',
+        // Reversal pembayaran angsuran = uniform Petugas+ (D5/D7).
+        'reverse_installment',
     ];
 
     private const CUSTOM_PENGURUS = [
@@ -44,11 +46,14 @@ class RolePermissionSeeder extends Seeder
         'reverse_savings::withdrawal',
         'reverse_shopping::transaction',
         'access_batch_salary_deduction',
+        'reverse_installment',
         // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
         // Export/cetak rekap = PII finansial → Pengurus+ saja (D7); export ter-log.
         'export_savings_recap',
+        // Koreksi salah-input pinjaman = reversal seluruh record → Pengurus+ saja (D3/2d).
+        'reverse_loan',
     ];
 
     public function run(): void
