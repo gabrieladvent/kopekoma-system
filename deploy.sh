@@ -89,12 +89,12 @@ fi
 
 cd "$APP_DIR"
 
-# Pastikan $APP_USER memiliki app dir SEBELUM operasi apa pun. Tanpa ini:
-#   - php artisan down gagal nulis storage/framework/down (Permission denied)
-#   - git nolak dengan "dubious ownership" karena repo bukan milik $APP_USER
-# safe.directory pakai --system (/etc/gitconfig) supaya kebaca walau sudo -u
-# tidak mereset HOME (config --global bisa nyasar ke /root/.gitconfig).
-chown -R $APP_USER:$APP_USER "$APP_DIR"
+# Semua operasi dijalankan sebagai root (user yang punya SSH key GitHub, akses
+# composer/npm cache, dan home writable). www-data di server ini home-nya tidak
+# writable sehingga gagal untuk git SSH, composer, & npm. Ownership di-normalize
+# ke $APP_USER di langkah terakhir untuk runtime php-fpm.
+# safe.directory --system supaya root tidak kena "dubious ownership" pada repo
+# yang sudah ter-chown ke $APP_USER dari deploy sebelumnya.
 git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
 
 DEPLOY_START=$(date +%s)
@@ -109,16 +109,16 @@ log "═════════════════════════
 
 # ─── 1. Maintenance mode ─────────────────────────────────────────
 step "1/9 Activating maintenance mode"
-sudo -u $APP_USER php artisan down --retry=60 --secret="kopekoma-deploy" 2>/dev/null || true
+php artisan down --retry=60 --secret="kopekoma-deploy" 2>/dev/null || true
 success "Maintenance mode aktif (bypass via /kopekoma-deploy)"
 
 # ─── 2. Pull latest code ─────────────────────────────────────────
 step "2/9 Pulling latest code from origin/$GIT_BRANCH"
-sudo -u $APP_USER git fetch --all --prune
-CURRENT_COMMIT=$(sudo -u $APP_USER git rev-parse HEAD)
-sudo -u $APP_USER git checkout "$GIT_BRANCH"
-sudo -u $APP_USER git reset --hard "origin/$GIT_BRANCH"
-NEW_COMMIT=$(sudo -u $APP_USER git rev-parse HEAD)
+git fetch --all --prune
+CURRENT_COMMIT=$(git rev-parse HEAD)
+git checkout "$GIT_BRANCH"
+git reset --hard "origin/$GIT_BRANCH"
+NEW_COMMIT=$(git rev-parse HEAD)
 
 if [ "$CURRENT_COMMIT" = "$NEW_COMMIT" ]; then
     log "  ⚠ Tidak ada perubahan code (commit sama: ${NEW_COMMIT:0:8})"
@@ -131,7 +131,7 @@ echo "$CURRENT_COMMIT" > "$APP_DIR/.last-commit"
 
 # ─── 3. Install PHP dependencies ─────────────────────────────────
 step "3/9 Installing PHP dependencies (composer)"
-sudo -u $APP_USER composer install \
+composer install \
     --no-dev \
     --optimize-autoloader \
     --no-interaction \
@@ -142,8 +142,8 @@ success "Composer install selesai"
 # ─── 4. Build frontend assets ────────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
     step "4/9 Installing & building frontend assets (npm + vite)"
-    sudo -u $APP_USER npm ci --silent 2>&1 | tee -a "$LOG_FILE"
-    sudo -u $APP_USER npm run build 2>&1 | tee -a "$LOG_FILE"
+    npm ci --silent 2>&1 | tee -a "$LOG_FILE"
+    npm run build 2>&1 | tee -a "$LOG_FILE"
     success "Frontend assets ter-build"
 else
     log "  ⚠ Skip frontend build (--skip-build)"
@@ -152,26 +152,26 @@ fi
 # ─── 5. Run database migrations ──────────────────────────────────
 if [ "$SKIP_MIGRATION" = false ]; then
     step "5/9 Running database migrations"
-    sudo -u $APP_USER php artisan migrate --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
+    php artisan migrate --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
     success "Migration selesai"
 else
     log "  ⚠ Skip migration (--skip-migration)"
 fi
 
-# ─── 6. Set file permissions ─────────────────────────────────────
-step "6/9 Setting file permissions"
+# ─── 6. Optimize Laravel ─────────────────────────────────────────
+step "6/9 Optimizing Laravel (config, route, view, event cache)"
+php artisan optimize:clear 2>&1 | tee -a "$LOG_FILE"
+php artisan config:cache 2>&1 | tee -a "$LOG_FILE"
+php artisan route:cache 2>&1 | tee -a "$LOG_FILE"
+php artisan view:cache 2>&1 | tee -a "$LOG_FILE"
+php artisan event:cache 2>&1 | tee -a "$LOG_FILE"
+success "Laravel optimize selesai"
+
+# ─── 7. Set file permissions (terakhir, normalize semua tulisan root) ─
+step "7/9 Setting file permissions"
 chown -R $APP_USER:$APP_USER "$APP_DIR"
 chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
-success "Permissions set"
-
-# ─── 7. Optimize Laravel ─────────────────────────────────────────
-step "7/9 Optimizing Laravel (config, route, view, event cache)"
-sudo -u $APP_USER php artisan optimize:clear 2>&1 | tee -a "$LOG_FILE"
-sudo -u $APP_USER php artisan config:cache 2>&1 | tee -a "$LOG_FILE"
-sudo -u $APP_USER php artisan route:cache 2>&1 | tee -a "$LOG_FILE"
-sudo -u $APP_USER php artisan view:cache 2>&1 | tee -a "$LOG_FILE"
-sudo -u $APP_USER php artisan event:cache 2>&1 | tee -a "$LOG_FILE"
-success "Laravel optimize selesai"
+success "Permissions set (owner: $APP_USER)"
 
 # ─── 8. Reload PHP-FPM & restart queue ───────────────────────────
 step "8/9 Reloading PHP-FPM (clear OPcache) & restarting queue workers"
@@ -179,14 +179,14 @@ systemctl reload "$PHP_FPM_SERVICE"
 success "PHP-FPM reloaded"
 # queue:restart signal worker (database driver) untuk exit setelah job aktif
 # selesai; supervisor/systemd timer akan respawn dengan code baru.
-sudo -u $APP_USER php artisan queue:restart 2>&1 | tee -a "$LOG_FILE"
+php artisan queue:restart 2>&1 | tee -a "$LOG_FILE"
 success "Queue workers signaled to restart"
 
 # ─── 9. Reload Nginx & disable maintenance ───────────────────────
 step "9/9 Reloading Nginx & disabling maintenance mode"
 nginx -t 2>&1 | tee -a "$LOG_FILE" || error "Nginx config test gagal"
 systemctl reload nginx
-sudo -u $APP_USER php artisan up 2>&1 | tee -a "$LOG_FILE"
+php artisan up 2>&1 | tee -a "$LOG_FILE"
 success "Maintenance mode dinonaktifkan, app live"
 
 # ─── Done ────────────────────────────────────────────────────────
