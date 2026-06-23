@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2000" viewBox="0 0 1600 2000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#0b3b35"/>
+      <stop offset="0.5" stop-color="#047857"/>
+      <stop offset="1" stop-color="#065f46"/>
+    </linearGradient>
+    <radialGradient id="p1" cx="0.75" cy="0.18" r="0.7">
+      <stop offset="0" stop-color="#6ee7b7" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#6ee7b7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="p2" cx="0.15" cy="0.9" r="0.7">
+      <stop offset="0" stop-color="#14b8a6" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#14b8a6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="b2"><feGaussianBlur stdDeviation="90"/></filter>
+  </defs>
+  <rect width="1600" height="2000" fill="url(#g2)"/>
+  <circle cx="1240" cy="360" r="540" fill="url(#p1)" filter="url(#b2)"/>
+  <circle cx="240" cy="1740" r="560" fill="url(#p2)" filter="url(#b2)"/>
+  <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="2" fill="none">
+    <path d="M0 300 L 1600 700"/>
+    <path d="M0 460 L 1600 860"/>
+    <path d="M0 620 L 1600 1020"/>
+  </g>
+</svg>

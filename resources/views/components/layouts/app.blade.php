@@ -1,9 +1,5 @@
 @props(['title' => 'KOPEKOMA'])
 
-{{--
-    App shell Livewire — sidebar + topbar, konsisten & anti-template.
-    Lihat memory livewire-style-guide §6 (signature) & livewire-component-patterns.
---}}
 <!DOCTYPE html>
 <html lang="id" class="scroll-smooth">
 <head>
@@ -12,17 +8,14 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }}</title>
 
-    {{-- Cegah flash dark mode: tentukan class sebelum paint --}}
     <script>
         (function () {
-            var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            if (localStorage.getItem('theme') === 'dark') {
                 document.documentElement.classList.add('dark');
             }
         })();
     </script>
 
-    {{-- Custom theme dari Settings (override primary/secondary). Default = token CSS. --}}
     <x-brand-theme />
 
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -32,20 +25,46 @@
     @livewireStyles
 </head>
 <body class="min-h-screen bg-bg text-text font-sans antialiased">
-    <div x-data class="flex min-h-screen">
-        {{-- Sidebar: surface bersih, bergrup, item aktif = pill + accent kiri (bukan blok penuh) --}}
-        <aside class="hidden lg:flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-            <div class="flex h-16 items-center px-5">
+    <div x-data="{ sidebarOpen: false }" @keydown.escape.window="sidebarOpen = false" class="flex min-h-screen">
+        {{-- Overlay (mobile only) saat drawer terbuka --}}
+        <div x-show="sidebarOpen" x-cloak
+             x-transition:enter="transition-opacity ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+             @click="sidebarOpen = false"
+             class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" aria-hidden="true"></div>
+
+        {{-- Sidebar: drawer off-canvas di mobile, statis di desktop.
+             Item aktif = pill + accent kiri (bukan blok penuh). --}}
+        <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+               class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-out lg:static lg:z-auto lg:translate-x-0">
+            <div class="flex h-16 items-center justify-between px-5">
                 <x-app-logo subtitle="Sistem Koperasi" />
+                <button type="button" @click="sidebarOpen = false" aria-label="Tutup menu"
+                        class="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-border/50 hover:text-text lg:hidden">
+                    <x-ui.icon name="x" class="h-5 w-5" />
+                </button>
             </div>
 
             <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-4 text-sm">
                 @php($navUser = auth()->user())
                 @php($isSuper = $navUser?->hasRole('super_admin') ?? false)
                 @php($canAudit = $navUser?->hasAnyRole(['super_admin', 'pengurus']) ?? false)
+                @php($canHoliday = $navUser?->can('view_any_member::holiday::saving') ?? false)
+                @php($canShopping = $navUser?->can('view_any_shopping::transaction') ?? false)
+                @php($canBalance = $navUser?->can('view_any_member::savings::balance') ?? false)
+                @php($canDeposit = $navUser?->can('view_any_savings::deposit') ?? false)
+                @php($canWithdrawal = $navUser?->can('view_any_savings::withdrawal') ?? false)
                 @php($groups = [
-                    'Utama' => [['Dashboard', 'home', 'dashboard']],
-                    'Keuangan' => [['Simpanan', 'wallet', null], ['Pinjaman', 'cash', null], ['Laporan', 'chart', null]],
+                    'Utama' => [
+                        ['Dashboard', 'home', 'dashboard'],
+                        ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit],
+                    ],
+                    'Simpanan' => [
+                        ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
+                        ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
+                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
+                        ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
+                    ],
                     'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
                     'Sistem' => [
                         ['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit],
@@ -64,6 +83,7 @@
                                 @php($route = $item[2])
                                 @php($active = $route && (request()->routeIs($route) || request()->routeIs($route.'.*')))
                                 <a href="{{ $route ? route($route) : '#' }}" @if($route) wire:navigate @endif
+                                   @click="sidebarOpen = false"
                                    @class([
                                        'group flex items-center gap-3 rounded-xl px-3 py-2 font-medium transition duration-150 ease-out',
                                        'bg-primary/10 text-primary' => $active,
@@ -104,8 +124,12 @@
         <div class="flex min-w-0 flex-1 flex-col">
             {{-- Topbar --}}
             <header class="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-border bg-surface/70 px-4 backdrop-blur-md sm:px-6 lg:px-8">
-                <div class="flex items-center gap-3">
-                    <h1 class="text-base font-semibold tracking-tight">{{ $title }}</h1>
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <button type="button" @click="sidebarOpen = true" aria-label="Buka menu"
+                            class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted transition duration-150 ease-out hover:bg-border/50 hover:text-text focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none lg:hidden">
+                        <svg class="h-5.5 w-5.5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+                    </button>
+                    <h1 class="truncate text-base font-semibold tracking-tight">{{ $title }}</h1>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="relative hidden sm:block">
@@ -130,7 +154,7 @@
             <main class="relative flex-1">
                 {{-- Tekstur grid halus (signature) --}}
                 <div class="bg-grid pointer-events-none absolute inset-x-0 top-0 h-64" aria-hidden="true"></div>
-                <div class="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+                <div class="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
                     {{ $slot }}
                 </div>
             </main>

@@ -1,23 +1,77 @@
-<div class="grid min-h-screen lg:grid-cols-2">
-    {{-- Panel brand (signature) — gradient + orbs, sembunyi di mobile --}}
-    <div class="bg-brand-gradient relative hidden overflow-hidden p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div class="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-3xl"></div>
-        <div class="pointer-events-none absolute -bottom-20 -left-10 h-72 w-72 rounded-full bg-black/10 blur-3xl"></div>
+@php
+    // Gambar latar login dari Settings (aman bila belum termigrasi).
+    try {
+        $g = app(\App\Settings\GeneralSettings::class);
+        $loginImages = collect($g->login_background_images ?? [])->filter()->values();
+    } catch (\Throwable $e) {
+        $loginImages = collect();
+    }
+
+    // Resolusi URL: path 'images/...' = aset publik (contoh bawaan);
+    // path lain = hasil upload di disk 'public' (storage).
+    $imgUrls = $loginImages->map(function (string $p) {
+        if (\Illuminate\Support\Str::startsWith($p, ['http://', 'https://', '/'])) {
+            return $p;
+        }
+        if (\Illuminate\Support\Str::startsWith($p, 'images/')) {
+            return asset($p);
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($p);
+    })->all();
+
+    $hasImages = count($imgUrls) > 0;
+@endphp
+
+<div class="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+    {{-- Panel brand (signature) — adaptif: teks / Ken Burns / slideshow. Sembunyi di mobile. --}}
+    <div class="bg-brand-gradient relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between lg:p-12">
+        @if ($hasImages)
+            {{-- Lapisan gambar (1 = Ken Burns, 2+ = slideshow crossfade) --}}
+            <div class="absolute inset-0"
+                 x-data="{ i: 0, n: {{ count($imgUrls) }} }"
+                 x-init="if (n > 1) setInterval(() => i = (i + 1) % n, 6000)">
+                @foreach ($imgUrls as $idx => $url)
+                    <div class="absolute inset-0 transition-opacity duration-[1200ms] ease-in-out"
+                         :class="i === {{ $idx }} ? 'opacity-100' : 'opacity-0'">
+                        <div class="animate-kenburns h-full w-full bg-cover bg-center"
+                             style="background-image: url('{{ $url }}')"></div>
+                    </div>
+                @endforeach
+            </div>
+            {{-- Overlay agar teks tetap terbaca di atas gambar apa pun --}}
+            <div class="absolute inset-0 bg-linear-to-t from-black/75 via-black/35 to-black/40"></div>
+            <div class="absolute inset-0 bg-linear-to-br from-primary/35 to-secondary/25 mix-blend-multiply"></div>
+        @else
+            {{-- Tanpa gambar → panel teks: aurora drift + grid (signature) --}}
+            <div class="animate-aurora-a pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-white/15 blur-3xl"></div>
+            <div class="animate-aurora-b pointer-events-none absolute -bottom-28 -left-16 h-96 w-96 rounded-full bg-black/15 blur-3xl"></div>
+            <div class="bg-grid pointer-events-none absolute inset-0 opacity-[0.18]" style="mask-image: none; -webkit-mask-image: none;"></div>
+        @endif
 
         <div class="relative flex items-center gap-2.5">
-            <span class="grid h-9 w-9 place-items-center rounded-xl bg-white/15 text-sm font-bold backdrop-blur">K</span>
-            <span class="text-sm font-bold tracking-tight">KOPEKOMA</span>
+            <span class="grid h-10 w-10 place-items-center rounded-2xl bg-white/15 text-base font-bold shadow-lg backdrop-blur">K</span>
+            <div class="leading-none">
+                <span class="block text-sm font-bold tracking-tight">KOPEKOMA</span>
+                <span class="mt-1 block text-[11px] font-medium text-white/70">Sistem Koperasi</span>
+            </div>
         </div>
 
         <div class="relative max-w-md">
-            <h2 class="text-3xl font-bold leading-tight tracking-tight">Kelola koperasi dengan tenang.</h2>
-            <p class="mt-3 text-sm text-white/80">
-                Simpanan, pinjaman, dan laporan dalam satu tempat — rapi, akurat, dan mudah dipakai bersama tim.
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
+                <span class="h-1.5 w-1.5 rounded-full bg-white"></span> Tata kelola simpanan terpadu
+            </span>
+            <h2 class="mt-5 text-[2.5rem] font-bold leading-[1.1] tracking-tight drop-shadow-sm">
+                Kelola koperasi<br>dengan <span class="text-white/70">tenang.</span>
+            </h2>
+            <p class="mt-4 text-sm leading-relaxed text-white/85">
+                Simpanan, pencairan, dan laporan dalam satu tempat — rapi, akurat, dan mudah dipakai bersama tim.
             </p>
-            <ul class="mt-8 space-y-3 text-sm text-white/90">
-                @foreach (['Data anggota & simpanan terpusat', 'Laporan keuangan otomatis', 'Akses berbasis peran yang aman'] as $point)
+
+            <ul class="mt-8 space-y-3.5 text-sm text-white/90">
+                @foreach (['Data anggota & simpanan terpusat', 'Rekap potong gaji otomatis', 'Akses berbasis peran yang aman'] as $point)
                     <li class="flex items-center gap-3">
-                        <span class="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/20">
+                        <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/20 ring-1 ring-white/25">
                             <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
                         </span>
                         {{ $point }}
@@ -30,7 +84,7 @@
     </div>
 
     {{-- Form --}}
-    <div x-data class="relative flex items-center justify-center p-6 sm:p-10">
+    <div x-data class="relative flex items-center justify-center px-6 py-10 sm:px-10">
         {{-- Theme toggle --}}
         <button type="button" @click="$store.theme.toggle()"
                 class="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-lg text-muted transition duration-150 ease-out hover:bg-border/50 hover:text-text focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
@@ -39,9 +93,12 @@
             <svg x-show="$store.theme.dark" x-cloak class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
         </button>
 
-        <div class="w-full max-w-sm">
+        {{-- Tekstur grid halus di belakang form (hanya layar kecil-menengah, sangat samar) --}}
+        <div class="bg-grid pointer-events-none absolute inset-x-0 top-0 h-56 lg:hidden" aria-hidden="true"></div>
+
+        <div class="relative w-full max-w-sm">
             {{-- Logo (mobile) --}}
-            <x-app-logo class="mb-8 lg:hidden" />
+            <x-app-logo class="mb-8 lg:hidden" subtitle="Sistem Koperasi" />
 
             <h1 class="text-2xl font-bold tracking-tight">Masuk ke akun</h1>
             <p class="mt-1.5 text-sm text-muted">Selamat datang kembali. Silakan masukkan kredensial Anda.</p>
@@ -98,6 +155,11 @@
                     <span wire:loading wire:target="login">Memproses…</span>
                 </x-ui.button>
             </form>
+
+            <p class="mt-8 flex items-center justify-center gap-1.5 text-xs text-muted">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                Koneksi aman & terenkripsi
+            </p>
         </div>
     </div>
 </div>

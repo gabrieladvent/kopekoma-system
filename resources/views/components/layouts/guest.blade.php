@@ -9,11 +9,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} — KOPEKOMA</title>
 
-    {{-- Cegah flash dark mode --}}
+    {{-- Default paksa Light & abaikan preferensi sistem. Hanya hormati pilihan
+         eksplisit user (localStorage 'theme' === 'dark'). --}}
     <script>
         (function () {
-            var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            if (localStorage.getItem('theme') === 'dark') {
                 document.documentElement.classList.add('dark');
             }
         })();
