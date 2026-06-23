@@ -13,14 +13,6 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
-/**
- * Setor Simpanan — mode "Setoran Tunggal".
- *
- * Sekali proses → banyak setoran: satu baris per jenis simpanan yang dicentang
- * & bernominal > 0. Logika bisnis (jenis berlaku, nominal terkunci, anti-duplikat
- * per periode) di-reuse 1:1 dari SavingsDepositResource agar flow identik dengan
- * Filament. Lihat CreateSavingsDeposit::handleRecordCreation() sebagai padanan.
- */
 class SavingsDepositForm extends Component
 {
     use WithMemberPicker;
@@ -69,11 +61,6 @@ class SavingsDepositForm extends Component
         $this->rebuildLines();
     }
 
-    /**
-     * Bangun ulang baris dari helper resource, pertahankan state sebelumnya
-     * (centang, nominal sukarela, idempotency_key) lalu beri tahu klien agar
-     * total estimasi dihitung ulang.
-     */
     public function rebuildLines(): void
     {
         $this->lines = Resource::buildLines(
@@ -156,10 +143,6 @@ class SavingsDepositForm extends Component
         ];
     }
 
-    /**
-     * Validasi nominal per baris yang dicentang & tidak terkunci. Error menempel
-     * ke field yang benar (lines.{i}.amount) agar terlihat di kartu jenisnya.
-     */
     protected function validateLines(): void
     {
         $settings = app(CooperativeSettings::class);

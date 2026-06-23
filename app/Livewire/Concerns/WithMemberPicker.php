@@ -5,14 +5,6 @@ namespace App\Livewire\Concerns;
 use App\Models\Member;
 use Illuminate\Support\Collection;
 
-/**
- * Pemilih anggota ala "searchable select" Filament untuk form Livewire.
- *
- * Menyediakan state pencarian + seleksi anggota dengan label
- * "No. Anggota — Nama". Komponen pemakai cukup pasang markup picker
- * (lihat partial savings.partials.member-picker) lalu override
- * afterMemberSelected() bila perlu reaksi (mis. reset nominal).
- */
 trait WithMemberPicker
 {
     public ?string $member_id = null;
@@ -21,11 +13,11 @@ trait WithMemberPicker
 
     public ?string $selectedMemberLabel = null;
 
-    /** Set label tampilan dari id terpilih (dipakai saat mount form edit). */
     public function hydrateSelectedMember(): void
     {
         if ($this->member_id !== null && $this->selectedMemberLabel === null) {
             $member = Member::find($this->member_id);
+
             $this->selectedMemberLabel = $member ? static::memberLabel($member) : null;
         }
     }
@@ -63,9 +55,9 @@ trait WithMemberPicker
     {
         return Member::query()
             ->with(['agency:id,agency_name', 'grade:id,code'])
-            ->when($this->memberSearch !== '', function ($q) {
+            ->when($this->memberSearch !== '', function ($query) {
                 $term = '%'.$this->memberSearch.'%';
-                $q->where(fn ($s) => $s->where('full_name', 'like', $term)
+                $query->where(fn ($subQuery) => $subQuery->where('full_name', 'like', $term)
                     ->orWhere('member_number', 'like', $term)
                     ->orWhere('nik', 'like', $term)
                     ->orWhere('nip', 'like', $term));

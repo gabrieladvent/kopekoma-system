@@ -8,11 +8,6 @@ use App\Services\BatchSalaryDeductionService;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-/**
- * Rekap potong gaji per OPD → unduhan CSV. Dipakai route GET agar download
- * ter-deliver andal ke browser (pola sama dgn slip & kartu anggota), bukan
- * lewat aksi Livewire. Setiap export tercatat di log audit (security #E).
- */
 class ExportSalaryDeductionRecap
 {
     public function __invoke(Agency $agency, string $periodMonth, ?int $causerId = null): StreamedResponse
@@ -48,14 +43,14 @@ class ExportSalaryDeductionRecap
 
             fputcsv($out, ['No. Transaksi', 'No. Anggota', 'Nama', 'Nominal', 'Tanggal Setor', 'Periode']);
 
-            foreach ($deposits as $d) {
+            foreach ($deposits as $deposit) {
                 fputcsv($out, [
-                    $d->transaction_number,
-                    $d->member?->member_number,
-                    $d->member?->full_name,
-                    $d->amount,
-                    optional($d->deposit_date)->format('Y-m-d'),
-                    optional($d->period_month)->format('Y-m'),
+                    $deposit->transaction_number,
+                    $deposit->member?->member_number,
+                    $deposit->member?->full_name,
+                    $deposit->amount,
+                    optional($deposit->deposit_date)->format('Y-m-d'),
+                    optional($deposit->period_month)->format('Y-m'),
                 ]);
             }
 

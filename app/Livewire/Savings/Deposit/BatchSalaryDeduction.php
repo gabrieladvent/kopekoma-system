@@ -14,14 +14,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Component;
 
-/**
- * Batch Potong Gaji per OPD — mode kolektif Setor Simpanan (Dokumentasi §4.4).
- *
- * Pilih OPD + periode → tarik anggota aktif beserta jenis simpanannya, atur per
- * orang, lalu commit atomik via BatchSalaryDeductionService. Flow & aturan
- * (jenis berlaku, nominal terkunci, anti-duplikat periode) identik dengan
- * App\Filament\Pages\BatchSalaryDeduction.
- */
 class BatchSalaryDeduction extends Component
 {
     public const PERMISSION = 'access_batch_salary_deduction';
@@ -60,10 +52,10 @@ class BatchSalaryDeduction extends Component
     public function rebuildRows(): void
     {
         $this->rows = $this->buildRows($this->agency_id, $this->period_month);
+
         $this->dispatch('rows-updated');
     }
 
-    /** Aktif/nonaktifkan "Ikut" untuk semua anggota sekaligus. */
     public function setAllIncluded(bool $value): void
     {
         $this->rows = collect($this->rows)
