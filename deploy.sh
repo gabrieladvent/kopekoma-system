@@ -89,6 +89,14 @@ fi
 
 cd "$APP_DIR"
 
+# Pastikan $APP_USER memiliki app dir SEBELUM operasi apa pun. Tanpa ini:
+#   - php artisan down gagal nulis storage/framework/down (Permission denied)
+#   - git nolak dengan "dubious ownership" karena repo bukan milik $APP_USER
+# safe.directory pakai --system (/etc/gitconfig) supaya kebaca walau sudo -u
+# tidak mereset HOME (config --global bisa nyasar ke /root/.gitconfig).
+chown -R $APP_USER:$APP_USER "$APP_DIR"
+git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
+
 DEPLOY_START=$(date +%s)
 log "═══════════════════════════════════════════════════════════════"
 log "  KOPEKOMA System — Deploy"
