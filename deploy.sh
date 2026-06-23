@@ -28,7 +28,7 @@ APP_DIR="/var/www/kopekoma-system"
 APP_USER="www-data"
 LOCK_FILE="/tmp/kopekoma-deploy.lock"
 LOG_FILE="/var/log/kopekoma-deploy.log"
-PHP_FPM_SERVICE="php8.2-fpm"
+PHP_FPM_SERVICE="php8.4-fpm"
 GIT_BRANCH="development"
 
 # Flags
@@ -175,8 +175,22 @@ success "Permissions set (owner: $APP_USER)"
 
 # ─── 8. Reload PHP-FPM & restart queue ───────────────────────────
 step "8/9 Reloading PHP-FPM (clear OPcache) & restarting queue workers"
-systemctl reload "$PHP_FPM_SERVICE"
-success "PHP-FPM reloaded"
+# Auto-detect service php-fpm kalau yang di config tidak ada (versi PHP bisa beda).
+if ! systemctl list-unit-files | grep -q "^${PHP_FPM_SERVICE}.service"; then
+    DETECTED=$(systemctl list-unit-files --type=service 2>/dev/null \
+        | grep -oE 'php[0-9.]+-fpm\.service' | head -n1 | sed 's/\.service//')
+    if [ -n "$DETECTED" ]; then
+        log "  ⚠ $PHP_FPM_SERVICE tidak ada, pakai hasil deteksi: $DETECTED"
+        PHP_FPM_SERVICE="$DETECTED"
+    fi
+fi
+# Reload fpm best-effort: kalau gagal jangan bikin deploy mati (site harus tetap
+# bisa keluar dari maintenance di step 9).
+if systemctl reload "$PHP_FPM_SERVICE" 2>&1 | tee -a "$LOG_FILE"; then
+    success "PHP-FPM reloaded ($PHP_FPM_SERVICE)"
+else
+    log "  ⚠ Gagal reload $PHP_FPM_SERVICE — cek 'systemctl list-units | grep fpm' & set PHP_FPM_SERVICE"
+fi
 # queue:restart signal worker (database driver) untuk exit setelah job aktif
 # selesai; supervisor/systemd timer akan respawn dengan code baru.
 php artisan queue:restart 2>&1 | tee -a "$LOG_FILE"
