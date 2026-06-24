@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\LoanResource\Pages;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
+use App\Filament\Resources\RelationManagers\SchedulesRelationManager;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -414,6 +415,7 @@ class LoanResource extends Resource
     public static function getRelations(): array
     {
         return [
+            SchedulesRelationManager::class,
             AuditTrailRelationManager::class,
         ];
     }
