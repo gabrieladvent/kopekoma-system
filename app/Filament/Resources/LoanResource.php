@@ -13,6 +13,7 @@ use App\Models\LoanBlacklist;
 use App\Models\Member;
 use App\Services\LoanArrearsService;
 use App\Services\LoanCalculator;
+use App\Settings\CooperativeSettings;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms;
 use Filament\Forms\Components\Component;
@@ -107,6 +108,8 @@ class LoanResource extends Resource
         $pdf = Pdf::loadView('pdf.loan-receipt', [
             'loan' => $loan,
             'loanTypeLabel' => self::LOAN_TYPES[$loan->loan_type] ?? $loan->loan_type,
+            'adminRateLabel' => self::amountRateLabel($loan->admin_fee, $loan->principal_amount),
+            'swpRateLabel' => self::amountRateLabel($loan->swp_amount, $loan->principal_amount),
             'printedAt' => now()->format('d M Y H:i'),
         ]);
 
@@ -192,18 +195,20 @@ class LoanResource extends Resource
                         ->minValue(1)
                         ->rule(static fn (Get $get): \Closure => static function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
                             $amount = (int) self::sanitizePrincipal($value);
+                            $max = self::shortTermMax();
+                            $maxRp = self::rupiah($max);
 
-                            if ($get('loan_type') === 'jangka_panjang' && $amount <= 1_000_000) {
-                                $fail('Jangka Panjang harus di atas Rp 1.000.000. Untuk ≤ Rp 1.000.000 gunakan Sebrakan (Jangka Pendek).');
+                            if ($get('loan_type') === 'jangka_panjang' && $amount <= $max) {
+                                $fail("Jangka Panjang harus di atas {$maxRp}. Untuk ≤ {$maxRp} gunakan Sebrakan (Jangka Pendek).");
                             }
 
-                            if ($get('loan_type') === 'jangka_pendek' && $amount > 1_000_000) {
-                                $fail('Sebrakan (Jangka Pendek) maksimal Rp 1.000.000. Di atas itu gunakan Jangka Panjang.');
+                            if ($get('loan_type') === 'jangka_pendek' && $amount > $max) {
+                                $fail("Sebrakan (Jangka Pendek) maksimal {$maxRp}. Di atas itu gunakan Jangka Panjang.");
                             }
                         })
                         ->helperText(fn (Get $get): string => $get('loan_type') === 'jangka_pendek'
-                            ? 'Maksimal Rp 1.000.000 untuk Sebrakan.'
-                            : 'Di atas Rp 1.000.000 untuk jangka panjang.'),
+                            ? 'Maksimal '.self::rupiah(self::shortTermMax()).' untuk Sebrakan.'
+                            : 'Di atas '.self::rupiah(self::shortTermMax()).' untuk jangka panjang.'),
                     Forms\Components\TextInput::make('term_months')
                         ->label('Jangka Waktu (bulan)')
                         ->numeric()
@@ -241,10 +246,10 @@ class LoanResource extends Resource
                 ->columns(3)
                 ->schema([
                     Forms\Components\Placeholder::make('preview_admin')
-                        ->label('Biaya Admin (1%)')
+                        ->label(self::rateLabel('Biaya Admin', app(CooperativeSettings::class)->loan_admin_fee_rate))
                         ->content(fn (Get $get): string => self::previewMoney($get, 'admin_fee')),
                     Forms\Components\Placeholder::make('preview_swp')
-                        ->label('SWP (1%)')
+                        ->label(self::rateLabel('SWP', app(CooperativeSettings::class)->loan_swp_rate))
                         ->content(fn (Get $get): string => self::previewMoney($get, 'swp_amount')),
                     Forms\Components\Placeholder::make('preview_disbursed')
                         ->label('Dana Diterima')
@@ -253,10 +258,10 @@ class LoanResource extends Resource
                         ->label('Pokok / bulan')
                         ->content(fn (Get $get): string => self::previewConstant($get, 'monthly_principal')),
                     Forms\Components\Placeholder::make('preview_jasa')
-                        ->label('Jasa / bulan')
+                        ->label(self::rateLabel('Jasa', app(CooperativeSettings::class)->loan_interest_rate).' / bulan')
                         ->content(fn (Get $get): string => self::previewConstant($get, 'monthly_interest')),
                     Forms\Components\Placeholder::make('preview_tab')
-                        ->label('Tab. Berjangka / bulan')
+                        ->label(self::rateLabel('Tab. Berjangka', app(CooperativeSettings::class)->loan_time_deposit_rate).' / bulan')
                         ->content(fn (Get $get): string => self::previewConstant($get, 'monthly_time_deposit')),
                 ]),
             Forms\Components\Section::make('Peringatan & Kapasitas')
@@ -300,6 +305,53 @@ class LoanResource extends Resource
     private static function sanitizePrincipal(mixed $value): string
     {
         return preg_replace('/[^0-9]/', '', (string) $value) ?? '';
+    }
+
+    /**
+     * Label "<base> (<rate>%)" dengan persen diturunkan dari setting koperasi
+     * (rate desimal, mis. 0.0065 → "0.65%"). Tidak ada persen yang di-hardcode.
+     */
+    private static function rateLabel(string $base, float $rate): string
+    {
+        return $base.' ('.self::formatPercent($rate).')';
+    }
+
+    /**
+     * " (<rate>%)" dengan persen efektif dari nominal yang benar-benar dipotong
+     * (amount ÷ principal) — dipakai di tanda terima agar persen selalu cocok
+     * dengan rupiah di dokumen, tanpa terpengaruh perubahan setting berikutnya.
+     * Mengembalikan string kosong bila basis ≤ 0 (mis. Sebrakan tanpa potongan).
+     */
+    private static function amountRateLabel(string|float|null $amount, string|float|null $base): string
+    {
+        $base = (float) $base;
+        if ($base <= 0 || (float) $amount <= 0) {
+            return '';
+        }
+
+        return ' ('.self::formatPercent((float) $amount / $base).')';
+    }
+
+    /**
+     * Rate desimal → persen ringkas tanpa nol di belakang, mis. 0.0065 → "0.65%".
+     */
+    private static function formatPercent(float $rate): string
+    {
+        return rtrim(rtrim(number_format($rate * 100, 4, '.', ''), '0'), '.').'%';
+    }
+
+    /**
+     * Ambang nominal pemisah Jangka Pendek (Sebrakan) vs Jangka Panjang,
+     * dari setting `loan_short_term_max` — tidak di-hardcode.
+     */
+    private static function shortTermMax(): int
+    {
+        return (int) round((float) app(CooperativeSettings::class)->loan_short_term_max);
+    }
+
+    private static function rupiah(int|float|string $amount): string
+    {
+        return 'Rp '.number_format((float) $amount, 0, ',', '.');
     }
 
     private static function previewMoney(Get $get, string $key): string

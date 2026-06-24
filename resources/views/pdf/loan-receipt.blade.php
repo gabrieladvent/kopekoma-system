@@ -46,8 +46,8 @@
             <tr><td class="label">Jumlah Diajukan</td><td class="sep">:</td><td>Rp {{ number_format((float) $loan->principal_amount, 0, ',', '.') }}</td></tr>
             <tr><td class="label">Jangka Waktu</td><td class="sep">:</td><td>{{ $loan->term_months }} bulan</td></tr>
             <tr><td class="label">Tanggal Pencairan</td><td class="sep">:</td><td>{{ optional($loan->disbursement_date)->format('d M Y') ?? '-' }}</td></tr>
-            <tr><td class="label">Biaya Admin (1%)</td><td class="sep">:</td><td>Rp {{ number_format((float) $loan->admin_fee, 0, ',', '.') }}</td></tr>
-            <tr><td class="label">SWP (1%)</td><td class="sep">:</td><td>Rp {{ number_format((float) $loan->swp_amount, 0, ',', '.') }}</td></tr>
+            <tr><td class="label">Biaya Admin{{ $adminRateLabel }}</td><td class="sep">:</td><td>Rp {{ number_format((float) $loan->admin_fee, 0, ',', '.') }}</td></tr>
+            <tr><td class="label">SWP{{ $swpRateLabel }}</td><td class="sep">:</td><td>Rp {{ number_format((float) $loan->swp_amount, 0, ',', '.') }}</td></tr>
             <tr class="amount-row"><td class="label">Dana Diterima</td><td class="sep">:</td><td class="amount">Rp {{ number_format((float) $loan->disbursed_amount, 0, ',', '.') }}</td></tr>
         </table>
 
