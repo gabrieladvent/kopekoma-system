@@ -21,21 +21,10 @@ class RolePermissionSeeder extends Seeder
         'replicate', 'reorder',
     ];
 
-    /**
-     * Ability custom (D7) di luar CRUD yang dihasilkan Shield. Reversal finansial
-     * = Petugas + Pengurus, gating berbasis permission (bukan role hardcoded).
-     * Permission ini artefak kode (Shield tak meng-generate-nya); assignment ke
-     * role custom tetap bisa lewat UI Shield setelah ability ada.
-     */
     private const CUSTOM_PETUGAS = [
         'reverse_savings::deposit',
-        // Reversal pencairan = uniform Petugas+ (D7). Create draft & edit-draft
-        // datang dari BASE_PREFIXES; ACC/Cair (approve/disburse) khusus Pengurus+.
         'reverse_savings::withdrawal',
-        // Reversal pemakaian Wajib Belanja = uniform Petugas+ (D7).
         'reverse_shopping::transaction',
-        // Batch potong gaji = bulk create setoran (uang masuk) → Petugas+ (D5/D7).
-        // Custom Page tak punya auto-policy Shield → permission dideklarasi manual.
         'access_batch_salary_deduction',
         // Reversal pembayaran angsuran = uniform Petugas+ (D5/D7).
         'reverse_installment',
@@ -50,10 +39,14 @@ class RolePermissionSeeder extends Seeder
         // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
-        // Export/cetak rekap = PII finansial → Pengurus+ saja (D7); export ter-log.
         'export_savings_recap',
         // Koreksi salah-input pinjaman = reversal seluruh record → Pengurus+ saja (D3/2d).
         'reverse_loan',
+        'manage_settings',
+    ];
+
+    private const CUSTOM_ADMIN_ONLY = [
+        'copy_store_client_secret',
     ];
 
     public function run(): void
@@ -87,7 +80,7 @@ class RolePermissionSeeder extends Seeder
 
     private function ensureCustomPermissions(): void
     {
-        foreach (array_unique([...self::CUSTOM_PETUGAS, ...self::CUSTOM_PENGURUS]) as $name) {
+        foreach (array_unique([...self::CUSTOM_PETUGAS, ...self::CUSTOM_PENGURUS, ...self::CUSTOM_ADMIN_ONLY]) as $name) {
             Permission::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
         }
     }

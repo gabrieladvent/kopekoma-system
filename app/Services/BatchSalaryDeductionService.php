@@ -9,71 +9,67 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
-/**
- * Engine setoran batch potong gaji per OPD (item 3a-2, D5).
- *
- * Prinsip: **chunked `create()` per baris** (bukan bulk `insert()`) agar audit
- * per-anggota (`LogsActivity`) tetap utuh; nomor transaksi **direservasi sekali**
- * (bukan N lock); **pre-commit dup-check** mencegah double-run lintas sesi; dan
- * lock per OPD menserialkan run konkuren. Atomic — satu baris gagal, semua batal.
- */
 class BatchSalaryDeductionService
 {
+    /** Jenis default bila baris hanya membawa `amount` (kompatibilitas lama). */
     public const SAVINGS_TYPE = 'wajib';
 
     public const METHOD = 'potong_gaji';
 
     /**
-     * @param  list<array{member_id:string, amount:string|int|float}>  $rows
-     * @return array{created:int, skipped:int, skipped_member_ids:list<string>}
+     * @param  list<array{member_id:string, amount?:string|int|float, deposits?:list<array{type:string, amount:string|int|float, period_month?:string}>}>  $rows
+     * @return array{created:int, skipped:int}
      */
     public function run(Agency $agency, string|Carbon $periodMonth, array $rows, ?int $causerId = null): array
     {
         $causerId ??= auth()->id();
+
         $period = Carbon::parse($periodMonth)->startOfMonth()->toDateString();
 
         if ($rows === []) {
             throw new InvalidArgumentException('Tidak ada anggota untuk diproses.');
         }
 
-        // Pre-flight per baris: nominal harus > 0 (jangan matikan validasi).
-        foreach ($rows as $row) {
-            if (bccomp((string) ($row['amount'] ?? '0'), '0', 2) <= 0) {
-                throw new InvalidArgumentException('Nominal setiap anggota harus lebih dari 0.');
+        $deposits = $this->flattenRows($rows);
+
+        foreach ($deposits as $deposit) {
+            if (bccomp((string) $deposit['amount'], '0', 2) <= 0) {
+                throw new InvalidArgumentException('Nominal setiap setoran harus lebih dari 0.');
             }
         }
 
-        return DB::transaction(function () use ($agency, $period, $rows, $causerId): array {
-            // Lock per OPD: serialisasi dua run konkuren untuk OPD+periode sama.
+        return DB::transaction(function () use ($agency, $period, $deposits, $causerId): array {
             Agency::query()->whereKey($agency->getKey())->lockForUpdate()->first();
 
-            // Reservasi nomor STR- sekali; assign berurutan di memori (backstop unique).
             $year = Carbon::parse($period)->year;
+
             $next = $this->reserveStartNumber($year);
 
             $created = 0;
-            $skipped = [];
 
-            foreach ($rows as $row) {
-                $memberId = (string) $row['member_id'];
+            $skipped = 0;
 
-                // Pre-commit dup-check: lewati anggota yang sudah punya setoran wajib
-                // AKTIF di periode ini (slot kosong lagi bila sudah di-reversal → D5).
-                if ($this->alreadyDeducted($memberId, $period)) {
-                    $skipped[] = $memberId;
+            foreach ($deposits as $deposit) {
+                $memberId = (string) $deposit['member_id'];
+
+                $type = (string) $deposit['type'];
+
+                $depositPeriod = (string) ($deposit['period_month'] ?? $period);
+
+                if ($this->alreadyDeducted($memberId, $depositPeriod, $type)) {
+                    $skipped++;
 
                     continue;
                 }
 
-                // create() per baris (bukan insert) → LogsActivity per anggota utuh.
                 SavingsDeposit::create([
                     'transaction_number' => $this->formatNumber($year, $next++),
                     'idempotency_key' => (string) Str::uuid(),
                     'member_id' => $memberId,
-                    'savings_type' => self::SAVINGS_TYPE,
-                    'amount' => (string) $row['amount'],
+                    'savings_type' => $type,
+                    'amount' => (string) $deposit['amount'],
                     'deposit_date' => now()->toDateString(),
-                    'period_month' => $period,
+                    'period_month' => $depositPeriod,
                     'deposit_method' => self::METHOD,
                     'deposited_by' => 'bendahara',
                     'recorded_by' => $causerId,
@@ -82,7 +78,6 @@ class BatchSalaryDeductionService
                 $created++;
             }
 
-            // Log batch sebagai SATU peristiwa, di atas log per-baris → double-run terdeteksi.
             activity()
                 ->causedBy($causerId)
                 ->event('batch_potong_gaji')
@@ -90,21 +85,56 @@ class BatchSalaryDeductionService
                     'agency_id' => $agency->getKey(),
                     'period_month' => $period,
                     'created' => $created,
-                    'skipped' => count($skipped),
+                    'skipped' => $skipped,
                 ])
-                ->log("Batch potong gaji OPD {$agency->agency_name} periode {$period}: {$created} setoran, ".count($skipped).' dilewati');
+                ->log("Batch potong gaji OPD {$agency->agency_name} periode {$period}: {$created} setoran, {$skipped} dilewati");
 
             return [
                 'created' => $created,
-                'skipped' => count($skipped),
-                'skipped_member_ids' => $skipped,
+                'skipped' => $skipped,
             ];
         });
     }
 
     /**
-     * Nomor urut STR- berikutnya untuk tahun ini (di-lock sekali untuk seluruh batch).
+     * Ratakan baris per-anggota menjadi daftar setoran {member_id, type, amount}.
+     * Mendukung dua bentuk baris: `deposits[]` (multi-jenis) atau `amount` tunggal
+     * yang diperlakukan sebagai `wajib` (kompatibilitas pemanggil lama).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{member_id:string, type:string, amount:string|int|float, period_month:?string}>
      */
+    private function flattenRows(array $rows): array
+    {
+        $deposits = [];
+
+        foreach ($rows as $row) {
+            $memberId = (string) $row['member_id'];
+
+            if (isset($row['deposits']) && is_array($row['deposits'])) {
+                foreach ($row['deposits'] as $deposit) {
+                    $deposits[] = [
+                        'member_id' => $memberId,
+                        'type' => (string) $deposit['type'],
+                        'amount' => $deposit['amount'],
+                        'period_month' => $deposit['period_month'] ?? null,
+                    ];
+                }
+
+                continue;
+            }
+
+            $deposits[] = [
+                'member_id' => $memberId,
+                'type' => self::SAVINGS_TYPE,
+                'amount' => $row['amount'] ?? '0',
+                'period_month' => null,
+            ];
+        }
+
+        return $deposits;
+    }
+
     private function reserveStartNumber(int $year): int
     {
         $prefix = sprintf('STR-%d-', $year);
@@ -123,19 +153,12 @@ class BatchSalaryDeductionService
         return sprintf('STR-%d-%06d', $year, $n);
     }
 
-    /**
-     * Net setoran wajib (member, periode) > 0 → sudah ada setoran aktif → skip.
-     * Net = 0 (belum ada / sudah di-reversal) → boleh disetor (re-run setelah koreksi).
-     */
-    private function alreadyDeducted(string $memberId, string $period): bool
+    private function alreadyDeducted(string $memberId, string $period, string $type = self::SAVINGS_TYPE): bool
     {
-        $net = SavingsDeposit::query()
-            ->where('member_id', $memberId)
-            ->where('savings_type', self::SAVINGS_TYPE)
-            ->whereDate('period_month', $period)
-            ->signedAmount()
-            ->value('net');
+        if ($type === 'pokok') {
+            return SavingsDeposit::hasActivePokok($memberId);
+        }
 
-        return bccomp((string) ($net ?? '0'), '0', 2) > 0;
+        return SavingsDeposit::hasActiveDeposit($memberId, $type, $period);
     }
 }

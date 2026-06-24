@@ -30,7 +30,7 @@ class SavingsMutationService
      * Mutasi anggota, default urut terbaru di atas; saldo berjalan tetap
      * dihitung kronologis (lama → baru).
      *
-     * @return list<array{date:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool}>
+     * @return list<array{date:Carbon, recorded_at:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool}>
      */
     public function ledgerFor(Member $member, bool $newestFirst = true): array
     {
@@ -75,7 +75,7 @@ class SavingsMutationService
             $running = bcadd($running, $r['_signed'], self::SCALE);
             $r['saldo'] = $running;
 
-            unset($r['_signed'], $r['_created']);
+            unset($r['_signed']);
 
             return $r;
         });
@@ -84,7 +84,7 @@ class SavingsMutationService
     }
 
     /**
-     * @return array{date:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool, _signed:string, _created:int}
+     * @return array{date:Carbon, recorded_at:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool, _signed:string, _created:int}
      */
     private function normalize(
         mixed $date,
@@ -105,6 +105,7 @@ class SavingsMutationService
 
         return [
             'date' => Carbon::parse($date),
+            'recorded_at' => Carbon::parse($createdAt),
             'number' => $number,
             'source' => $source,
             'type' => $type,

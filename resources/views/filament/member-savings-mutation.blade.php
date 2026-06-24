@@ -34,7 +34,10 @@
             <tbody>
                 @foreach ($rows as $row)
                     <tr class="border-b border-gray-100 dark:border-white/5">
-                        <td class="py-2 pr-3 whitespace-nowrap">{{ $row['date']->format('d M Y') }}</td>
+                        <td class="py-2 pr-3 whitespace-nowrap">
+                            {{ $row['date']->format('d M Y') }}
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">{{ $row['recorded_at']->format('H.i') }} WIB</span>
+                        </td>
                         <td class="py-2 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400">{{ $row['number'] }}</td>
                         <td class="py-2 pr-3">
                             {{ $row['description'] }}

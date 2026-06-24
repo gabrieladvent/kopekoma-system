@@ -90,6 +90,48 @@ it('allows re-running after a deposit was reversed (slot freed)', function () {
         ->and(app(SavingsBalanceService::class)->balanceByType($member->fresh(), 'wajib'))->toBe('75000.00');
 });
 
+it('creates one deposit per type per member for multi-type rows', function () {
+    $agency = Agency::factory()->create();
+    $member = Member::factory()->create(['agency_id' => $agency->id]);
+
+    $result = $this->service->run($agency, '2026-06-01', [[
+        'member_id' => $member->id,
+        'deposits' => [
+            ['type' => 'wajib', 'amount' => '100000'],
+            ['type' => 'pokok', 'amount' => '250000'],
+        ],
+    ]]);
+
+    expect($result['created'])->toBe(2)
+        ->and(SavingsDeposit::where('member_id', $member->id)->pluck('savings_type')->sort()->values()->all())
+        ->toBe(['pokok', 'wajib']);
+});
+
+it('dedups per (member, type, period) so a re-run only adds missing types', function () {
+    $agency = Agency::factory()->create();
+    $member = Member::factory()->create(['agency_id' => $agency->id]);
+
+    // Run pertama: wajib saja.
+    $this->service->run($agency, '2026-06-01', [[
+        'member_id' => $member->id,
+        'deposits' => [['type' => 'wajib', 'amount' => '100000']],
+    ]]);
+
+    // Run kedua: wajib (sudah ada → skip) + pokok (baru → dibuat).
+    $second = $this->service->run($agency, '2026-06-01', [[
+        'member_id' => $member->id,
+        'deposits' => [
+            ['type' => 'wajib', 'amount' => '100000'],
+            ['type' => 'pokok', 'amount' => '250000'],
+        ],
+    ]]);
+
+    expect($second['created'])->toBe(1)
+        ->and($second['skipped'])->toBe(1)
+        ->and(SavingsDeposit::where('member_id', $member->id)->where('savings_type', 'wajib')->count())->toBe(1)
+        ->and(SavingsDeposit::where('member_id', $member->id)->where('savings_type', 'pokok')->count())->toBe(1);
+});
+
 it('rolls back the whole batch when a row amount is invalid', function () {
     $agency = Agency::factory()->create();
     $members = Member::factory()->count(2)->create(['agency_id' => $agency->id]);
