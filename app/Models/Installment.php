@@ -32,11 +32,7 @@ class Installment extends Model implements HasMedia, Reversible
         'installment_seq',
         'payment_date',
         'due_date',
-        'principal_paid',
-        'interest_paid',
-        'time_deposit_saved',
         'amount_paid',
-        'remaining_principal',
         'payment_method',
         'notes',
         'is_reversal',
@@ -48,11 +44,7 @@ class Installment extends Model implements HasMedia, Reversible
         'installment_seq' => 'integer',
         'payment_date' => 'date',
         'due_date' => 'date',
-        'principal_paid' => 'decimal:2',
-        'interest_paid' => 'decimal:2',
-        'time_deposit_saved' => 'decimal:2',
         'amount_paid' => 'decimal:2',
-        'remaining_principal' => 'decimal:2',
         'is_reversal' => 'boolean',
     ];
 
@@ -76,14 +68,54 @@ class Installment extends Model implements HasMedia, Reversible
     }
 
     /**
-     * Net Tabungan Berjangka (terbayar − reversal) dari pembayaran aktual.
-     * Dipakai SavingsBalanceService untuk saldo `tabungan_berjangka` (ADR D7).
+     * Net Tabungan Berjangka (terbayar − reversal) = jumlah angsuran terbayar ×
+     * konstanta `loans.monthly_time_deposit` (ADR 2026-06-26 D5, count-based).
+     * Join ke `loans` agar konstanta per-pinjaman ikut saat dijumlah lintas
+     * pinjaman anggota. Pemanggil filter via `installments.loan_id` /
+     * `loans.member_id` (jangan join `loans` lagi — sudah di sini).
      */
     public function scopeSignedTimeDeposit(Builder $query): Builder
     {
-        return $query->selectRaw(
-            'COALESCE(SUM(CASE WHEN is_reversal = 0 THEN time_deposit_saved ELSE -time_deposit_saved END), 0) as net'
-        );
+        return $query
+            ->join('loans', 'installments.loan_id', '=', 'loans.id')
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN installments.is_reversal = 0 THEN loans.monthly_time_deposit ELSE -loans.monthly_time_deposit END), 0) as net'
+            );
+    }
+
+    /**
+     * Rincian pembayaran untuk nota/kuitansi (ADR 2026-06-26 D3) — DIHITUNG,
+     * tidak disimpan. Pokok/Jasa/Tab dari konstanta loan; "Lain-lain" =
+     * kelebihan `amount_paid` atas tagihan (Σ konstanta), floor 0.
+     *
+     * @return array{principal:string, interest:string, time_deposit:string, other:string, total:string}
+     */
+    public function breakdown(): array
+    {
+        $loan = $this->loan;
+
+        $principal = $this->money($loan?->monthly_principal);
+        $interest = $this->money($loan?->monthly_interest);
+        $timeDeposit = $this->money($loan?->monthly_time_deposit);
+        $bill = bcadd(bcadd($principal, $interest, 2), $timeDeposit, 2);
+
+        $other = bcsub($this->money($this->amount_paid), $bill, 2);
+        if (bccomp($other, '0', 2) < 0) {
+            $other = '0.00';
+        }
+
+        return [
+            'principal' => $principal,
+            'interest' => $interest,
+            'time_deposit' => $timeDeposit,
+            'other' => $other,
+            'total' => $this->money($this->amount_paid),
+        ];
+    }
+
+    private function money(string|int|float|null $value): string
+    {
+        return bcadd((string) ($value ?? '0'), '0', 2);
     }
 
     public function registerMediaCollections(): void
@@ -126,11 +158,7 @@ class Installment extends Model implements HasMedia, Reversible
             'installment_seq' => $this->installment_seq,
             'payment_date' => $this->payment_date,
             'due_date' => $this->due_date,
-            'principal_paid' => $this->principal_paid,
-            'interest_paid' => $this->interest_paid,
-            'time_deposit_saved' => $this->time_deposit_saved,
             'amount_paid' => $this->amount_paid,
-            'remaining_principal' => $this->remaining_principal,
             'payment_method' => $this->payment_method,
         ];
     }

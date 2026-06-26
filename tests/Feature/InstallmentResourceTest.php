@@ -40,9 +40,7 @@ it('records a payment through the service, settles the loan and refunds (final i
             'loan_id' => $this->loan->id,
             'schedule_id' => $this->schedule->id,
             'payment_method' => 'manual',
-            'principal_paid' => '1000000',
-            'interest_paid' => '78000',
-            'time_deposit_saved' => '12000',
+            'amount_paid' => '1090000',
             'payment_date' => now()->toDateString(),
             'refund_method' => 'tunai',
         ])
@@ -55,7 +53,7 @@ it('records a payment through the service, settles the loan and refunds (final i
         ->and(SavingsWithdrawal::where('related_loan_id', $this->loan->id)->where('savings_type', 'swp')->where('amount', '120000.00')->exists())->toBeTrue();
 });
 
-it('prefills installment amounts as integer rupiah, not scaled by decimals', function () {
+it('prefills the total bill as integer rupiah, not scaled by decimals', function () {
     Livewire::test(CreateInstallment::class)
         ->fillForm([
             'member_id' => $this->member->id,
@@ -63,9 +61,7 @@ it('prefills installment amounts as integer rupiah, not scaled by decimals', fun
             'schedule_id' => $this->schedule->id,
         ])
         ->assertFormSet([
-            'principal_paid' => '1000000',
-            'interest_paid' => '78000',
-            'time_deposit_saved' => '12000',
+            'amount_paid' => '1090000',
         ]);
 });
 
@@ -82,9 +78,7 @@ it('rejects a below-bill payment (no installment created)', function () {
             'loan_id' => $this->loan->id,
             'schedule_id' => $this->schedule->id,
             'payment_method' => 'manual',
-            'principal_paid' => '999999',
-            'interest_paid' => '78000',
-            'time_deposit_saved' => '12000',
+            'amount_paid' => '1089999',
             'payment_date' => now()->toDateString(),
         ])
         ->call('create');

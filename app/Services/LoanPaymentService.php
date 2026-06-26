@@ -14,9 +14,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Pembayaran angsuran (ADR D5/D8). Prinsip anti-korupsi:
- * - Nominal AKTUAL diinput petugas, divalidasi ≥ konstanta tagihan (loans.monthly_*).
- * - Saldo/laporan dihitung dari nominal aktual (installments.*_paid).
+ * Pembayaran angsuran (ADR D5/D8 + amendment 2026-06-26). Prinsip:
+ * - Petugas input SATU nominal diterima (`amount_paid`), divalidasi ≥ tagihan
+ *   bulan ini (`installment_schedules.total_due` = Σ konstanta). Lebih = sah,
+ *   jadi pos "Lain-lain" yang dihitung di nota (tak disimpan).
+ * - Breakdown (Pokok/Jasa/Tab), sisa pokok, & saldo Tab Berjangka DIHITUNG dari
+ *   konstanta `loans.monthly_*` × jumlah angsuran terbayar (net reversal).
  * - Pelunasan (angsuran terakhir → Lunas) memicu refund SWP + Tabungan Berjangka
  *   secara atomik. Reversal pelunasan membatalkan refund (tak ada refund yatim).
  */
@@ -29,7 +32,7 @@ class LoanPaymentService
     /**
      * Catat pembayaran satu angsuran (jadwal). Atomic.
      *
-     * @param  array{principal_paid:string|int|float, interest_paid:string|int|float, time_deposit_saved:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string}  $input
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string}  $input
      */
     public function pay(
         InstallmentSchedule $schedule,
@@ -54,22 +57,14 @@ class LoanPaymentService
                 throw CannotProcessPayment::scheduleAlreadyPaid();
             }
 
-            $principalPaid = $this->money($input['principal_paid']);
-            $interestPaid = $this->money($input['interest_paid']);
-            $timeDepositSaved = $this->money($input['time_deposit_saved']);
+            $amountPaid = $this->money($input['amount_paid']);
 
-            // Validasi anti-korupsi: tiap item ≥ konstanta tagihan.
-            $this->assertNotBelowBill('pokok', $principalPaid, (string) $loan->monthly_principal);
-            $this->assertNotBelowBill('jasa', $interestPaid, (string) $loan->monthly_interest);
-            $this->assertNotBelowBill('tabungan berjangka', $timeDepositSaved, (string) $loan->monthly_time_deposit);
-
-            $amountPaid = bcadd(bcadd($principalPaid, $interestPaid, self::SCALE), $timeDepositSaved, self::SCALE);
-
-            // remaining_principal dari pembayaran AKTUAL (net reversal), floor 0.
-            $paidSoFar = bcadd($this->principalPaidNet($loan), $principalPaid, self::SCALE);
-            $remaining = bcsub((string) $loan->principal_amount, $paidSoFar, self::SCALE);
-            if (bccomp($remaining, '0', self::SCALE) < 0) {
-                $remaining = '0.00';
+            // Validasi anti-korupsi total-level (ADR 2026-06-26 D4): nominal
+            // diterima tak boleh kurang dari tagihan bulan ini. Lebih = sah →
+            // pos "Lain-lain" yang dihitung di nota (tak disimpan).
+            $bill = $this->money($schedule->total_due);
+            if (bccomp($amountPaid, $bill, self::SCALE) < 0) {
+                throw CannotProcessPayment::belowBill();
             }
 
             $installment = Installment::create([
@@ -79,11 +74,7 @@ class LoanPaymentService
                 'installment_seq' => $schedule->installment_seq,
                 'payment_date' => $input['payment_date'] ?? now()->toDateString(),
                 'due_date' => $schedule->due_date,
-                'principal_paid' => $principalPaid,
-                'interest_paid' => $interestPaid,
-                'time_deposit_saved' => $timeDepositSaved,
                 'amount_paid' => $amountPaid,
-                'remaining_principal' => $remaining,
                 'payment_method' => $input['payment_method'] ?? 'manual',
                 'is_reversal' => false,
                 'recorded_by' => $causerId,
@@ -198,31 +189,19 @@ class LoanPaymentService
             ->exists();
     }
 
-    private function principalPaidNet(Loan $loan): string
-    {
-        $net = Installment::query()
-            ->where('loan_id', $loan->id)
-            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN principal_paid ELSE -principal_paid END), 0) as net')
-            ->value('net');
-
-        return bcadd((string) ($net ?? '0'), '0', self::SCALE);
-    }
-
+    /**
+     * Tabungan Berjangka terakumulasi pinjaman ini = `monthly_time_deposit` ×
+     * jumlah angsuran terbayar (net reversal), via scope count-based. Satu rumus
+     * dengan saldo (SavingsBalanceService) agar refund yang dibatalkan match.
+     */
     private function loanTimeDepositAccrued(Loan $loan): string
     {
         $net = Installment::query()
-            ->where('loan_id', $loan->id)
+            ->where('installments.loan_id', $loan->id)
             ->signedTimeDeposit()
             ->value('net');
 
         return bcadd((string) ($net ?? '0'), '0', self::SCALE);
-    }
-
-    private function assertNotBelowBill(string $item, string $paid, string $bill): void
-    {
-        if (bccomp($paid, $this->money($bill), self::SCALE) < 0) {
-            throw CannotProcessPayment::belowBill($item);
-        }
     }
 
     private function money(string|int|float $value): string

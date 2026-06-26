@@ -16,8 +16,8 @@ class CannotProcessPayment extends RuntimeException
         return new self('Angsuran untuk jadwal ini sudah terbayar.');
     }
 
-    public static function belowBill(string $item): self
+    public static function belowBill(): self
     {
-        return new self("Nominal {$item} tidak boleh kurang dari tagihan angsuran.");
+        return new self('Nominal yang dibayar tidak boleh kurang dari tagihan angsuran bulan ini.');
     }
 }

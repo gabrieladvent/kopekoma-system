@@ -20,9 +20,7 @@ class CreateInstallment extends BaseCreateRecord
         $schedule = InstallmentSchedule::findOrFail($data['schedule_id']);
 
         $input = [
-            'principal_paid' => $data['principal_paid'],
-            'interest_paid' => $data['interest_paid'],
-            'time_deposit_saved' => $data['time_deposit_saved'],
+            'amount_paid' => $data['amount_paid'],
             'payment_method' => $data['payment_method'] ?? 'manual',
             'payment_date' => $data['payment_date'] ?? now()->toDateString(),
             'idempotency_key' => $data['idempotency_key'] ?? null,

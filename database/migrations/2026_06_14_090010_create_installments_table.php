@@ -17,11 +17,10 @@ return new class extends Migration
             $table->unsignedSmallInteger('installment_seq');
             $table->date('payment_date');
             $table->date('due_date');
-            $table->decimal('principal_paid', 18, 2);
-            $table->decimal('interest_paid', 18, 2);
-            $table->decimal('time_deposit_saved', 18, 2);
+            // Satu-satunya angka uang yang disimpan (ADR 2026-06-26). Breakdown
+            // Pokok/Jasa/Tab, "Lain-lain", dan sisa pokok dihitung dari konstanta
+            // loans.monthly_* × jumlah angsuran terbayar — bukan disimpan.
             $table->decimal('amount_paid', 18, 2);
-            $table->decimal('remaining_principal', 18, 2);
             $table->enum('payment_method', ['potong_gaji', 'manual']);
             $table->boolean('is_reversal')->default(false);
             $table->foreignUuid('reversal_of_id')->nullable()->constrained('installments');

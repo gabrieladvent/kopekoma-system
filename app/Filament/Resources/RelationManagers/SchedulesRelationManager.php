@@ -149,8 +149,8 @@ class SchedulesRelationManager extends RelationManager
                         ->state(fn (InstallmentSchedule $record): string => static::statusLabel($record))
                         ->color(fn (string $state): string => static::statusColor($state)),
                     Infolists\Components\TextEntry::make('total_due')->label('Total Tagihan')->money('IDR'),
-                    Infolists\Components\TextEntry::make('principal_due')->label('Pokok')->money('IDR'),
-                    Infolists\Components\TextEntry::make('interest_due')->label('Jasa')->money('IDR'),
+                    Infolists\Components\TextEntry::make('principal_due')->label('Piutang SP')->money('IDR'),
+                    Infolists\Components\TextEntry::make('interest_due')->label('Bunga SP')->money('IDR'),
                     Infolists\Components\TextEntry::make('time_deposit_due')->label('Tab. Berjangka')->money('IDR'),
                 ]),
             Infolists\Components\Section::make('Realisasi Pembayaran')
@@ -174,7 +174,7 @@ class SchedulesRelationManager extends RelationManager
                         ->color('success'),
                     Infolists\Components\TextEntry::make('paid_remaining')
                         ->label('Sisa Pokok')
-                        ->state(fn (InstallmentSchedule $record): ?string => static::actualPayment($record)?->remaining_principal)
+                        ->state(fn (InstallmentSchedule $record): string => static::remainingAfter($record))
                         ->money('IDR'),
                 ]),
         ]);
@@ -212,18 +212,26 @@ class SchedulesRelationManager extends RelationManager
     }
 
     /**
-     * Sisa pokok = remaining_principal angsuran asli terbaru; bila belum ada
-     * pembayaran sama sekali, pakai principal_amount penuh.
+     * Sisa pokok pinjaman saat ini = count-based (ADR 2026-06-26 D2),
+     * `principal_amount − (jumlah angsuran terbayar × monthly_principal)`.
      */
     private static function remainingPrincipal(Loan $loan): string
     {
-        $latest = Installment::query()
-            ->where('loan_id', $loan->id)
-            ->where('is_reversal', false)
-            ->latest()
-            ->first();
+        return $loan->remainingPrincipal();
+    }
 
-        return (string) ($latest?->remaining_principal ?? $loan->principal_amount);
+    /**
+     * Sisa pokok historis setelah jadwal seq-s terbayar. FIFO → seq = jumlah
+     * angsuran terbayar s.d. jadwal ini; `principal − seq × monthly_principal`,
+     * floor 0. Tak bergantung pembayaran setelahnya (akurat per-baris).
+     */
+    private static function remainingAfter(InstallmentSchedule $schedule): string
+    {
+        $loan = $schedule->loan;
+        $paid = bcmul((string) $loan->monthly_principal, (string) (int) $schedule->installment_seq, 2);
+        $remaining = bcsub((string) $loan->principal_amount, $paid, 2);
+
+        return bccomp($remaining, '0', 2) < 0 ? '0.00' : $remaining;
     }
 
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool

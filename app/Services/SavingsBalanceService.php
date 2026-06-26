@@ -69,15 +69,17 @@ class SavingsBalanceService
     }
 
     /**
-     * Saldo Tabungan Berjangka anggota (ADR D7): terkumpul per angsuran dari
-     * **nominal aktual** yang diinput (`installments.time_deposit_saved`, net
-     * reversal), dikurangi refund yang sudah cair.
+     * Saldo Tabungan Berjangka anggota (ADR D7 + amendment 2026-06-26 D5):
+     * terkumpul per angsuran = `loans.monthly_time_deposit` × jumlah angsuran
+     * terbayar (net reversal), dikurangi refund yang sudah cair. Count-based —
+     * `signedTimeDeposit()` sudah join `loans`, jadi filter via `loans.member_id`
+     * (jangan `whereHas` agar tak double-join).
      */
     public function timeDepositBalance(Member $member): string
     {
         $accrued = Installment::query()
-            ->whereHas('loan', fn ($q) => $q->where('member_id', $member->id))
             ->signedTimeDeposit()
+            ->where('loans.member_id', $member->id)
             ->value('net');
 
         return bcsub(

@@ -56,7 +56,7 @@
             <table class="sched">
                 <thead>
                     <tr>
-                        <th>#</th><th>Jatuh Tempo</th><th>Pokok</th><th>Jasa</th><th>Tab. Berjangka</th><th>Total</th>
+                        <th>#</th><th>Jatuh Tempo</th><th>Piutang SP</th><th>Bunga SP</th><th>Tab. Berjangka</th><th>Total</th>
                     </tr>
                 </thead>
                 <tbody>

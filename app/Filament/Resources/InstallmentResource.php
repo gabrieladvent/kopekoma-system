@@ -117,16 +117,16 @@ class InstallmentResource extends Resource
 
     public static function prefillFromSchedule(mixed $scheduleId, Set $set): void
     {
-        $schedule = InstallmentSchedule::with('loan')->find($scheduleId);
+        $schedule = InstallmentSchedule::find($scheduleId);
 
         if ($schedule === null) {
             return;
         }
 
-        // MoneyInput (mask presisi 0) memperlakukan ".00" sebagai dua digit → buang desimal saat prefill.
-        $set('principal_paid', self::rupiah($schedule->loan->monthly_principal));
-        $set('interest_paid', self::rupiah($schedule->loan->monthly_interest));
-        $set('time_deposit_saved', self::rupiah($schedule->loan->monthly_time_deposit));
+        // Prefill = total tagihan bulan ini (Σ konstanta). Petugas ubah bila
+        // anggota bayar lebih; kelebihan jadi "Lain-lain" di kuitansi.
+        // MoneyInput (mask presisi 0) → buang desimal saat prefill.
+        $set('amount_paid', self::rupiah($schedule->total_due));
     }
 
     private static function rupiah(string|int|float|null $value): string
@@ -209,10 +209,14 @@ class InstallmentResource extends Resource
                     Forms\Components\Select::make('payment_method')
                         ->label('Metode Bayar')->options(self::PAYMENT_METHODS)
                         ->default('potong_gaji')->required()->native(false),
-                    MoneyInput::make('principal_paid')->label('Pokok')->required()
-                        ->helperText('Tidak boleh kurang dari tagihan.'),
-                    MoneyInput::make('interest_paid')->label('Jasa')->required(),
-                    MoneyInput::make('time_deposit_saved')->label('Tabungan Berjangka')->required(),
+                    MoneyInput::make('amount_paid')->label('Nominal Dibayar')->required()
+                        ->helperText('Total uang yang benar-benar diterima. Tidak boleh kurang dari tagihan; kelebihan tercatat sebagai "Lain-lain" di kuitansi.')
+                        ->rule(fn (Get $get): \Closure => function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
+                            $schedule = InstallmentSchedule::find($get('schedule_id'));
+                            if ($schedule !== null && bccomp((string) (int) round((float) $value), (string) $schedule->total_due, 0) < 0) {
+                                $fail('Nominal tidak boleh kurang dari tagihan Rp '.number_format((float) $schedule->total_due, 0, ',', '.').'.');
+                            }
+                        }),
                     Forms\Components\DatePicker::make('payment_date')->label('Tanggal Bayar')->default(now())->required(),
                     Forms\Components\Select::make('refund_method')
                         ->label('Metode Pengembalian (saat lunas)')
@@ -235,10 +239,16 @@ class InstallmentResource extends Resource
                 Infolists\Components\TextEntry::make('loan.loan_number')->label('Pinjaman')->copyable(),
                 Infolists\Components\TextEntry::make('loan.member.full_name')->label('Anggota'),
                 Infolists\Components\TextEntry::make('amount_paid')->label('Dibayar')->money('IDR')->weight('bold')->color('success'),
-                Infolists\Components\TextEntry::make('principal_paid')->label('Pokok')->money('IDR'),
-                Infolists\Components\TextEntry::make('interest_paid')->label('Jasa')->money('IDR'),
-                Infolists\Components\TextEntry::make('time_deposit_saved')->label('Tab. Berjangka')->money('IDR'),
-                Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR'),
+                Infolists\Components\TextEntry::make('breakdown_principal')->label('Piutang SP')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['principal']),
+                Infolists\Components\TextEntry::make('breakdown_interest')->label('Bunga SP')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['interest']),
+                Infolists\Components\TextEntry::make('breakdown_time_deposit')->label('Tab. Berjangka')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['time_deposit']),
+                Infolists\Components\TextEntry::make('breakdown_other')->label('Lain-lain')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['other']),
+                Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->loan->remainingPrincipal()),
                 Infolists\Components\TextEntry::make('payment_date')->label('Tgl Bayar')->date('d M Y'),
                 Infolists\Components\IconEntry::make('is_reversal')->label('Reversal')->boolean(),
             ]),

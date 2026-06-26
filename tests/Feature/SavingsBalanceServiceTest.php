@@ -75,9 +75,9 @@ it('computes swp balance from loans minus refunded withdrawals (ADR D7)', functi
     expect($this->service->balanceByType($this->member, 'swp'))->toBe('0.00');
 });
 
-it('computes tabungan_berjangka from actual installments minus refund (ADR D7)', function () {
-    $loan = Loan::factory()->create(['member_id' => $this->member->id]);
-    Installment::factory()->count(3)->create(['loan_id' => $loan->id, 'time_deposit_saved' => 12000]);
+it('computes tabungan_berjangka from paid installments × konstanta minus refund (ADR D7 + 2026-06-26 D5)', function () {
+    $loan = Loan::factory()->create(['member_id' => $this->member->id, 'monthly_time_deposit' => 12000]);
+    Installment::factory()->count(3)->create(['loan_id' => $loan->id]);
 
     expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('36000.00');
 

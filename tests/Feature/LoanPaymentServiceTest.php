@@ -44,16 +44,16 @@ function makeLoan(string $memberId, int $schedules = 1, float $swp = 10000): arr
 
 function billPayment(): array
 {
-    return ['principal_paid' => 1000000, 'interest_paid' => 6500, 'time_deposit_saved' => 1000];
+    return ['amount_paid' => 1007500];
 }
 
-it('records a payment, marks the schedule paid, and sets remaining principal', function () {
+it('records a payment, marks the schedule paid, and computes remaining principal', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 2);
 
     $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
 
     expect($inst->amount_paid)->toBe('1007500.00')
-        ->and($inst->remaining_principal)->toBe('0.00')
+        ->and($loan->fresh()->remainingPrincipal())->toBe('0.00')
         ->and($rows[0]->fresh()->status)->toBe('Terbayar')
         ->and($loan->fresh()->status)->toBe('Cair'); // belum semua terbayar
 });
@@ -61,9 +61,27 @@ it('records a payment, marks the schedule paid, and sets remaining principal', f
 it('rejects a payment below the billed amount (anti-corruption)', function () {
     [$loan, $rows] = makeLoan($this->member->id);
 
-    expect(fn () => $this->service->pay($rows[0], [
-        'principal_paid' => 999999, 'interest_paid' => 6500, 'time_deposit_saved' => 1000,
-    ], $this->user->id))->toThrow(CannotProcessPayment::class);
+    expect(fn () => $this->service->pay($rows[0], ['amount_paid' => 1007499], $this->user->id))
+        ->toThrow(CannotProcessPayment::class);
+});
+
+it('records overpayment as "Lain-lain" without inflating tabungan berjangka or principal', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
+
+    // bayar 1.100.000, tagihan 1.007.500 → kelebihan 92.500 = Lain-lain
+    $inst = $this->service->pay($rows[0], ['amount_paid' => 1100000], $this->user->id);
+
+    expect($inst->amount_paid)->toBe('1100000.00')
+        ->and($inst->breakdown()['principal'])->toBe('1000000.00')
+        ->and($inst->breakdown()['interest'])->toBe('6500.00')
+        ->and($inst->breakdown()['time_deposit'])->toBe('1000.00')
+        ->and($inst->breakdown()['other'])->toBe('92500.00')
+        ->and($loan->fresh()->status)->toBe('Lunas');
+
+    // Tab berjangka = konstanta (1000), TIDAK bertambah dari kelebihan
+    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)
+        ->where('savings_type', 'tabungan_berjangka')->first();
+    expect($tab->amount)->toBe('1000.00');
 });
 
 it('auto-settles the loan and refunds SWP + tabungan berjangka on final payment', function () {
