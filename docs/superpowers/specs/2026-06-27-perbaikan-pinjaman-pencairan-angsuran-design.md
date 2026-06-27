@@ -2,128 +2,155 @@
 
 **Tanggal:** 2026-06-27
 **Branch:** feat/loan-management
-**Status:** Disetujui (menunggu review spec)
+**Status:** Revisi 2 (pasca self-critique) — menunggu review
 
 ## Konteks
 
-Lima permintaan perbaikan diajukan untuk modul Pinjaman, Pencairan Simpanan, dan
-Angsuran. Setelah penelusuran kode, sebagian besar fondasi ternyata sudah ada —
-spec ini hanya mencakup **delta nyata**, bukan membangun ulang.
+Lima permintaan perbaikan untuk modul Pinjaman, Pencairan Simpanan, dan Angsuran.
+Penelusuran kode menunjukkan sebagian fondasi sudah ada; spec ini hanya mencakup
+**delta nyata**. Revisi 2 mengoreksi tiga klaim yang ternyata keliru di revisi 1
+(lihat Lampiran: Koreksi).
 
-Temuan ground-truth vs permintaan:
+Ground-truth (terverifikasi):
 
-| Permintaan | Kondisi kode saat ini | Delta nyata |
+| Permintaan | Kondisi kode | Delta nyata |
 |---|---|---|
-| (1) Pencairan SWP & Tab Berjangka + auto saat lunas | Auto-refund SWP **dan** Tab Berjangka **sudah jalan** di `LoanPaymentService::createRefunds` saat angsuran terakhir → loan `Lunas`, tapi dibuat langsung `status='cair'` & create manual diblok | Ubah auto-create → `draft`; buka whitelist manual + validasi saldo; tampilkan gabungan di UI |
-| (2) Jenis pencairan tunai/transfer di Pinjaman | Belum ada kolom | Tambah `disbursement_method` di `loans` + form/tabel |
-| (3) Jenis pencairan tunai/transfer di Pencairan Simpanan | **Sudah ada** (migration 2026-06-19) | Verifikasi tampil di form/tabel |
-| (4) Rincian angsuran (pokok, swp, dll) | `Installment::breakdown()` **sudah hitung** pokok/bunga/tab/other/total | Tampilkan di infolist & kuitansi |
-| (5) "lain-lain" → "Penyesuaian Pembulatan" | breakdown punya key `other` (sudah floor ≥ 0 = murni residu pembulatan) | Rename label di tampilan |
+| (1) Pencairan SWP & Tab Berjangka + auto saat lunas | Auto-refund SWP **dan** Tab **sudah jalan** (`LoanPaymentService::createRefunds`), tapi langsung `status='cair'`; create manual diblok | Auto-create → draft; buka whitelist manual + validasi saldo yang sadar draft; tampil 1 entri logis |
+| (2) Jenis pencairan tunai/transfer di Pinjaman | Belum ada kolom | Tambah `disbursement_method` di `loans` + form/tabel/infolist |
+| (3) Jenis pencairan tunai/transfer di Pencairan Simpanan | Kolom DB ada (migration 2026-06-19), **TAPI belum tampil** di form/tabel/infolist (0 referensi di Resource) | Tambahkan field ke form, tabel, infolist |
+| (4) Rincian angsuran (pokok, swp, dll) | `Installment::breakdown()` **sudah hitung** principal/interest/time_deposit/other/total | Tampilkan di infolist & kuitansi |
+| (5) "lain-lain" → label baru | breakdown punya key `other` = **kelebihan bayar arbitrer**, bukan pembulatan (validasi hanya larang bayar < tagihan) | Lihat D7 — keputusan terbuka |
 
 ## Keputusan Desain
 
-- **D1 — Lifecycle pencairan SWP/Tab = draft → cair saja.** Tidak ada status
-  tolak/reverse untuk pencairan jenis ini. Auto-create menghasilkan draft;
-  pengurus menyetujui jadi cair.
-- **D2 — Gabung 2 jenis ditampilkan sebagai 1 (Opsi B).** Di DB tetap **2 record**
-  (`swp` + `tabungan_berjangka`) agar rekonsiliasi saldo per-tipe di
-  `SavingsBalanceService` tidak tersentuh. Di UI menu Pencairan, record yang
-  terhubung lewat `related_loan_id` ditampilkan & disetujui sebagai **1 entri
-  logis** "Pengembalian Pelunasan". Alasan menolak Opsi A (1 record + kolom
-  rincian): mengubah cara engine saldo menghitung pengurang = perubahan paling
-  berisiko di atas data finansial; tidak sepadan dengan keuntungan kosmetik.
-- **D3 — Saldo draft tidak dikurangi.** `withdrawalNet` hanya menghitung
-  `status='cair'`. Konsekuensi yang diterima: setelah loan lunas tapi draft belum
-  disetujui, saldo SWP/Tab anggota masih tampak penuh; gate persetujuan manusia
-  yang mencegah refund dobel.
-- **D4 — Cleanup draft yatim, bukan reverse.** Bila angsuran terakhir di-reverse
-  (loan Lunas → Cair) sementara draft refund masih draft (belum cair, belum
-  kurangi saldo), draft itu **dihapus** (cleanup), bukan dibuat reversal. Bila
-  draft sudah terlanjur cair lalu angsuran di-reverse: kasus langka, dibiarkan
-  untuk penanganan manual pengurus.
-- **D5 — Tanpa kolom breakdown baru.** Rincian angsuran tetap diderive dari
-  konstanta `monthly_*` di `loans` (hormati ADR 2026-06-26 "input nominal
-  tunggal"). Tidak ada kolom DB baru untuk rincian.
+- **D1 — Lifecycle pencairan SWP/Tab mengikuti mesin 4-state yang SUDAH ada.**
+  `draft →(approve)→ acc →(disburse)→ cair`, lewat `runTransition`
+  ([SavingsWithdrawalResource:366](../../../app/Filament/Resources/SavingsWithdrawalResource.php#L366)).
+  Frasa "draft → cair" dari diskusi awal adalah penyederhanaan; SWP/Tab TIDAK
+  diberi jalur 1-langkah khusus agar konsisten dengan semua pencairan lain.
+  Happy-path tidak memakai `reject`; `reject`/`reverse` hanya dipakai sistem (D4).
+- **D2 — Tampil 1 entri, 2 record di DB (Opsi B).** Di DB tetap dua record
+  (`swp` + `tabungan_berjangka`) terhubung `related_loan_id`, agar rekonsiliasi
+  saldo per-tipe `SavingsBalanceService` tidak tersentuh. Di UI, pasangan
+  auto-refund ditampilkan sebagai satu entri "Pengembalian Pelunasan" dan
+  diproses lewat **satu aksi** yang menjalankan `runTransition` pada KEDUA record
+  di tiap langkah (approve keduanya, lalu disburse keduanya), atomik dalam satu
+  transaksi. Opsi A (1 record + kolom rincian) ditolak: mengubah engine saldo =
+  risiko tertinggi di atas data finansial; tak sepadan dengan keuntungan kosmetik.
+- **D3 — Saldo tersedia harus sadar pending.** `withdrawalNet` hanya hitung
+  `cair`, jadi draft/acc TIDAK mengurangi saldo. Untuk mencegah refund dobel
+  (lihat H3), `availableBalance()` untuk tipe `swp`/`tabungan_berjangka` harus
+  mengurangi pula nominal pencairan **pending** (`draft` + `acc`) bertipe sama
+  milik anggota itu, sebelum memvalidasi create manual.
+- **D4 — Reversal pelunasan memakai `reject`/`reverse`, BUKAN delete.** Bila
+  angsuran terakhir di-reverse (loan Lunas → Cair): refund terkait yang masih
+  `draft`/`acc` di-`reject` (→ `ditolak`); yang sudah `cair` di-`reverse` (mekanisme
+  reversal generik yang sudah ada). Tidak ada hard-delete dokumen bernomor —
+  jejak audit & `withdrawal_number` dipertahankan. (Ini sengaja memakai status
+  `ditolak`/reversal hanya untuk aksi sistem; happy-path tetap draft→acc→cair.)
+- **D5 — Idempotensi auto-create.** `createRefunds` hanya membuat refund baru bila
+  belum ada refund non-reversal ber-`related_loan_id` & bertipe sama berstatus
+  `draft`/`acc`/`cair`. Mencegah duplikasi saat bayar → lunas → reverse → bayar lagi.
+- **D6 — Tanpa kolom breakdown baru.** Rincian angsuran diderive dari konstanta
+  `monthly_*` (hormati ADR 2026-06-26). Tidak ada kolom DB rincian.
+- **D7 — [TERBUKA] Label pos `other` pada kuitansi.** `other` = kelebihan bayar
+  arbitrer (bisa besar), bukan sekadar pembulatan. Rekomendasi: gunakan
+  **"Kelebihan Bayar"** (akurat). Bila tetap ingin "Penyesuaian Pembulatan",
+  itu hanya jujur jika input kelebihan dibatasi sebatas selisih pembulatan
+  (mis. cap < Rp1.000) — perubahan ini menyentuh validasi pembayaran (lebih
+  berisiko). **Default spec: "Kelebihan Bayar"; konfirmasi saat review.**
+- **D8 — Gating Shield.** Aksi "Setujui Pengembalian" gabungan dan create manual
+  SWP/Tab harus di-gating permission Shield (konvensi proyek: gating via
+  permission, bukan role hardcoded). Reuse permission existing pencairan bila
+  cakupannya sama; tambah permission baru hanya bila perlu pembedaan.
 
 ## Cakupan per Poin
 
 ### Poin 1 — Pencairan SWP & Tab Berjangka + auto saat lunas
 
-**a. Auto-create jadi draft.**
-- `LoanPaymentService::makeRefund` ([app/Services/LoanPaymentService.php:148](../../../app/Services/LoanPaymentService.php#L148)):
-  ubah `'status' => 'cair'` menjadi `'draft'`, hapus `'disbursed_at' => now()`.
-- `createRefunds` tetap membuat dua record (swp + tab berjangka) terhubung
-  `related_loan_id`, masing-masing draft.
+**1a. Auto-create jadi draft (idempoten).**
+- `LoanPaymentService::makeRefund` ([:148](../../../app/Services/LoanPaymentService.php#L148)):
+  `'status' => 'draft'`, buang `'disbursed_at' => now()`.
+- `createRefunds` ([:135](../../../app/Services/LoanPaymentService.php#L135)): guard
+  idempotensi D5 sebelum membuat tiap tipe.
 
-**b. Cleanup draft saat reversal.**
+**1b. Reversal pelunasan (D4).**
 - `LoanPaymentService::reverse` ([:110](../../../app/Services/LoanPaymentService.php#L110)):
-  ganti `reverseRefunds` → cleanup. Saat loan `Lunas` → `Cair`, hapus
-  (delete) record refund ber-`related_loan_id` ini yang masih `status='draft'`.
-  Yang sudah `cair` dibiarkan (penanganan manual).
+  ganti `reverseRefunds` menjadi: untuk refund ber-`related_loan_id` ini —
+  `draft`/`acc` → `reject`; `cair` → `reverse`. Tetap atomik.
 
-**c. Buka create manual + validasi saldo.**
-- `SavingsWithdrawalResource::WITHDRAWAL_TYPES` ([app/Filament/Resources/SavingsWithdrawalResource.php:52](../../../app/Filament/Resources/SavingsWithdrawalResource.php#L52)):
-  tambah `'swp' => 'SWP'` dan `'tabungan_berjangka' => 'Tabungan Berjangka'`.
+**1c. Create manual + validasi saldo sadar-pending.**
+- `SavingsWithdrawalResource::WITHDRAWAL_TYPES` ([:52](../../../app/Filament/Resources/SavingsWithdrawalResource.php#L52)):
+  tambah `'swp'` & `'tabungan_berjangka'`.
 - `availableBalance()` ([:88](../../../app/Filament/Resources/SavingsWithdrawalResource.php#L88)):
-  sambungkan tipe `swp` → `SavingsBalanceService::loanSwpBalance`, tipe
-  `tabungan_berjangka` → `timeDepositBalance` (method sudah ada).
+  `swp` → `loanSwpBalance`, `tabungan_berjangka` → `timeDepositBalance`,
+  lalu kurangi pending (`draft`+`acc`) sesuai D3.
 
-**d. Tampil gabungan di UI (Opsi B).**
-- Di tabel/infolist menu Pencairan, record yang punya `related_loan_id` dan
-  bertipe swp/tabungan_berjangka dikelompokkan sebagai 1 entri "Pengembalian
-  Pelunasan PJM-xxx" dengan total = swp + tab.
-- Aksi approve gabungan: menyetujui satu entri mengubah **kedua** record
-  draft → cair sekaligus (atomik, dalam transaksi).
+**1d. Tampil 1 entri + aksi gabungan (D2).**
+- Pasangan auto-refund (sama `related_loan_id`, tipe swp+tab) ditampilkan sebagai
+  satu entri "Pengembalian Pelunasan PJM-xxx", total = swp + tab. Pencairan manual
+  single-type tetap tampil apa adanya — pembeda: keberadaan `related_loan_id`
+  berpasangan. (Mekanisme tampilan: detail di plan; bukan row-merge native
+  Filament melainkan penyajian berbasis `related_loan_id`.)
+- Aksi "Setujui Pengembalian" & "Cairkan Pengembalian" menjalankan transisi pada
+  kedua record (D1/D2), gated Shield (D8).
 
 ### Poin 2 — Jenis pencairan tunai/transfer di Pinjaman
-
-- Migration baru: `enum('disbursement_method', ['tunai','transfer'])->nullable()`
-  di tabel `loans` (mirror pola migration 2026-06-19 untuk savings_withdrawals).
-- `Loan::$fillable`: tambah `disbursement_method`.
-- `LoanResource`: tambah Select di form + kolom di tabel & infolist.
+- Migration: `enum('disbursement_method', ['tunai','transfer'])->nullable()` di `loans`.
+- `Loan::$fillable` + cast bila perlu.
+- `LoanResource`: Select di form; kolom tabel & infolist menampilkan label, dengan
+  fallback "—" untuk pinjaman lama yang null (M4).
 
 ### Poin 3 — Jenis pencairan tunai/transfer di Pencairan Simpanan
-
-- Sudah ada kolom (`disbursement_method` enum tunai/transfer, migration 2026-06-19).
-- Verifikasi field tampil di form, tabel, dan infolist `SavingsWithdrawalResource`;
-  lengkapi bila ada yang belum.
+- Kolom DB sudah ada; **field belum tampil**. Tambahkan ke form (Select
+  tunai/transfer), kolom tabel, dan infolist `SavingsWithdrawalResource`.
 
 ### Poin 4 — Rincian angsuran
+- Gunakan `Installment::breakdown()` ([app/Models/Installment.php:93](../../../app/Models/Installment.php#L93)).
+- Tampilkan grid TextEntry di infolist & kuitansi: Pokok, Bunga, Tabungan
+  Berjangka, <label D7>, Total. Tanpa kolom DB baru.
 
-- Gunakan `Installment::breakdown()` ([app/Models/Installment.php:93](../../../app/Models/Installment.php#L93))
-  yang sudah mengembalikan `principal`, `interest`, `time_deposit`, `other`, `total`.
-- Tampilkan sebagai grid TextEntry di infolist angsuran & kuitansi pembayaran:
-  Pokok, Bunga, Tabungan Berjangka, Penyesuaian Pembulatan, Total.
-- Tanpa kolom DB baru.
-
-### Poin 5 — "lain-lain" → "Penyesuaian Pembulatan"
-
-- Pada semua tampilan yang memakai key `other` (kuitansi + infolist angsuran),
-  label diganti dari "Lain-lain" menjadi **"Penyesuaian Pembulatan"**.
+### Poin 5 — Label pos `other`
+- Ganti label key `other` sesuai keputusan D7 (default "Kelebihan Bayar") di
+  semua tampilan (kuitansi + infolist), konsisten dengan grid Poin 4.
 
 ## Yang Sengaja TIDAK Dikerjakan (YAGNI)
+- Tidak menyimpan breakdown ke kolom DB.
+- Tidak mengubah engine `SavingsBalanceService` (Opsi A ditolak).
+- Tidak membuat jalur status 1-langkah khusus SWP/Tab.
+- Tidak hard-delete dokumen pencairan.
 
-- Tidak menyimpan breakdown ke kolom DB (derive dari konstanta `monthly_*`).
-- Tidak mengubah engine rekonsiliasi `SavingsBalanceService` (Opsi A ditolak).
-- Tidak menambah status tolak/reverse untuk pencairan SWP/Tab.
-- Tidak menyentuh poin 3 di luar verifikasi tampilan.
+## Sekuens Implementasi (S1 — pisah agar quick-win tak tersandera)
+- **Track A (kecil, low-risk):** Poin 2, Poin 3, Poin 4, Poin 5. Tidak menyentuh
+  alur uang; bisa jalan & merge duluan.
+- **Track B (kompleks):** Poin 1 (a–d) — state machine, grouping, akuntansi
+  pending, reversal. Plan & test tersendiri.
 
-## Testing
+## Testing (Pest)
+**Track A**
+- `Loan.disbursement_method` tersimpan & tampil; null → "—".
+- Field disbursement_method pencairan simpanan tampil & tersimpan.
+- `breakdown()` render: <label D7> = amount_paid − (pokok+bunga+tab), floor 0;
+  saat bayar pas, pos = 0.
 
-- **Unit/Feature (Pest):**
-  - Pelunasan angsuran terakhir → 2 record draft (swp + tab) ter-create,
-    `related_loan_id` terisi, saldo belum berubah (masih draft).
-  - Approve gabungan → kedua record jadi cair, saldo SWP & Tab berkurang sesuai.
-  - Reverse angsuran terakhir saat draft masih draft → draft terhapus, loan Cair.
-  - Create manual SWP/Tab: validasi saldo menolak nominal melebihi saldo.
-  - `disbursement_method` Loan tersimpan & tampil.
-  - `breakdown()` menampilkan Penyesuaian Pembulatan = amount_paid − (pokok+bunga+tab), floor 0.
-- **Regresi:** pastikan perhitungan `loanSwpBalance` & `timeDepositBalance` lama
-  tetap konsisten (2-record tidak mengubahnya).
+**Track B**
+- Lunas → 2 refund **draft** ter-create, `related_loan_id` terisi, saldo belum berubah.
+- Idempotensi (D5): bayar→lunas→reverse→bayar lagi tidak menghasilkan refund dobel.
+- Setujui Pengembalian → kedua record naik status bersama; cairkan → keduanya `cair`,
+  saldo SWP & Tab berkurang tepat.
+- Reverse angsuran terakhir saat refund masih draft/acc → keduanya `ditolak`, loan `Cair`.
+- Reverse saat refund sudah `cair` → reversal ter-create.
+- Create manual SWP/Tab: validasi menolak nominal melebihi (saldo − pending) (D3/H3).
+- Regresi: `loanSwpBalance` & `timeDepositBalance` tetap konsisten.
 
 ## Risiko
+- **Alur lunas berubah** (cair → draft) — uji end-to-end + reversal.
+- **Refund dobel** bila D3 (validasi sadar-pending) tidak diterapkan benar — test eksplisit.
+- **UI grouping** custom — terisolasi, tidak menyentuh uang.
 
-- **Perubahan alur lunas yang sudah berjalan** (cair → draft). Mitigasi: test
-  end-to-end pelunasan + reversal; pastikan tidak ada konsumen yang mengasumsikan
-  refund langsung cair.
-- **UI grouping custom** di menu Pencairan. Terisolasi, tidak menyentuh uang.
+## Lampiran: Koreksi atas Revisi 1
+1. **Status machine**: bukan draft→cair (1 langkah), melainkan draft→acc→cair
+   (2 langkah) + reject/reverse. Memengaruhi D1, D2.
+2. **Poin 3**: bukan "sudah selesai" — kolom ada tapi belum tampil di UI sama sekali.
+3. **Pos `other`**: bukan residu pembulatan, melainkan kelebihan bayar arbitrer
+   (validasi hanya larang kurang). Memengaruhi penamaan Poin 5 (D7).
