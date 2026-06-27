@@ -2,7 +2,7 @@
 
 **Tanggal:** 2026-06-27
 **Branch:** feat/loan-management
-**Status:** Revisi 2 (pasca self-critique) — menunggu review
+**Status:** Revisi 3 (D7 final = "Kelebihan Bayar"; D9 ditunda) — menunggu review
 
 ## Konteks
 
@@ -19,7 +19,7 @@ Ground-truth (terverifikasi):
 | (2) Jenis pencairan tunai/transfer di Pinjaman | Belum ada kolom | Tambah `disbursement_method` di `loans` + form/tabel/infolist |
 | (3) Jenis pencairan tunai/transfer di Pencairan Simpanan | Kolom DB ada (migration 2026-06-19), **TAPI belum tampil** di form/tabel/infolist (0 referensi di Resource) | Tambahkan field ke form, tabel, infolist |
 | (4) Rincian angsuran (pokok, swp, dll) | `Installment::breakdown()` **sudah hitung** principal/interest/time_deposit/other/total | Tampilkan di infolist & kuitansi |
-| (5) "lain-lain" → label baru | breakdown punya key `other` = **kelebihan bayar arbitrer**, bukan pembulatan (validasi hanya larang bayar < tagihan) | Lihat D7 — keputusan terbuka |
+| (5) "lain-lain" → label baru | breakdown punya key `other` = **kelebihan bayar arbitrer**, bukan pembulatan (validasi hanya larang bayar < tagihan) | Rename label → "Kelebihan Bayar" (D7); display-only |
 
 ## Keputusan Desain
 
@@ -53,16 +53,21 @@ Ground-truth (terverifikasi):
   `draft`/`acc`/`cair`. Mencegah duplikasi saat bayar → lunas → reverse → bayar lagi.
 - **D6 — Tanpa kolom breakdown baru.** Rincian angsuran diderive dari konstanta
   `monthly_*` (hormati ADR 2026-06-26). Tidak ada kolom DB rincian.
-- **D7 — [TERBUKA] Label pos `other` pada kuitansi.** `other` = kelebihan bayar
-  arbitrer (bisa besar), bukan sekadar pembulatan. Rekomendasi: gunakan
-  **"Kelebihan Bayar"** (akurat). Bila tetap ingin "Penyesuaian Pembulatan",
-  itu hanya jujur jika input kelebihan dibatasi sebatas selisih pembulatan
-  (mis. cap < Rp1.000) — perubahan ini menyentuh validasi pembayaran (lebih
-  berisiko). **Default spec: "Kelebihan Bayar"; konfirmasi saat review.**
+- **D7 — Label pos `other` = "Kelebihan Bayar" (display-only).** `other` =
+  kelebihan bayar arbitrer (bisa besar), bukan pembulatan. Untuk scope ini, ia
+  hanya keterangan di nota: **tidak disimpan, tidak masuk saldo manapun**.
 - **D8 — Gating Shield.** Aksi "Setujui Pengembalian" gabungan dan create manual
   SWP/Tab harus di-gating permission Shield (konvensi proyek: gating via
   permission, bukan role hardcoded). Reuse permission existing pencairan bila
   cakupannya sama; tambah permission baru hanya bila perlu pembedaan.
+- **D9 — [DITUNDA, BUKAN SCOPE INI] Kelebihan Bayar jadi ember dapat-dicairkan.**
+  Arah masa depan: kelebihan bayar diakumulasi sebagai saldo anggota (count-based,
+  Σ(`amount_paid − total_due`) net reversal − pencairan `kelebihan_bayar`) lalu
+  bisa dicairkan seperti SWP/Tab. Secara teknis konsisten & tanpa kolom baru, TAPI
+  ditunda karena: (1) menyentuh engine `SavingsBalanceService`; (2) butuh keputusan
+  **kebijakan** lebih dulu — apakah kelebihan dikembalikan, dianggap pelunasan
+  dipercepat (kurangi pokok), atau jadi simpanan sukarela. Layak ADR tersendiri
+  begitu kebijakan ditetapkan. Sampai itu, D7 (display-only) berlaku.
 
 ## Cakupan per Poin
 
@@ -108,11 +113,11 @@ Ground-truth (terverifikasi):
 ### Poin 4 — Rincian angsuran
 - Gunakan `Installment::breakdown()` ([app/Models/Installment.php:93](../../../app/Models/Installment.php#L93)).
 - Tampilkan grid TextEntry di infolist & kuitansi: Pokok, Bunga, Tabungan
-  Berjangka, <label D7>, Total. Tanpa kolom DB baru.
+  Berjangka, Kelebihan Bayar, Total. Tanpa kolom DB baru.
 
 ### Poin 5 — Label pos `other`
-- Ganti label key `other` sesuai keputusan D7 (default "Kelebihan Bayar") di
-  semua tampilan (kuitansi + infolist), konsisten dengan grid Poin 4.
+- Ganti label key `other` menjadi "Kelebihan Bayar" (D7) di semua tampilan
+  (kuitansi + infolist), konsisten dengan grid Poin 4.
 
 ## Yang Sengaja TIDAK Dikerjakan (YAGNI)
 - Tidak menyimpan breakdown ke kolom DB.
@@ -130,7 +135,7 @@ Ground-truth (terverifikasi):
 **Track A**
 - `Loan.disbursement_method` tersimpan & tampil; null → "—".
 - Field disbursement_method pencairan simpanan tampil & tersimpan.
-- `breakdown()` render: <label D7> = amount_paid − (pokok+bunga+tab), floor 0;
+- `breakdown()` render: Kelebihan Bayar = amount_paid − (pokok+bunga+tab), floor 0;
   saat bayar pas, pos = 0.
 
 **Track B**
