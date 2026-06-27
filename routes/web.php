@@ -1,9 +1,19 @@
 <?php
 
 use App\Actions\ExportSalaryDeductionRecap;
+use App\Filament\Resources\InstallmentResource;
+use App\Filament\Resources\LoanResource;
 use App\Filament\Resources\SavingsDepositResource;
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
+use App\Livewire\Loan\Blacklist\LoanBlacklistDetail;
+use App\Livewire\Loan\Blacklist\LoanBlacklists;
+use App\Livewire\Loan\Installment\InstallmentDetail;
+use App\Livewire\Loan\Installment\InstallmentForm;
+use App\Livewire\Loan\Installment\Installments;
+use App\Livewire\Loan\LoanDetail;
+use App\Livewire\Loan\LoanForm;
+use App\Livewire\Loan\Loans;
 use App\Livewire\Master\Agency\Agencies;
 use App\Livewire\Master\Agency\AgencyDetail;
 use App\Livewire\Master\Grade\GradeDetail;
@@ -31,6 +41,8 @@ use App\Livewire\System\ActivityLogs;
 use App\Livewire\System\RoleForm;
 use App\Livewire\System\Roles;
 use App\Models\Agency;
+use App\Models\Installment;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -188,6 +200,50 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/simpanan/saldo-anggota/{member}', MemberSavingsDetail::class)
         ->name('savings.balances.show');
+
+    // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
+    // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.
+    Route::get('/pinjaman', Loans::class)
+        ->middleware('can:view_any_loan')
+        ->name('loans.index');
+
+    Route::get('/pinjaman/create', LoanForm::class)
+        ->middleware('can:create_loan')
+        ->name('loans.create');
+
+    // Pinjaman — Blacklist (didahulukan sebelum {loan}).
+    Route::get('/pinjaman/blacklist', LoanBlacklists::class)
+        ->middleware('can:view_any_loan::blacklist')
+        ->name('loans.blacklist');
+
+    Route::get('/pinjaman/blacklist/{blacklist}', LoanBlacklistDetail::class)
+        ->middleware('can:view_loan::blacklist')
+        ->name('loans.blacklist.show');
+
+    Route::get('/pinjaman/{loan}/tanda-terima', function (Loan $loan) {
+        return LoanResource::printReceipt($loan);
+    })->middleware('can:view_loan')->name('loans.receipt');
+
+    Route::get('/pinjaman/{loan}', LoanDetail::class)
+        ->middleware('can:view_loan')
+        ->name('loans.show');
+
+    // Angsuran — pembayaran (immutable; koreksi via reversal). Pelunasan memicu refund SWP/Tab.
+    Route::get('/angsuran', Installments::class)
+        ->middleware('can:view_any_installment')
+        ->name('installments.index');
+
+    Route::get('/angsuran/create', InstallmentForm::class)
+        ->middleware('can:create_installment')
+        ->name('installments.create');
+
+    Route::get('/angsuran/{installment}/kuitansi', function (Installment $installment) {
+        return InstallmentResource::printReceipt($installment);
+    })->middleware('can:view_installment')->name('installments.receipt');
+
+    Route::get('/angsuran/{installment}', InstallmentDetail::class)
+        ->middleware('can:view_installment')
+        ->name('installments.show');
 
     Route::get('/settings', ManageSettings::class)
         ->middleware('can:manage_settings')

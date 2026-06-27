@@ -36,7 +36,7 @@
         {{-- Sidebar: drawer off-canvas di mobile, statis di desktop.
              Item aktif = pill + accent kiri (bukan blok penuh). --}}
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
-               class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-out lg:static lg:z-auto lg:translate-x-0">
+               class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:z-auto lg:translate-x-0">
             <div class="flex h-16 items-center justify-between px-5">
                 <x-app-logo subtitle="Sistem Koperasi" />
                 <button type="button" @click="sidebarOpen = false" aria-label="Tutup menu"
@@ -54,16 +54,24 @@
                 @php($canBalance = $navUser?->can('view_any_member::savings::balance') ?? false)
                 @php($canDeposit = $navUser?->can('view_any_savings::deposit') ?? false)
                 @php($canWithdrawal = $navUser?->can('view_any_savings::withdrawal') ?? false)
+                @php($canLoan = $navUser?->can('view_any_loan') ?? false)
+                @php($canInstallment = $navUser?->can('view_any_installment') ?? false)
+                @php($canBlacklist = $navUser?->can('view_any_loan::blacklist') ?? false)
                 @php($groups = [
                     'Utama' => [
                         ['Dashboard', 'home', 'dashboard'],
                         ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit],
+                        ['Pinjaman', 'receipt-percent', 'loans.index', $canLoan],
                     ],
                     'Simpanan' => [
                         ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
                         ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
                         ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
                         ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
+                    ],
+                    'Pinjaman' => [
+                        ['Angsuran', 'credit-card', 'installments.index', $canInstallment],
+                        ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist],
                     ],
                     'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
                     'Sistem' => [

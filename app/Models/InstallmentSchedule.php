@@ -21,6 +21,8 @@ class InstallmentSchedule extends Model
         'time_deposit_due',
         'total_due',
         'status',
+        'due_reminder_sent_at',
+        'overdue_reminder_sent_at',
     ];
 
     protected $casts = [
@@ -30,6 +32,8 @@ class InstallmentSchedule extends Model
         'interest_due' => 'decimal:2',
         'time_deposit_due' => 'decimal:2',
         'total_due' => 'decimal:2',
+        'due_reminder_sent_at' => 'datetime',
+        'overdue_reminder_sent_at' => 'datetime',
     ];
 
     /**
