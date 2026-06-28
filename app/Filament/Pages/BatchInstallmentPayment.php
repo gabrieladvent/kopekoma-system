@@ -54,7 +54,6 @@ class BatchInstallmentPayment extends Page implements HasForms
         $this->form->fill([
             'period_month' => now()->startOfMonth()->toDateString(),
             'payment_date' => now()->toDateString(),
-            'refund_method' => 'tunai',
             'rows' => [],
         ]);
     }
@@ -83,16 +82,10 @@ class BatchInstallmentPayment extends Page implements HasForms
                             ->displayFormat('F Y')
                             ->required()
                             ->helperText('Hanya untuk pelabelan rekap/audit batch.'),
-                        Forms\Components\Select::make('refund_method')
-                            ->label('Metode Pengembalian (saat lunas)')
-                            ->options(InstallmentResource::REFUND_METHODS)
-                            ->default('tunai')
-                            ->native(false)
-                            ->helperText('Dipakai bila ada angsuran pelunasan: SWP + Tabungan Berjangka dikembalikan via metode ini.'),
                     ]),
                 Forms\Components\Section::make('Anggota dengan Pinjaman Aktif')
                     ->icon('heroicon-o-user-group')
-                    ->description('Aktifkan "Ikut" untuk anggota yang dipotong, lalu sesuaikan nominal tiap pinjaman bila membayar lebih dari tagihan (kelebihan tercatat sebagai "Lain-lain").')
+                    ->description('Aktifkan "Ikut" untuk anggota yang dipotong, lalu sesuaikan nominal tiap pinjaman bila membayar lebih dari tagihan (kelebihan dikreditkan ke Simpanan Sukarela anggota).')
                     ->schema([
                         Forms\Components\Repeater::make('rows')
                             ->hiddenLabel()
@@ -266,7 +259,6 @@ class BatchInstallmentPayment extends Page implements HasForms
                 $state['period_month'],
                 $rows,
                 auth()->id(),
-                $state['refund_method'] ?? 'tunai',
             );
         } catch (\InvalidArgumentException $e) {
             Notification::make()

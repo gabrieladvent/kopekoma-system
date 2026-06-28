@@ -91,10 +91,12 @@ it('records overpayment as Lain-lain without inflating principal or tabungan ber
 
 it('auto-settles the loan and refunds SWP + tabungan berjangka on the final installment', function () {
     [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 1);
+    // Metode refund diwarisi dari pinjaman (disbursement_method), bukan argumen batch.
+    $loan->update(['disbursement_method' => 'transfer']);
 
     $this->service->run($this->agency, '2026-06-01', [
         ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000'],
-    ], $this->user->id, refundMethod: 'transfer');
+    ], $this->user->id);
 
     expect($loan->fresh()->status)->toBe('Lunas');
 

@@ -6,11 +6,13 @@ use App\Filament\Resources\MemberResource\Pages\EditMember;
 use App\Filament\Resources\MemberResource\Pages\ListMembers;
 use App\Filament\Resources\MemberResource\Pages\ViewMember;
 use App\Filament\Resources\MemberResource\RelationManagers\DocumentsRelationManager;
+use App\Filament\Resources\MemberResource\RelationManagers\LoansRelationManager;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
 use App\Imports\MembersImport;
 use App\Jobs\ImportMembersJob;
 use App\Models\Agency;
 use App\Models\Grade;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\User;
 use Filament\Notifications\Notification;
@@ -396,6 +398,20 @@ it('lists member documents in the documents relation manager', function () {
         'ownerRecord' => $member,
         'pageClass' => ViewMember::class,
     ])->assertCanSeeTableRecords([$member->getFirstMedia('documents')]);
+});
+
+it('lists all member loans including Dibatalkan in the loan history relation manager', function () {
+    $member = Member::factory()->create();
+    $active = Loan::factory()->create(['member_id' => $member->id, 'status' => 'Cair']);
+    $cancelled = Loan::factory()->create(['member_id' => $member->id, 'status' => 'Dibatalkan']);
+    $otherMemberLoan = Loan::factory()->create();
+
+    Livewire::test(LoansRelationManager::class, [
+        'ownerRecord' => $member,
+        'pageClass' => ViewMember::class,
+    ])
+        ->assertCanSeeTableRecords([$active, $cancelled])
+        ->assertCanNotSeeTableRecords([$otherMemberLoan]);
 });
 
 // ── Heir relationship enum + validation messages ──────────────────────

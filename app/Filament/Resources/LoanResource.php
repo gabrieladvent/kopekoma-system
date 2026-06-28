@@ -51,6 +51,11 @@ class LoanResource extends Resource
         'jangka_pendek' => 'Jangka Pendek (Sebrakan)',
     ];
 
+    public const DISBURSEMENT_METHODS = [
+        'tunai' => 'Tunai',
+        'transfer' => 'Transfer',
+    ];
+
     public static function hasActiveBlacklist(mixed $memberId): bool
     {
         if (blank($memberId)) {
@@ -69,12 +74,13 @@ class LoanResource extends Resource
     }
 
     /**
-     * Koreksi salah-input (D3/2d): hanya bila BELUM ada angsuran terbayar &
-     * pemakai punya ability `reverse`. Tidak ada "pembatalan pinjaman" bisnis.
+     * Batalkan salah-input: hanya pinjaman Cair, BELUM ada angsuran terbayar,
+     * & pemakai punya ability `reverse`. Pinjaman jadi Dibatalkan (tetap histori).
      */
     public static function canCorrect(Loan $record): bool
     {
-        return ! self::hasPayments($record)
+        return $record->status === 'Cair'
+            && ! self::hasPayments($record)
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -119,16 +125,22 @@ class LoanResource extends Resource
         );
     }
 
-    public static function performCorrection(Loan $record, array $data): void
+    /**
+     * Batalkan pinjaman salah-input: record DIPERTAHANKAN sebagai histori
+     * (status → Dibatalkan), jadwal proyeksinya dibuang.
+     *
+     * @return bool true bila dibatalkan; false bila ditolak (bukan Cair / sudah ada angsuran).
+     */
+    public static function performCorrection(Loan $record, array $data): bool
     {
-        if (self::hasPayments($record)) {
+        if ($record->status !== 'Cair' || self::hasPayments($record)) {
             Notification::make()
                 ->danger()
-                ->title('Koreksi ditolak')
-                ->body('Pinjaman sudah memiliki angsuran terbayar — koreksi hanya untuk salah input sebelum ada pembayaran.')
+                ->title('Pembatalan ditolak')
+                ->body('Hanya pinjaman Cair tanpa angsuran terbayar yang bisa dibatalkan (salah input sebelum ada pembayaran).')
                 ->send();
 
-            return;
+            return false;
         }
 
         DB::transaction(function () use ($record, $data): void {
@@ -141,17 +153,21 @@ class LoanResource extends Resource
                     'member_id' => $record->member_id,
                     'principal_amount' => $record->principal_amount,
                 ])
-                ->log('Koreksi salah-input pinjaman: '.$data['reason']);
+                ->log('Pembatalan salah-input pinjaman: '.$data['reason']);
 
+            // Jadwal = proyeksi; dibuang agar tak terhitung tunggakan. Record
+            // pinjaman DIPERTAHANKAN sebagai histori, ditandai Dibatalkan.
             InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->delete();
+            $record->update(['status' => 'Dibatalkan']);
         });
 
         Notification::make()
             ->success()
-            ->title('Pinjaman dikoreksi')
-            ->body('Record pinjaman salah-input beserta jadwalnya telah dihapus dan dicatat di audit.')
+            ->title('Pinjaman dibatalkan')
+            ->body('Pinjaman ditandai Dibatalkan dan tetap tersimpan sebagai histori; jadwalnya dibersihkan. Tercatat di audit.')
             ->send();
+
+        return true;
     }
 
     public static function form(Form $form): Form
@@ -234,6 +250,36 @@ class LoanResource extends Resource
                         ->required()
                         ->default(now()->addMonth())
                         ->helperText('Default satu bulan setelah pencairan.'),
+                    Forms\Components\Select::make('disbursement_method')
+                        ->label('Jenis Pencairan')
+                        ->options(self::DISBURSEMENT_METHODS)
+                        ->placeholder('Pilih jenis pencairan')
+                        ->live()
+                        ->afterStateUpdated(function (string $state, Get $get, Set $set): void {
+                            // Prefill rekening tujuan dari rekening payroll anggota
+                            // (boleh diedit). Bersihkan saat bukan transfer.
+                            if ($state !== 'transfer') {
+                                $set('disbursement_bank', null);
+                                $set('disbursement_account_number', null);
+
+                                return;
+                            }
+
+                            $member = Member::find($get('member_id'));
+                            $set('disbursement_bank', $member?->bank_name);
+                            $set('disbursement_account_number', $member?->payroll_account_number);
+                        }),
+                    Forms\Components\TextInput::make('disbursement_bank')
+                        ->label('Bank Tujuan')
+                        ->maxLength(255)
+                        ->visible(fn (Get $get): bool => $get('disbursement_method') === 'transfer')
+                        ->required()
+                        ->helperText('Otomatis terisi dari rekening payroll anggota; ubah bila berbeda.'),
+                    Forms\Components\TextInput::make('disbursement_account_number')
+                        ->label('No. Rekening Tujuan')
+                        ->maxLength(255)
+                        ->visible(fn (Get $get): bool => $get('disbursement_method') === 'transfer')
+                        ->required(),
                     Forms\Components\Textarea::make('notes')
                         ->label('Catatan')
                         ->maxLength(65535)
@@ -393,7 +439,11 @@ class LoanResource extends Resource
                             ->formatStateUsing(fn (string $state): string => self::LOAN_TYPES[$state] ?? $state),
                         Infolists\Components\TextEntry::make('status')
                             ->label('Status')->badge()
-                            ->color(fn (string $state): string => $state === 'Lunas' ? 'success' : 'info'),
+                            ->color(fn (string $state): string => match ($state) {
+                                'Lunas' => 'success',
+                                'Dibatalkan' => 'gray',
+                                default => 'info',
+                            }),
                         Infolists\Components\TextEntry::make('disbursed_amount')
                             ->label('Dana Diterima')->money('IDR')->weight('bold')->color('success'),
                     ]),
@@ -405,6 +455,15 @@ class LoanResource extends Resource
                     Infolists\Components\TextEntry::make('principal_amount')->label('Jumlah Diajukan')->money('IDR'),
                     Infolists\Components\TextEntry::make('term_months')->label('Jangka Waktu')->suffix(' bulan'),
                     Infolists\Components\TextEntry::make('disbursement_date')->label('Tgl Pencairan')->date('d M Y'),
+                    Infolists\Components\TextEntry::make('disbursement_method')->label('Jenis Pencairan')
+                        ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
+                        ->placeholder('—'),
+                    Infolists\Components\TextEntry::make('disbursement_bank')->label('Bank Tujuan')
+                        ->visible(fn (Loan $record): bool => $record->disbursement_method === 'transfer')
+                        ->placeholder('—'),
+                    Infolists\Components\TextEntry::make('disbursement_account_number')->label('No. Rekening Tujuan')
+                        ->visible(fn (Loan $record): bool => $record->disbursement_method === 'transfer')
+                        ->copyable()->placeholder('—'),
                     Infolists\Components\TextEntry::make('first_due_date')->label('Jatuh Tempo Pertama')->date('d M Y')->placeholder('—'),
                 ]),
                 Infolists\Components\Section::make('Potongan & Angsuran')->columns(2)->schema([
@@ -430,8 +489,15 @@ class LoanResource extends Resource
                     ->formatStateUsing(fn (string $state): string => self::LOAN_TYPES[$state] ?? $state),
                 Tables\Columns\TextColumn::make('principal_amount')->label('Jumlah')->money('IDR')->sortable(),
                 Tables\Columns\TextColumn::make('disbursed_amount')->label('Diterima')->money('IDR')->toggleable(),
+                Tables\Columns\TextColumn::make('disbursement_method')->label('Jenis Pencairan')->badge()
+                    ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
+                    ->placeholder('—')->toggleable(),
                 Tables\Columns\TextColumn::make('status')->label('Status')->badge()
-                    ->color(fn (string $state): string => $state === 'Lunas' ? 'success' : 'info'),
+                    ->color(fn (string $state): string => match ($state) {
+                        'Lunas' => 'success',
+                        'Dibatalkan' => 'gray',
+                        default => 'info',
+                    }),
                 Tables\Columns\TextColumn::make('overdue')
                     ->label('Tunggakan')
                     ->state(fn (Loan $record): int => app(LoanArrearsService::class)->overdueCount($record))
@@ -442,25 +508,27 @@ class LoanResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('loan_type')->label('Jenis')->options(self::LOAN_TYPES),
-                Tables\Filters\SelectFilter::make('status')->label('Status')->options(['Cair' => 'Cair', 'Lunas' => 'Lunas']),
+                Tables\Filters\SelectFilter::make('status')->label('Status')->options(['Cair' => 'Cair', 'Lunas' => 'Lunas', 'Dibatalkan' => 'Dibatalkan']),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\Action::make('printReceipt')
-                    ->label('Tanda Terima')
-                    ->icon('heroicon-o-printer')
-                    ->color('gray')
-                    ->action(fn (Loan $record): StreamedResponse => self::printReceipt($record)),
-                Tables\Actions\Action::make('correct')
-                    ->label('Koreksi')
-                    ->icon('heroicon-o-arrow-uturn-left')
-                    ->color('danger')
-                    ->visible(fn (Loan $record): bool => self::canCorrect($record))
-                    ->form(self::correctionFormSchema())
-                    ->requiresConfirmation()
-                    ->modalHeading('Koreksi Salah-Input Pinjaman')
-                    ->modalDescription('Hanya untuk pinjaman salah input yang belum punya angsuran. Record & jadwalnya dihapus, dicatat di audit.')
-                    ->action(fn (Loan $record, array $data) => self::performCorrection($record, $data)),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('printReceipt')
+                        ->label('Tanda Terima')
+                        ->icon('heroicon-o-printer')
+                        ->color('gray')
+                        ->action(fn (Loan $record): StreamedResponse => self::printReceipt($record)),
+                    Tables\Actions\Action::make('correct')
+                        ->label('Batalkan')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('danger')
+                        ->visible(fn (Loan $record): bool => self::canCorrect($record))
+                        ->form(self::correctionFormSchema())
+                        ->requiresConfirmation()
+                        ->modalHeading('Batalkan Pinjaman Salah-Input')
+                        ->modalDescription('Hanya untuk pinjaman salah input yang belum punya angsuran. Pinjaman ditandai Dibatalkan (tetap tersimpan sebagai histori), jadwalnya dibersihkan, dicatat di audit.')
+                        ->action(fn (Loan $record, array $data) => self::performCorrection($record, $data)),
+                ]),
             ]);
     }
 

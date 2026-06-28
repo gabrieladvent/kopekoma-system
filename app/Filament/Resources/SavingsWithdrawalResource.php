@@ -23,6 +23,9 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SavingsWithdrawalResource extends Resource
@@ -44,14 +47,18 @@ class SavingsWithdrawalResource extends Resource
     protected static ?int $navigationSort = 20;
 
     /**
-     * Jenis yang bisa dicairkan Minggu 2 (D8) — whitelist, bukan enum penuh.
-     * `pokok`/`wajib`/`swp`/`tabungan_berjangka` sengaja tak ditawarkan.
+     * Jenis yang bisa dicairkan via menu ini — whitelist, bukan enum penuh.
+     * `pokok`/`wajib` tetap tak ditawarkan. SWP & Tabungan Berjangka dibuka
+     * (revisi 2026-06-27): selain auto-create draft saat pelunasan, pengurus
+     * bisa mencairkannya manual; saldo divalidasi sadar-pending (D3).
      *
      * @var array<string, string>
      */
     public const WITHDRAWAL_TYPES = [
         'hari_raya' => 'Simpanan Hari Raya',
         'sukarela' => 'Simpanan Sukarela',
+        'swp' => 'SWP',
+        'tabungan_berjangka' => 'Tabungan Berjangka',
     ];
 
     public const STATUSES = [
@@ -59,6 +66,11 @@ class SavingsWithdrawalResource extends Resource
         'acc' => 'Disetujui',
         'cair' => 'Cair',
         'ditolak' => 'Ditolak',
+    ];
+
+    public const DISBURSEMENT_METHODS = [
+        'tunai' => 'Tunai',
+        'transfer' => 'Transfer',
     ];
 
     public static function statusColor(string $state): string
@@ -105,6 +117,23 @@ class SavingsWithdrawalResource extends Resource
 
         if ($type === 'sukarela') {
             return $service->balanceByType($member, 'sukarela');
+        }
+
+        if (in_array($type, ['swp', 'tabungan_berjangka'], true)) {
+            // Saldo dasar dikurangi pencairan PENDING (draft+acc) tipe sama (D3):
+            // refund auto masih draft belum mengurangi saldo, jadi tanpa ini
+            // pencairan manual bisa meng-klaim saldo yang sama → refund dobel.
+            $balance = $service->balanceByType($member, $type);
+            $pending = (string) SavingsWithdrawal::query()
+                ->where('member_id', $member->id)
+                ->where('savings_type', $type)
+                ->where('is_reversal', false)
+                ->whereIn('status', ['draft', 'acc'])
+                ->sum('amount');
+
+            $available = bcsub($balance, $pending, 2);
+
+            return bccomp($available, '0', 2) < 0 ? '0.00' : $available;
         }
 
         return null;
@@ -173,7 +202,7 @@ class SavingsWithdrawalResource extends Resource
                                 $set('period_year', null);
                                 $set('amount', null);
                             })
-                            ->helperText('Hanya Hari Raya & Sukarela yang dapat dicairkan saat ini.'),
+                            ->helperText('Hari Raya, Sukarela, SWP, & Tabungan Berjangka dapat dicairkan.'),
                         Forms\Components\Select::make('period_year')
                             ->label('Tahun Program (Hari Raya)')
                             ->options(fn (Get $get): array => self::holidayYearOptions($get('member_id')))
@@ -207,6 +236,10 @@ class SavingsWithdrawalResource extends Resource
                             ->required()
                             ->default(now())
                             ->maxDate(now()),
+                        Forms\Components\Select::make('disbursement_method')
+                            ->label('Jenis Pencairan')
+                            ->options(self::DISBURSEMENT_METHODS)
+                            ->placeholder('Pilih jenis pencairan'),
                         Forms\Components\Textarea::make('notes')
                             ->label('Catatan')
                             ->maxLength(65535)
@@ -233,19 +266,38 @@ class SavingsWithdrawalResource extends Resource
                                 Infolists\Components\TextEntry::make('savings_type')
                                     ->label('Jenis')
                                     ->badge()
-                                    ->color(fn (string $state): string => static::typeColor($state))
-                                    ->formatStateUsing(fn (string $state): string => self::WITHDRAWAL_TYPES[$state] ?? $state),
+                                    ->color(fn (SavingsWithdrawal $record): string => static::isLoanRefund($record) ? 'primary' : static::typeColor($record->savings_type))
+                                    ->formatStateUsing(fn (SavingsWithdrawal $record): string => static::pairLabel($record)),
                                 Infolists\Components\TextEntry::make('amount')
                                     ->label('Nominal')
                                     ->money('IDR')
                                     ->weight('bold')
-                                    ->color('danger'),
+                                    ->color('danger')
+                                    ->state(fn (SavingsWithdrawal $record): string => static::pairTotal($record)),
                                 Infolists\Components\TextEntry::make('status')
                                     ->label('Status')
                                     ->badge()
                                     ->color(fn (string $state): string => static::statusColor($state))
                                     ->formatStateUsing(fn (string $state): string => self::STATUSES[$state] ?? $state),
+                                Infolists\Components\TextEntry::make('disbursement_method')
+                                    ->label('Jenis Pencairan')
+                                    ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
+                                    ->placeholder('—'),
                             ]),
+                    ]),
+                Infolists\Components\Section::make('Rincian Pengembalian Pelunasan')
+                    ->icon('heroicon-o-banknotes')
+                    ->description('Pengembalian ini menggabungkan SWP dan Tabungan Berjangka dari pelunasan pinjaman; ACC & pencairan memproses keduanya sekaligus.')
+                    ->visible(fn (SavingsWithdrawal $record): bool => static::isLoanRefund($record))
+                    ->columns(3)
+                    ->schema([
+                        Infolists\Components\TextEntry::make('refund_swp')->label('SWP')->money('IDR')
+                            ->state(fn (SavingsWithdrawal $record): string => static::pairAmount($record, 'swp')),
+                        Infolists\Components\TextEntry::make('refund_tab')->label('Tabungan Berjangka')->money('IDR')
+                            ->state(fn (SavingsWithdrawal $record): string => static::pairAmount($record, 'tabungan_berjangka')),
+                        Infolists\Components\TextEntry::make('refund_total')->label('Total Pengembalian')->money('IDR')
+                            ->weight('bold')->color('danger')
+                            ->state(fn (SavingsWithdrawal $record): string => static::pairTotal($record)),
                     ]),
                 Infolists\Components\Grid::make(2)
                     ->schema([
@@ -299,6 +351,7 @@ class SavingsWithdrawalResource extends Resource
     {
         return $table
             ->defaultSort('created_at', 'desc')
+            ->modifyQueryUsing(fn (Builder $query): Builder => static::hideSecondaryPairRows($query))
             ->columns([
                 Tables\Columns\TextColumn::make('withdrawal_number')
                     ->label('No. Pencairan')
@@ -311,17 +364,24 @@ class SavingsWithdrawalResource extends Resource
                 Tables\Columns\TextColumn::make('savings_type')
                     ->label('Jenis')
                     ->badge()
-                    ->color(fn (string $state): string => static::typeColor($state))
-                    ->formatStateUsing(fn (string $state): string => self::WITHDRAWAL_TYPES[$state] ?? $state),
+                    ->color(fn (SavingsWithdrawal $record): string => static::isLoanRefund($record) ? 'primary' : static::typeColor($record->savings_type))
+                    ->formatStateUsing(fn (SavingsWithdrawal $record): string => static::pairLabel($record)),
                 Tables\Columns\TextColumn::make('amount')
                     ->label('Nominal')
                     ->money('IDR')
+                    ->state(fn (SavingsWithdrawal $record): string => static::pairTotal($record))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
                     ->color(fn (string $state): string => static::statusColor($state))
                     ->formatStateUsing(fn (string $state): string => self::STATUSES[$state] ?? $state),
+                Tables\Columns\TextColumn::make('disbursement_method')
+                    ->label('Jenis Pencairan')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('withdrawal_date')
                     ->label('Tanggal')
                     ->date('d M Y')
@@ -421,11 +481,15 @@ class SavingsWithdrawalResource extends Resource
 
     /**
      * Reversal hanya untuk pencairan `cair` (D10), bukan reversal, dan ber-permission.
+     * Refund pelunasan dikecualikan: pembalikannya didorong lewat reversal angsuran
+     * (yang membalik SWP+Tab sekaligus), bukan per-baris di sini — mencegah salah
+     * satu pasangan tertinggal cair (baris sekundernya disembunyikan).
      */
     public static function canReverse(SavingsWithdrawal $record): bool
     {
         return $record->status === 'cair'
             && ! $record->is_reversal
+            && ! static::isLoanRefund($record)
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -466,18 +530,121 @@ class SavingsWithdrawalResource extends Resource
     ];
 
     /**
+     * State-state asal yang sah untuk tiap transisi — penyaring saat memproses
+     * pasangan refund agar saudara yang sudah pindah status tak ditransisikan lagi.
+     *
+     * @var array<string, list<string>>
+     */
+    private const TRANSITION_FROM = [
+        'approve' => ['draft'],
+        'disburse' => ['acc'],
+        'reject' => ['draft', 'acc'],
+    ];
+
+    /**
+     * Refund pelunasan pinjaman = pencairan ber-`related_loan_id` bertipe
+     * swp/tabungan_berjangka & bukan reversal. Pasangannya (swp+tab) tampil
+     * sebagai SATU entri "Pengembalian Pelunasan".
+     */
+    public static function isLoanRefund(SavingsWithdrawal $record): bool
+    {
+        return filled($record->related_loan_id)
+            && in_array($record->savings_type, ['swp', 'tabungan_berjangka'], true)
+            && ! $record->is_reversal;
+    }
+
+    /** Label entri di tabel: pasangan refund → satu nama gabungan, lainnya apa adanya. */
+    public static function pairLabel(SavingsWithdrawal $record): string
+    {
+        return static::isLoanRefund($record)
+            ? 'Pengembalian Pelunasan'
+            : (self::WITHDRAWAL_TYPES[$record->savings_type] ?? (string) $record->savings_type);
+    }
+
+    /** Total nominal entri: jumlah seluruh anggota pasangan (swp+tab); selain itu nominal sendiri. */
+    public static function pairTotal(SavingsWithdrawal $record): string
+    {
+        return static::refundPair($record)
+            ->reduce(fn (string $carry, SavingsWithdrawal $w): string => bcadd($carry, (string) $w->amount, 2), '0.00');
+    }
+
+    /** Nominal satu komponen pasangan (mis. 'swp' / 'tabungan_berjangka'); '0.00' bila tak ada. */
+    public static function pairAmount(SavingsWithdrawal $record, string $type): string
+    {
+        return static::refundPair($record)
+            ->where('savings_type', $type)
+            ->reduce(fn (string $carry, SavingsWithdrawal $w): string => bcadd($carry, (string) $w->amount, 2), '0.00');
+    }
+
+    /**
+     * Sembunyikan baris sekunder pasangan refund (D2): tampilkan `swp` sebagai
+     * wakil, sembunyikan `tabungan_berjangka` yang punya saudara swp se-pinjaman.
+     * Pencairan biasa & tab tanpa saudara swp (mis. swp=0) tetap tampil.
+     */
+    public static function hideSecondaryPairRows(Builder $query): Builder
+    {
+        return $query->whereNot(
+            fn (Builder $q): Builder => $q
+                ->where('savings_type', 'tabungan_berjangka')
+                ->where('is_reversal', false)
+                ->whereNotNull('related_loan_id')
+                ->whereExists(fn ($sub) => $sub
+                    ->selectRaw('1')
+                    ->from('savings_withdrawals as sib')
+                    ->whereColumn('sib.related_loan_id', 'savings_withdrawals.related_loan_id')
+                    ->where('sib.savings_type', 'swp')
+                    ->where('sib.is_reversal', false))
+        );
+    }
+
+    /**
+     * Pasangan refund pelunasan (D2): satu pengembalian ditampilkan & diproses
+     * sebagai satu entri, padahal di DB ada 2 baris (swp + tabungan_berjangka)
+     * terhubung `related_loan_id`. Transisi pada salah satu baris berlaku ke
+     * keduanya. Pencairan biasa (tanpa `related_loan_id`) → hanya dirinya.
+     *
+     * @return Collection<int, SavingsWithdrawal>
+     */
+    public static function refundPair(SavingsWithdrawal $record): Collection
+    {
+        $isLoanRefund = filled($record->related_loan_id)
+            && in_array($record->savings_type, ['swp', 'tabungan_berjangka'], true)
+            && ! $record->is_reversal;
+
+        if (! $isLoanRefund) {
+            return collect([$record]);
+        }
+
+        return SavingsWithdrawal::query()
+            ->where('related_loan_id', $record->related_loan_id)
+            ->whereIn('savings_type', ['swp', 'tabungan_berjangka'])
+            ->where('is_reversal', false)
+            ->get();
+    }
+
+    /**
      * Jalankan transisi state machine via engine; domain error → notif danger.
+     * Untuk pasangan refund pelunasan, transisi diterapkan ke kedua baris secara
+     * atomik (D2).
      */
     public static function runTransition(string $transition, SavingsWithdrawal $record): void
     {
         $workflow = app(WithdrawalWorkflow::class);
+        $fromStates = self::TRANSITION_FROM[$transition];
 
         try {
-            match ($transition) {
-                'approve' => $workflow->approve($record),
-                'disburse' => $workflow->disburse($record),
-                'reject' => $workflow->reject($record),
-            };
+            DB::transaction(function () use ($transition, $record, $workflow, $fromStates): void {
+                $targets = static::refundPair($record)
+                    ->filter(fn (SavingsWithdrawal $w): bool => in_array($w->status, $fromStates, true));
+
+                foreach ($targets as $target) {
+                    match ($transition) {
+                        'approve' => $workflow->approve($target),
+                        'disburse' => $workflow->disburse($target),
+                        'reject' => $workflow->reject($target),
+                    };
+                }
+            });
 
             $notice = self::TRANSITION_NOTICES[$transition];
 

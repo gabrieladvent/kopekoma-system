@@ -5,9 +5,13 @@ use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Filament\Resources\SavingsWithdrawalResource\Pages\CreateSavingsWithdrawal;
 use App\Filament\Resources\SavingsWithdrawalResource\Pages\ListSavingsWithdrawals;
 use App\Filament\Resources\SavingsWithdrawalResource\Pages\ViewSavingsWithdrawal;
+use App\Models\InstallmentSchedule;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
+use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Spatie\Activitylog\Models\Activity;
@@ -55,6 +59,24 @@ it('creates a withdrawal as draft and forces recorded_by to the actor', function
         ->and($w->withdrawal_number)->toStartWith('TRK-');
 });
 
+it('records the disbursement method on a withdrawal (transfer)', function () {
+    asSuperAdmin();
+    $member = memberWithSukarelaBalance('200000');
+
+    Livewire::test(CreateSavingsWithdrawal::class)
+        ->fillForm([
+            'member_id' => $member->id,
+            'savings_type' => 'sukarela',
+            'amount' => '50000',
+            'withdrawal_date' => now()->toDateString(),
+            'disbursement_method' => 'transfer',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(SavingsWithdrawal::where('member_id', $member->id)->first()->disbursement_method)->toBe('transfer');
+});
+
 it('rejects a draft whose amount exceeds the available balance (early validation)', function () {
     asSuperAdmin();
     $member = memberWithSukarelaBalance('30000');
@@ -70,11 +92,35 @@ it('rejects a draft whose amount exceeds the available balance (early validation
         ->assertHasFormErrors(['amount']);
 });
 
-it('only offers hari_raya and sukarela as withdrawal types (D8)', function () {
+it('offers swp and tabungan berjangka alongside hari_raya and sukarela', function () {
     asSuperAdmin();
 
     expect(array_keys(SavingsWithdrawalResource::WITHDRAWAL_TYPES))
-        ->toBe(['hari_raya', 'sukarela']);
+        ->toContain('hari_raya')
+        ->toContain('sukarela')
+        ->toContain('swp')
+        ->toContain('tabungan_berjangka');
+});
+
+it('subtracts a pending refund draft from the available SWP balance (D3)', function () {
+    $actor = asSuperAdmin();
+    $member = Member::factory()->create();
+    Loan::factory()->create(['member_id' => $member->id, 'swp_amount' => 10000]);
+
+    expect(SavingsWithdrawalResource::availableBalance($member->id, 'swp'))->toBe('10000.00');
+
+    SavingsWithdrawal::create([
+        'idempotency_key' => (string) Str::uuid(),
+        'member_id' => $member->id,
+        'savings_type' => 'swp',
+        'amount' => '10000',
+        'withdrawal_date' => now()->toDateString(),
+        'status' => 'draft',
+        'is_reversal' => false,
+        'recorded_by' => $actor->id,
+    ]);
+
+    expect(SavingsWithdrawalResource::availableBalance($member->id, 'swp'))->toBe('0.00');
 });
 
 it('dedupes a double-submit with the same idempotency key (D4)', function () {
@@ -94,6 +140,87 @@ it('dedupes a double-submit with the same idempotency key (D4)', function () {
     Livewire::test(CreateSavingsWithdrawal::class)->fillForm($payload)->call('create')->assertNotified('Pencairan sudah tercatat');
 
     expect(SavingsWithdrawal::where('idempotency_key', $key)->count())->toBe(1);
+});
+
+it('processes the loan-refund pair together on a single transition (D2)', function () {
+    asSuperAdmin();
+    $member = Member::factory()->create();
+    $loan = Loan::factory()->create([
+        'member_id' => $member->id,
+        'principal_amount' => 1000000,
+        'swp_amount' => 10000,
+        'term_months' => 1,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 6500,
+        'monthly_time_deposit' => 1000,
+    ]);
+    $schedule = InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => 1,
+        'principal_due' => 1000000,
+        'interest_due' => 6500,
+        'time_deposit_due' => 1000,
+        'total_due' => 1007500,
+    ]);
+    app(LoanPaymentService::class)->pay($schedule, ['amount_paid' => 1007500], auth()->id());
+
+    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
+    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
+    expect($swp->status)->toBe('draft')->and($tab->status)->toBe('draft');
+
+    // Satu aksi ACC pada salah satu record → keduanya ikut acc.
+    SavingsWithdrawalResource::runTransition('approve', $swp->fresh());
+    expect($swp->fresh()->status)->toBe('acc')->and($tab->fresh()->status)->toBe('acc');
+
+    // Satu aksi Cairkan → keduanya cair, saldo SWP & Tab ter-net jadi 0.
+    SavingsWithdrawalResource::runTransition('disburse', $swp->fresh());
+    expect($swp->fresh()->status)->toBe('cair')
+        ->and($tab->fresh()->status)->toBe('cair')
+        ->and(app(SavingsBalanceService::class)->balanceByType($member, 'swp'))->toBe('0.00')
+        ->and(app(SavingsBalanceService::class)->balanceByType($member, 'tabungan_berjangka'))->toBe('0.00');
+});
+
+it('shows a loan-refund pair as one representative row with the combined total', function () {
+    asSuperAdmin();
+    $member = Member::factory()->create();
+    $loan = Loan::factory()->create([
+        'member_id' => $member->id,
+        'principal_amount' => 1000000,
+        'swp_amount' => 10000,
+        'term_months' => 1,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 6500,
+        'monthly_time_deposit' => 1000,
+    ]);
+    $schedule = InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => 1,
+        'principal_due' => 1000000,
+        'interest_due' => 6500,
+        'time_deposit_due' => 1000,
+        'total_due' => 1007500,
+    ]);
+    app(LoanPaymentService::class)->pay($schedule, ['amount_paid' => 1007500], auth()->id());
+
+    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
+    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
+
+    // Hanya satu baris representatif (swp) muncul; pasangan tab disembunyikan.
+    Livewire::test(ListSavingsWithdrawals::class)
+        ->assertCanSeeTableRecords([$swp])
+        ->assertCanNotSeeTableRecords([$tab]);
+
+    expect(SavingsWithdrawalResource::pairTotal($swp))->toBe('11000.00')
+        ->and(SavingsWithdrawalResource::pairLabel($swp))->toBe('Pengembalian Pelunasan')
+        ->and(SavingsWithdrawalResource::pairAmount($swp, 'swp'))->toBe('10000.00')
+        ->and(SavingsWithdrawalResource::pairAmount($swp, 'tabungan_berjangka'))->toBe('1000.00');
+
+    // Detail: header Jenis tampil sebagai entri gabungan (bukan "SWP"),
+    // dengan rincian SWP + Tabungan Berjangka di dalamnya.
+    Livewire::test(ViewSavingsWithdrawal::class, ['record' => $swp->getRouteKey()])
+        ->assertSee('Pengembalian Pelunasan')
+        ->assertSee('Rincian Pengembalian Pelunasan')
+        ->assertSee('Tabungan Berjangka');
 });
 
 // ── Per-record actions: visibility & workflow ─────────────────────────

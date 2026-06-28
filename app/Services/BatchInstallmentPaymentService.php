@@ -37,7 +37,6 @@ class BatchInstallmentPaymentService
         string|Carbon $periodMonth,
         array $rows,
         ?int $causerId = null,
-        string $refundMethod = 'tunai',
     ): array {
         $causerId ??= auth()->id();
 
@@ -49,7 +48,7 @@ class BatchInstallmentPaymentService
 
         $this->assertRowsValid($rows, $agency);
 
-        return DB::transaction(function () use ($agency, $period, $rows, $causerId, $refundMethod): array {
+        return DB::transaction(function () use ($agency, $period, $rows, $causerId): array {
             // Lock per OPD: serialkan batch bersamaan untuk OPD yang sama
             // (pola engine Simpanan). Anti double-bayar per-jadwal ditegakkan
             // di pay() (lock loan + cek schedule Terbayar + idempotency).
@@ -84,7 +83,6 @@ class BatchInstallmentPaymentService
                             'payment_date' => $row['payment_date'] ?? $period,
                         ],
                         $causerId,
-                        $refundMethod,
                     );
 
                     $created++;

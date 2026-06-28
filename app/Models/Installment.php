@@ -85,7 +85,7 @@ class Installment extends Model implements HasMedia, Reversible
 
     /**
      * Rincian pembayaran untuk nota/kuitansi (ADR 2026-06-26 D3) — DIHITUNG,
-     * tidak disimpan. Pokok/Jasa/Tab dari konstanta loan; "Lain-lain" =
+     * tidak disimpan. Pokok/Jasa/Tab dari konstanta loan; "Kelebihan Bayar" =
      * kelebihan `amount_paid` atas tagihan (Σ konstanta), floor 0.
      *
      * @return array{principal:string, interest:string, time_deposit:string, other:string, total:string}

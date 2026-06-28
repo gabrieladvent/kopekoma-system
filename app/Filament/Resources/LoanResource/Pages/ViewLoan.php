@@ -21,14 +21,14 @@ class ViewLoan extends ViewRecord
                 ->color('gray')
                 ->action(fn (): StreamedResponse => LoanResource::printReceipt($this->getRecord())),
             Actions\Action::make('correct')
-                ->label('Koreksi')
+                ->label('Batalkan')
                 ->icon('heroicon-o-arrow-uturn-left')
                 ->color('danger')
                 ->visible(fn (): bool => LoanResource::canCorrect($this->getRecord()))
                 ->form(LoanResource::correctionFormSchema())
                 ->requiresConfirmation()
-                ->modalHeading('Koreksi Salah-Input Pinjaman')
-                ->modalDescription('Hanya untuk pinjaman salah input yang belum punya angsuran. Record & jadwalnya dihapus, dicatat di audit.')
+                ->modalHeading('Batalkan Pinjaman Salah-Input')
+                ->modalDescription('Hanya untuk pinjaman salah input yang belum punya angsuran. Pinjaman ditandai Dibatalkan (tetap tersimpan sebagai histori), jadwalnya dibersihkan, dicatat di audit.')
                 ->action(function (array $data): void {
                     /** @var Loan $record */
                     $record = $this->getRecord();
