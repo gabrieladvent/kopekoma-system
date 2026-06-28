@@ -65,6 +65,7 @@ class Installments extends Component
     public function canReverse(Installment $record): bool
     {
         return ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -112,7 +113,7 @@ class Installments extends Component
     public function render(): View
     {
         $installments = Installment::query()
-            ->with(['loan:id,loan_number,member_id', 'loan.member:id,member_number,full_name'])
+            ->with(['loan:id,loan_number,member_id', 'loan.member:id,member_number,full_name', 'reversal:id,reversal_of_id'])
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where('installment_number', 'like', $term)

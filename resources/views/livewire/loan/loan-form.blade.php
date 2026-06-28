@@ -152,6 +152,50 @@
                         @else<p class="text-xs text-muted">Default satu bulan setelah pencairan.</p>@enderror
                     </div>
 
+                    {{-- Jenis pencairan --}}
+                    <div class="space-y-1">
+                        <label for="disbursement_method" class="block text-sm font-medium text-text">Jenis Pencairan <span class="text-muted">(opsional)</span></label>
+                        <select id="disbursement_method" wire:model.live="disbursement_method"
+                                @class([
+                                    'h-10 w-full rounded-lg border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+                                    'border-border' => ! $errors->has('disbursement_method'),
+                                    'border-danger focus-visible:ring-danger' => $errors->has('disbursement_method'),
+                                ])>
+                            <option value="">Pilih jenis pencairan…</option>
+                            @foreach ($disbursementMethods as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('disbursement_method')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                    </div>
+
+                    @if ($disbursement_method === 'transfer')
+                        {{-- Bank tujuan --}}
+                        <div class="space-y-1">
+                            <label for="disbursement_bank" class="block text-sm font-medium text-text">Bank Tujuan</label>
+                            <input id="disbursement_bank" type="text" wire:model="disbursement_bank" placeholder="mis. BRI"
+                                   @class([
+                                       'h-10 w-full rounded-lg border bg-surface px-3 text-sm text-text placeholder:text-muted transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+                                       'border-border' => ! $errors->has('disbursement_bank'),
+                                       'border-danger focus-visible:ring-danger' => $errors->has('disbursement_bank'),
+                                   ])>
+                            @error('disbursement_bank')<p class="text-xs text-danger">{{ $message }}</p>
+                            @else<p class="text-xs text-muted">Otomatis dari rekening payroll anggota; ubah bila berbeda.</p>@enderror
+                        </div>
+
+                        {{-- No. rekening tujuan --}}
+                        <div class="space-y-1">
+                            <label for="disbursement_account_number" class="block text-sm font-medium text-text">No. Rekening Tujuan</label>
+                            <input id="disbursement_account_number" type="text" wire:model="disbursement_account_number" placeholder="No. rekening"
+                                   @class([
+                                       'h-10 w-full rounded-lg border bg-surface px-3 text-sm text-text placeholder:text-muted transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+                                       'border-border' => ! $errors->has('disbursement_account_number'),
+                                       'border-danger focus-visible:ring-danger' => $errors->has('disbursement_account_number'),
+                                   ])>
+                            @error('disbursement_account_number')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                        </div>
+                    @endif
+
                     {{-- Catatan --}}
                     <div class="space-y-1 sm:col-span-2">
                         <label for="notes" class="block text-sm font-medium text-text">Catatan <span class="text-muted">(opsional)</span></label>

@@ -36,6 +36,12 @@ class LoanForm extends Component
 
     public ?string $first_due_date = null;
 
+    public ?string $disbursement_method = null;
+
+    public ?string $disbursement_bank = null;
+
+    public ?string $disbursement_account_number = null;
+
     public ?string $notes = null;
 
     /**
@@ -92,6 +98,29 @@ class LoanForm extends Component
         }
     }
 
+    /**
+     * Prefill rekening tujuan dari rekening payroll anggota saat metode = transfer
+     * (boleh diedit); bersihkan saat bukan transfer. Mirror LoanResource.
+     */
+    public function updatedDisbursementMethod(?string $value): void
+    {
+        if ($value !== 'transfer') {
+            $this->disbursement_bank = null;
+            $this->disbursement_account_number = null;
+
+            return;
+        }
+
+        $member = filled($this->member_id) ? Member::find($this->member_id) : null;
+        $this->disbursement_bank = $member?->bank_name;
+        $this->disbursement_account_number = $member?->payroll_account_number;
+    }
+
+    public function isTransfer(): bool
+    {
+        return $this->disbursement_method === 'transfer';
+    }
+
     public function removeUpload(int $index): void
     {
         unset($this->uploads[$index]);
@@ -117,6 +146,9 @@ class LoanForm extends Component
             'term_months' => ['required', 'integer', 'min:1', 'max:120'],
             'disbursement_date' => ['required', 'date'],
             'first_due_date' => ['required', 'date', 'after_or_equal:disbursement_date'],
+            'disbursement_method' => ['nullable', 'in:'.implode(',', array_keys(Resource::DISBURSEMENT_METHODS))],
+            'disbursement_bank' => [$this->isTransfer() ? 'required' : 'nullable', 'string', 'max:255'],
+            'disbursement_account_number' => [$this->isTransfer() ? 'required' : 'nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:65535'],
             'uploads' => ['nullable', 'array', 'max:10'],
             'uploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
@@ -132,6 +164,9 @@ class LoanForm extends Component
             'term_months' => 'jangka waktu',
             'disbursement_date' => 'tanggal pencairan',
             'first_due_date' => 'jatuh tempo pertama',
+            'disbursement_method' => 'jenis pencairan',
+            'disbursement_bank' => 'bank tujuan',
+            'disbursement_account_number' => 'no. rekening tujuan',
             'notes' => 'catatan',
             'uploads.*' => 'berkas',
         ];
@@ -184,6 +219,9 @@ class LoanForm extends Component
             'term_months' => $term,
             'disbursement_date' => $this->disbursement_date,
             'first_due_date' => $this->first_due_date,
+            'disbursement_method' => $this->disbursement_method ?: null,
+            'disbursement_bank' => $this->isTransfer() ? ($this->disbursement_bank ?: null) : null,
+            'disbursement_account_number' => $this->isTransfer() ? ($this->disbursement_account_number ?: null) : null,
             'notes' => $this->notes ?: null,
             'status' => 'Cair',
             'recorded_by' => auth()->id(),
@@ -243,6 +281,7 @@ class LoanForm extends Component
     {
         return view('livewire.loan.loan-form', [
             'loanTypes' => Resource::LOAN_TYPES,
+            'disbursementMethods' => Resource::DISBURSEMENT_METHODS,
             'preview' => $this->buildPreview(),
             'arrears' => $this->memberInsight(),
         ])->layout('components.layouts.app', ['title' => 'Pinjaman Baru']);

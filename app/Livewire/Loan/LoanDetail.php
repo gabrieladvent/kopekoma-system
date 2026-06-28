@@ -74,13 +74,16 @@ class LoanDetail extends Component
             ['correctReason' => 'alasan koreksi'],
         );
 
-        if (Resource::hasPayments($record)) {
+        if ($record->status !== 'Cair' || Resource::hasPayments($record)) {
             $this->closeCorrect();
-            $this->dispatch('toast', type: 'error', message: 'Pinjaman sudah punya angsuran terbayar — koreksi tidak dapat dilakukan.');
+            $this->dispatch('toast', type: 'error', message: 'Hanya pinjaman Cair yang belum punya angsuran terbayar yang dapat dibatalkan.');
 
             return null;
         }
 
+        // Record DIPERTAHANKAN sebagai histori (status → Dibatalkan); hanya jadwal
+        // proyeksi yang dibuang agar tak terhitung tunggakan. Selaras dgn
+        // LoanResource::performCorrection — bukan hard-delete.
         DB::transaction(function () use ($record): void {
             activity()
                 ->performedOn($record)
@@ -91,15 +94,16 @@ class LoanDetail extends Component
                     'member_id' => $record->member_id,
                     'principal_amount' => $record->principal_amount,
                 ])
-                ->log('Koreksi salah-input pinjaman: '.$this->correctReason);
+                ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
 
             InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->delete();
+            $record->update(['status' => 'Dibatalkan']);
         });
 
-        session()->flash('toast', ['type' => 'success', 'message' => 'Pinjaman dikoreksi (record & jadwal dihapus, tercatat di audit).']);
+        $this->closeCorrect();
+        $this->dispatch('toast', type: 'success', message: 'Pinjaman dibatalkan — tetap tersimpan sebagai histori, jadwal dibersihkan, tercatat di audit.');
 
-        return $this->redirectRoute('loans.index', navigate: true);
+        return null;
     }
 
     public function scheduleStatusLabel(InstallmentSchedule $schedule): string
@@ -131,6 +135,9 @@ class LoanDetail extends Component
             'monthly_interest' => 'Jasa / bulan',
             'monthly_time_deposit' => 'Tab. Berjangka / bulan',
             'disbursement_date' => 'Tgl Pencairan',
+            'disbursement_method' => 'Jenis Pencairan',
+            'disbursement_bank' => 'Bank Tujuan',
+            'disbursement_account_number' => 'No. Rekening Tujuan',
             'first_due_date' => 'Jatuh Tempo Pertama',
             'status' => 'Status',
             'notes' => 'Catatan',
@@ -147,6 +154,7 @@ class LoanDetail extends Component
             'principal_amount', 'admin_fee', 'swp_amount', 'disbursed_amount',
             'monthly_principal', 'monthly_interest', 'monthly_time_deposit' => 'Rp '.number_format((float) $value, 0, ',', '.'),
             'loan_type' => Resource::LOAN_TYPES[$value] ?? (string) $value,
+            'disbursement_method' => Resource::DISBURSEMENT_METHODS[$value] ?? (string) $value,
             'term_months' => $value.' bulan',
             default => $this->defaultFormatAuditFieldValue($key, $value),
         };

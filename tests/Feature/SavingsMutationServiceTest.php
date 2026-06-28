@@ -73,6 +73,40 @@ it('renders the mutation ledger on the member view page', function () {
         ->assertSee($deposit->transaction_number);
 });
 
+it('shows the ending total balance in the ledger table footer (Total row)', function () {
+    asSuperAdmin();
+    $member = Member::factory()->create();
+    SavingsDeposit::factory()->type('sukarela')->create(['member_id' => $member->id, 'amount' => '250000']);
+    SavingsWithdrawal::factory()->type('sukarela')->cair()->create(['member_id' => $member->id, 'amount' => '90000']);
+
+    $total = app(SavingsBalanceService::class)->totalBalance($member); // 160.000
+
+    // Baris Total footer = Σ masuk − Σ keluar = saldo akhir = totalBalance().
+    Livewire::test(App\Livewire\Savings\MemberSavingsDetail::class, ['member' => $member])
+        ->assertOk()
+        ->assertViewHas('totalSaldo', $total);
+});
+
+it('labels an overpayment-transfer sukarela deposit as "Pengalihan kelebihan dana" in the ledger', function () {
+    $member = Member::factory()->create();
+
+    // Setoran sukarela hasil pengalihan kelebihan bayar angsuran (ref = no. angsuran).
+    SavingsDeposit::factory()->type('sukarela')->create([
+        'member_id' => $member->id, 'amount' => '50000', 'reference_number' => 'ANG-2026-000001',
+    ]);
+    // Setoran sukarela biasa (tanpa ref angsuran) tetap "Setoran".
+    SavingsDeposit::factory()->type('sukarela')->create([
+        'member_id' => $member->id, 'amount' => '20000', 'reference_number' => null,
+    ]);
+
+    $rows = collect($this->service->ledgerFor($member));
+
+    expect($rows->firstWhere('number', 'ANG-2026-000001') ?? $rows->firstWhere('masuk', '50000.00'))
+        ->not->toBeNull();
+    expect($rows->where('masuk', '50000.00')->first()['description'])->toBe('Pengalihan kelebihan dana')
+        ->and($rows->where('masuk', '20000.00')->first()['description'])->toBe('Setoran');
+});
+
 it('treats a deposit reversal as an outgoing line', function () {
     $member = Member::factory()->create();
     $deposit = SavingsDeposit::factory()->type('sukarela')->create([

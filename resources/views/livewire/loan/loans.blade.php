@@ -92,6 +92,7 @@
                 <option value="all">Semua Status</option>
                 <option value="Cair">Cair</option>
                 <option value="Lunas">Lunas</option>
+                <option value="Dibatalkan">Dibatalkan</option>
             </select>
 
             <select wire:model.live="arrears"
@@ -163,6 +164,8 @@
                             <td class="px-5 py-4">
                                 @if ($loan->status === 'Lunas')
                                     <x-ui.badge color="success"><x-ui.icon name="check" class="h-3 w-3" /> Lunas</x-ui.badge>
+                                @elseif ($loan->status === 'Dibatalkan')
+                                    <x-ui.badge color="neutral"><x-ui.icon name="x" class="h-3 w-3" /> Dibatalkan</x-ui.badge>
                                 @else
                                     @php($pct = $loan->schedules_total > 0 ? (int) round($loan->schedules_paid / $loan->schedules_total * 100) : 0)
                                     <div class="w-32 space-y-1">
@@ -178,7 +181,12 @@
                             </td>
                             <td class="px-5 py-4 text-text">
                                 {{ $loan->disbursement_date?->translatedFormat('d M Y') }}
-                                <span class="block text-xs text-muted">{{ $loan->term_months }} bln</span>
+                                <span class="block text-xs text-muted">
+                                    {{ $loan->term_months }} bln
+                                    @if ($loan->disbursement_method)
+                                        · {{ \App\Filament\Resources\LoanResource::DISBURSEMENT_METHODS[$loan->disbursement_method] }}
+                                    @endif
+                                </span>
                             </td>
                             <td class="px-5 py-4">
                                 <div class="flex justify-end">

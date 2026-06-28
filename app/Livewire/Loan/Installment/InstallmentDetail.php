@@ -31,6 +31,7 @@ class InstallmentDetail extends Component
     public function canReverse(Installment $record): bool
     {
         return ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -107,6 +108,21 @@ class InstallmentDetail extends Component
         };
     }
 
+    /**
+     * Sisa pokok SETELAH angsuran ini = `principal_amount − seq × monthly_principal`,
+     * floor 0 (count-based, ADR 2026-06-26). Konsisten dgn SchedulesRelationManager
+     * & Loan::remainingPrincipal(); tak ada kolom remaining_principal lagi.
+     */
+    protected function remainingAfter(Installment $installment): string
+    {
+        $loan = $installment->loan;
+
+        $paid = bcmul((string) ($loan?->monthly_principal ?? '0'), (string) (int) $installment->installment_seq, 2);
+        $remaining = bcsub((string) ($loan?->principal_amount ?? '0'), $paid, 2);
+
+        return bccomp($remaining, '0', 2) < 0 ? '0.00' : $remaining;
+    }
+
     public function render(): View
     {
         $installment = Installment::with(['loan.member.agency', 'recordedBy', 'reversalOf'])
@@ -120,6 +136,8 @@ class InstallmentDetail extends Component
         return view('livewire.loan.installment.installment-detail', [
             'installment' => $installment,
             'paymentMethodLabel' => Resource::PAYMENT_METHODS[$installment->payment_method] ?? $installment->payment_method,
+            'breakdown' => $installment->breakdown(),
+            'remaining' => $this->remainingAfter($installment),
             'bukti' => $installment->getFirstMedia('bukti'),
             'activities' => $activities,
             'selectedActivity' => $selectedActivity,

@@ -130,36 +130,30 @@
                         </span>
                         <h3 class="text-sm font-semibold text-text">Nominal Diterima</h3>
                     </div>
-                    <p class="mt-3 text-xs text-muted">Sudah diisi sesuai tagihan. Boleh dinaikkan, tidak boleh kurang dari tagihan.</p>
+                    <p class="mt-3 text-xs text-muted">Total uang yang benar-benar diterima. Sudah diisi sesuai tagihan; boleh dinaikkan, tidak boleh kurang dari tagihan. Kelebihan jadi <span class="font-medium text-text">Kelebihan Bayar</span> (dikreditkan ke Simpanan Sukarela).</p>
 
-                    <div class="mt-4 grid gap-4 sm:grid-cols-3">
-                        @php($amountFields = [
-                            ['key' => 'principal_paid', 'label' => 'Pokok'],
-                            ['key' => 'interest_paid', 'label' => 'Jasa'],
-                            ['key' => 'time_deposit_saved', 'label' => 'Tab. Berjangka'],
-                        ])
-                        @foreach ($amountFields as $field)
-                            <div class="space-y-1"
-                                 x-data="{
-                                    raw: @entangle(''.$field['key']),
-                                    display: '',
-                                    fmt(v) { v = String(v ?? '').replace(/\D/g, ''); return v.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); },
-                                    init() { this.display = this.fmt(this.raw); this.$watch('raw', (v) => { const f = this.fmt(v); if (f !== this.display) this.display = f; }); },
-                                    onInput(e) { const d = e.target.value.replace(/\D/g, ''); this.raw = d === '' ? null : parseInt(d, 10); this.display = this.fmt(d); },
-                                 }">
-                                <label class="block text-sm font-medium text-text">{{ $field['label'] }}</label>
-                                <div @class([
-                                        'flex items-center rounded-lg border bg-surface transition focus-within:ring-2 focus-within:ring-primary',
-                                        'border-border' => ! $errors->has($field['key']),
-                                        'border-danger focus-within:ring-danger' => $errors->has($field['key']),
-                                     ])>
-                                    <span class="pl-3 text-sm text-muted">Rp</span>
-                                    <input type="text" inputmode="numeric" data-amt :value="display" @input="onInput($event)"
-                                           class="h-10 w-full rounded-lg bg-transparent px-2 text-sm font-medium tabular-nums text-text focus-visible:outline-none">
-                                </div>
-                                @error($field['key'])<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                    <div class="mt-4">
+                        <div class="space-y-1"
+                             x-data="{
+                                raw: @entangle('amount_paid'),
+                                display: '',
+                                fmt(v) { v = String(v ?? '').replace(/\D/g, ''); return v.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); },
+                                init() { this.display = this.fmt(this.raw); this.$watch('raw', (v) => { const f = this.fmt(v); if (f !== this.display) this.display = f; }); },
+                                onInput(e) { const d = e.target.value.replace(/\D/g, ''); this.raw = d === '' ? null : parseInt(d, 10); this.display = this.fmt(d); },
+                             }">
+                            <label for="amount_paid" class="block text-sm font-medium text-text">Nominal Dibayar</label>
+                            <div @class([
+                                    'flex items-center rounded-lg border bg-surface transition focus-within:ring-2 focus-within:ring-primary',
+                                    'border-border' => ! $errors->has('amount_paid'),
+                                    'border-danger focus-within:ring-danger' => $errors->has('amount_paid'),
+                                 ])>
+                                <span class="pl-3 text-sm text-muted">Rp</span>
+                                <input id="amount_paid" type="text" inputmode="numeric" data-amt :value="display" @input="onInput($event)"
+                                       class="h-10 w-full rounded-lg bg-transparent px-2 text-base font-semibold tabular-nums text-text focus-visible:outline-none">
                             </div>
-                        @endforeach
+                            @error('amount_paid')<p class="text-xs text-danger">{{ $message }}</p>
+                            @elseif ($schedule)<p class="text-xs text-muted">Tagihan bulan ini: Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}.</p>@enderror
+                        </div>
                     </div>
 
                     <div class="mt-5 grid gap-4 sm:grid-cols-2">
@@ -186,15 +180,8 @@
                         </div>
 
                         @if ($isFinal)
-                            <div class="space-y-1 sm:col-span-2">
-                                <label for="refund_method" class="block text-sm font-medium text-text">Metode Pengembalian (saat lunas)</label>
-                                <select id="refund_method" wire:model="refund_method"
-                                        class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
-                                    @foreach ($refundMethods as $value => $label)
-                                        <option value="{{ $value }}">{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                                <p class="text-xs text-muted">Ini angsuran pelunasan — SWP + Tab. Berjangka dikembalikan via metode ini.</p>
+                            <div class="space-y-1 sm:col-span-2 rounded-lg bg-secondary/5 px-3 py-2 ring-1 ring-inset ring-secondary/15">
+                                <p class="text-xs text-muted">Ini angsuran pelunasan — SWP + Tab. Berjangka otomatis dikembalikan (draft) memakai metode pencairan yang ditetapkan saat akad pinjaman.</p>
                             </div>
                         @endif
 

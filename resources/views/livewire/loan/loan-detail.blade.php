@@ -20,7 +20,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <x-ui.badge color="primary" class="font-mono">{{ $loan->loan_number }}</x-ui.badge>
                     <x-ui.badge :color="$typeColor">{{ $loanTypeLabel }}</x-ui.badge>
-                    <x-ui.badge :color="$loan->status === 'Lunas' ? 'success' : 'primary'">{{ $loan->status }}</x-ui.badge>
+                    <x-ui.badge :color="match ($loan->status) { 'Lunas' => 'success', 'Dibatalkan' => 'neutral', default => 'primary' }">{{ $loan->status }}</x-ui.badge>
                     @if ($progress['overdue'] > 0)
                         <x-ui.badge color="danger">{{ $progress['overdue'] }} tunggakan</x-ui.badge>
                     @endif
@@ -43,7 +43,7 @@
             </x-ui.button>
             @if ($this->canCorrect($loan))
                 <x-ui.button variant="danger" wire:click="openCorrect">
-                    <x-ui.icon name="arrow-uturn-left" class="h-4 w-4" /> Koreksi
+                    <x-ui.icon name="arrow-uturn-left" class="h-4 w-4" /> Batalkan
                 </x-ui.button>
             @endif
         </div>
@@ -82,6 +82,26 @@
                         </dt>
                         <dd class="mt-1 text-sm text-text">{{ $loan->first_due_date?->translatedFormat('d M Y') ?? '—' }}</dd>
                     </div>
+                    <div>
+                        <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                            <x-ui.icon name="banknotes" class="h-3.5 w-3.5" /> Jenis Pencairan
+                        </dt>
+                        <dd class="mt-1 text-sm text-text">{{ \App\Filament\Resources\LoanResource::DISBURSEMENT_METHODS[$loan->disbursement_method] ?? '—' }}</dd>
+                    </div>
+                    @if ($loan->disbursement_method === 'transfer')
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="building-office" class="h-3.5 w-3.5" /> Bank Tujuan
+                            </dt>
+                            <dd class="mt-1 text-sm text-text">{{ $loan->disbursement_bank ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="hashtag" class="h-3.5 w-3.5" /> No. Rekening Tujuan
+                            </dt>
+                            <dd class="mt-1 text-sm text-text tabular-nums">{{ $loan->disbursement_account_number ?? '—' }}</dd>
+                        </div>
+                    @endif
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="calendar" class="h-3.5 w-3.5" /> Jangka Waktu
@@ -297,14 +317,14 @@
                     <x-ui.icon name="arrow-uturn-left" class="h-5 w-5" />
                 </span>
                 <div>
-                    <h3 class="text-base font-semibold tracking-tight text-text">Koreksi Salah-Input</h3>
-                    <p class="mt-1 text-xs text-muted">Record pinjaman beserta jadwalnya dihapus dan dicatat di audit. Hanya untuk salah input tanpa angsuran.</p>
+                    <h3 class="text-base font-semibold tracking-tight text-text">Batalkan Pinjaman Salah-Input</h3>
+                    <p class="mt-1 text-xs text-muted">Pinjaman ditandai <span class="font-medium text-text">Dibatalkan</span> dan tetap tersimpan sebagai histori; jadwal proyeksinya dibersihkan, dicatat di audit. Hanya untuk pinjaman yang belum punya angsuran.</p>
                 </div>
             </div>
 
             <form wire:submit="performCorrect" class="mt-5 space-y-4">
                 <div class="space-y-1">
-                    <label for="correctReason" class="block text-sm font-medium text-text">Alasan Koreksi</label>
+                    <label for="correctReason" class="block text-sm font-medium text-text">Alasan Pembatalan</label>
                     <textarea id="correctReason" wire:model="correctReason" rows="3" placeholder="Wajib, minimal 5 karakter. Akan tercatat di log audit."
                               @class([
                                   'w-full rounded-lg border bg-surface px-3 py-2 text-sm text-text placeholder:text-muted transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
@@ -321,7 +341,7 @@
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                         </svg>
-                        Proses Koreksi
+                        Batalkan Pinjaman
                     </x-ui.button>
                 </div>
             </form>

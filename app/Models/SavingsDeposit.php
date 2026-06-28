@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
@@ -90,6 +91,20 @@ class SavingsDeposit extends Model implements Reversible
         return $this->belongsTo(SavingsDeposit::class, 'reversal_of_id');
     }
 
+    /** Baris-lawan reversal yang menunjuk record ini (≤ 1, `reversal_of_id` unik). */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(SavingsDeposit::class, 'reversal_of_id');
+    }
+
+    /** Sudah pernah di-reversal? (mencegah reversal ganda + sembunyikan tombol). */
+    public function isReversed(): bool
+    {
+        return $this->relationLoaded('reversal')
+            ? $this->reversal !== null
+            : $this->reversal()->exists();
+    }
+
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
@@ -121,6 +136,9 @@ class SavingsDeposit extends Model implements Reversible
             'period_month' => $this->period_month,
             'deposit_method' => $this->deposit_method,
             'deposited_by' => $this->deposited_by,
+            // Bawa referensi (mis. no. angsuran untuk pengalihan kelebihan dana)
+            // agar baris pembatalan tetap dapat dikenali di buku mutasi.
+            'reference_number' => $this->reference_number,
         ];
     }
 }

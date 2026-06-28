@@ -56,25 +56,31 @@
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="banknotes" class="h-3.5 w-3.5" /> Pokok
                         </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $installment->principal_paid, 0, ',', '.') }}</dd>
+                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $breakdown['principal'], 0, ',', '.') }}</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="arrow-trending-up" class="h-3.5 w-3.5" /> Jasa
                         </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $installment->interest_paid, 0, ',', '.') }}</dd>
+                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $breakdown['interest'], 0, ',', '.') }}</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="wallet-stack" class="h-3.5 w-3.5" /> Tab. Berjangka
                         </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $installment->time_deposit_saved, 0, ',', '.') }}</dd>
+                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $breakdown['time_deposit'], 0, ',', '.') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                            <x-ui.icon name="plus" class="h-3.5 w-3.5" /> Kelebihan Bayar
+                        </dt>
+                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $breakdown['other'], 0, ',', '.') }}</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="wallet" class="h-3.5 w-3.5" /> Sisa Pokok
                         </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $installment->remaining_principal, 0, ',', '.') }}</dd>
+                        <dd class="mt-1 text-sm tabular-nums text-text">Rp {{ number_format((float) $remaining, 0, ',', '.') }}</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">

@@ -24,17 +24,12 @@ class InstallmentForm extends Component
 
     public ?string $schedule_id = null;
 
-    public ?int $principal_paid = null;
-
-    public ?int $interest_paid = null;
-
-    public ?int $time_deposit_saved = null;
+    /** Satu nominal diterima (ADR 2026-06-26) — prefilled = tagihan, boleh dinaikkan. */
+    public ?int $amount_paid = null;
 
     public string $payment_method = 'potong_gaji';
 
     public ?string $payment_date = null;
-
-    public string $refund_method = 'tunai';
 
     public ?TemporaryUploadedFile $bukti = null;
 
@@ -59,13 +54,13 @@ class InstallmentForm extends Component
 
     protected function afterMemberSelected(): void
     {
-        $this->reset('loan_id', 'schedule_id', 'principal_paid', 'interest_paid', 'time_deposit_saved');
+        $this->reset('loan_id', 'schedule_id', 'amount_paid');
         $this->dispatchAmounts();
     }
 
     public function updatedLoanId(): void
     {
-        $this->reset('schedule_id', 'principal_paid', 'interest_paid', 'time_deposit_saved');
+        $this->reset('schedule_id', 'amount_paid');
         $this->loadSchedule();
         $this->dispatchAmounts();
     }
@@ -80,7 +75,7 @@ class InstallmentForm extends Component
 
         $this->dispatch(
             'amounts-updated',
-            total: (int) $this->principal_paid + (int) $this->interest_paid + (int) $this->time_deposit_saved,
+            total: (int) $this->amount_paid,
             bill: $schedule ? (int) round((float) $schedule->total_due) : 0,
         );
     }
@@ -105,10 +100,10 @@ class InstallmentForm extends Component
             return;
         }
 
+        // Prefill nominal diterima = tagihan bulan ini (Σ konstanta). Boleh
+        // dinaikkan; kelebihan jadi "Kelebihan Bayar" (dikredit ke Sukarela).
         $this->schedule_id = $schedule->id;
-        $this->principal_paid = (int) round((float) $schedule->loan->monthly_principal);
-        $this->interest_paid = (int) round((float) $schedule->loan->monthly_interest);
-        $this->time_deposit_saved = (int) round((float) $schedule->loan->monthly_time_deposit);
+        $this->amount_paid = (int) round((float) $schedule->total_due);
     }
 
     public function activeLoanOptions(): array
@@ -116,9 +111,27 @@ class InstallmentForm extends Component
         return Resource::activeLoanOptions($this->member_id);
     }
 
+    /**
+     * Angsuran pelunasan = jadwal ini satu-satunya yang masih "Belum Bayar" di
+     * pinjamannya; membayarnya membuat pinjaman Lunas → memicu refund SWP/Tab.
+     */
     public function isFinal(): bool
     {
-        return $this->schedule_id !== null && Resource::isFinalUnpaid($this->schedule_id);
+        if ($this->schedule_id === null) {
+            return false;
+        }
+
+        $schedule = InstallmentSchedule::find($this->schedule_id);
+
+        if ($schedule === null || $schedule->status !== 'Belum Bayar') {
+            return false;
+        }
+
+        return ! InstallmentSchedule::query()
+            ->where('loan_id', $schedule->loan_id)
+            ->where('status', 'Belum Bayar')
+            ->whereKeyNot($schedule->getKey())
+            ->exists();
     }
 
     public function selectedSchedule(): ?InstallmentSchedule
@@ -132,12 +145,9 @@ class InstallmentForm extends Component
             'member_id' => ['required', 'exists:members,id'],
             'loan_id' => ['required', 'exists:loans,id'],
             'schedule_id' => ['required', 'exists:installment_schedules,id'],
-            'principal_paid' => ['required', 'integer', 'min:0'],
-            'interest_paid' => ['required', 'integer', 'min:0'],
-            'time_deposit_saved' => ['required', 'integer', 'min:0'],
+            'amount_paid' => ['required', 'integer', 'min:1'],
             'payment_method' => ['required', 'in:'.implode(',', array_keys(Resource::PAYMENT_METHODS))],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
-            'refund_method' => ['required', 'in:'.implode(',', array_keys(Resource::REFUND_METHODS))],
             'bukti' => ['nullable', 'image', 'max:5120'],
         ];
     }
@@ -148,12 +158,9 @@ class InstallmentForm extends Component
             'member_id' => 'anggota',
             'loan_id' => 'pinjaman',
             'schedule_id' => 'angsuran',
-            'principal_paid' => 'pokok',
-            'interest_paid' => 'jasa',
-            'time_deposit_saved' => 'tabungan berjangka',
+            'amount_paid' => 'nominal dibayar',
             'payment_method' => 'metode bayar',
             'payment_date' => 'tanggal bayar',
-            'refund_method' => 'metode pengembalian',
             'bukti' => 'bukti pembayaran',
         ];
     }
@@ -172,10 +179,17 @@ class InstallmentForm extends Component
             return null;
         }
 
+        // Anti-korupsi total-level (ADR 2026-06-26 D4): nominal diterima tak boleh
+        // kurang dari tagihan bulan ini. Kelebihan = "Kelebihan Bayar" (kredit Sukarela).
+        $bill = (int) round((float) $schedule->total_due);
+        if ((int) $this->amount_paid < $bill) {
+            throw ValidationException::withMessages([
+                'amount_paid' => 'Nominal tidak boleh kurang dari tagihan Rp '.number_format($bill, 0, ',', '.').'.',
+            ]);
+        }
+
         $input = [
-            'principal_paid' => (string) $this->principal_paid,
-            'interest_paid' => (string) $this->interest_paid,
-            'time_deposit_saved' => (string) $this->time_deposit_saved,
+            'amount_paid' => (string) (int) $this->amount_paid,
             'payment_method' => $this->payment_method,
             'payment_date' => $this->payment_date,
         ];
@@ -185,11 +199,10 @@ class InstallmentForm extends Component
                 $schedule,
                 $input,
                 auth()->id(),
-                $this->refund_method,
                 $this->bukti?->getRealPath() ? $this->bukti : null,
             );
         } catch (CannotProcessPayment $e) {
-            throw ValidationException::withMessages(['principal_paid' => $e->getMessage()]);
+            throw ValidationException::withMessages(['amount_paid' => $e->getMessage()]);
         }
 
         $lunas = $installment->loan()->where('status', 'Lunas')->exists();
@@ -209,10 +222,9 @@ class InstallmentForm extends Component
         return view('livewire.loan.installment.installment-form', [
             'loanOptions' => $this->activeLoanOptions(),
             'paymentMethods' => Resource::PAYMENT_METHODS,
-            'refundMethods' => Resource::REFUND_METHODS,
             'schedule' => $schedule,
             'isFinal' => $this->isFinal(),
-            'totalPaid' => (int) $this->principal_paid + (int) $this->interest_paid + (int) $this->time_deposit_saved,
+            'totalPaid' => (int) $this->amount_paid,
         ])->layout('components.layouts.app', ['title' => 'Bayar Angsuran']);
     }
 }

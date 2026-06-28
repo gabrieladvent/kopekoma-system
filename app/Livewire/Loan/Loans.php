@@ -178,7 +178,7 @@ class Loans extends Component
         $paidNet = (string) (DB::table('installments')
             ->join('loans', 'loans.id', '=', 'installments.loan_id')
             ->where('loans.status', 'Cair')
-            ->selectRaw('COALESCE(SUM(CASE WHEN installments.is_reversal = 0 THEN installments.principal_paid ELSE -installments.principal_paid END), 0) as net')
+            ->selectRaw('COALESCE(SUM((CASE WHEN installments.is_reversal = 0 THEN 1 ELSE -1 END) * loans.monthly_principal), 0) as net')
             ->value('net') ?? '0');
 
         $outstanding = bcsub($this->money($principalActive), $this->money($paidNet), 2);

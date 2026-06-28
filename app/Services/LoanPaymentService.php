@@ -165,7 +165,7 @@ class LoanPaymentService
             'deposit_method' => $installment->payment_method === 'potong_gaji' ? 'potong_gaji' : 'setor_sendiri',
             'deposited_by' => 'bendahara',
             'reference_number' => $installment->installment_number,
-            'notes' => "Kelebihan bayar angsuran {$installment->installment_number}",
+            'notes' => "Pengalihan kelebihan dana dari angsuran {$installment->installment_number}",
             'recorded_by' => $causerId,
         ]);
 
@@ -178,7 +178,7 @@ class LoanPaymentService
                 'loan_id' => $loan->id,
                 'amount' => $excess,
             ])
-            ->log("Kelebihan bayar angsuran {$installment->installment_number} dikreditkan ke Simpanan Sukarela");
+            ->log("Pengalihan kelebihan dana angsuran {$installment->installment_number} ke Simpanan Sukarela");
     }
 
     /**
