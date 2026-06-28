@@ -21,6 +21,7 @@ use App\Livewire\Master\Grade\Grades;
 use App\Livewire\Master\Member\MemberDetail;
 use App\Livewire\Master\Member\MemberForm;
 use App\Livewire\Master\Member\Members;
+use App\Livewire\Profile\EditProfile;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
 use App\Livewire\Savings\Deposit\SavingsDepositDetail;
 use App\Livewire\Savings\Deposit\SavingsDepositForm;
@@ -46,6 +47,7 @@ use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -61,6 +63,22 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', Dashboard::class)->name('dashboard');
+
+    // Profil pengguna — setiap akun mengelola profilnya sendiri (tanpa gate
+    // permission). Foto, email (verifikasi ulang saat berubah), & password.
+    Route::get('/profil', EditProfile::class)->name('profile.edit');
+
+    // Verifikasi email. Verifikasi TIDAK dipaksakan sebagai gate akses; rute ini
+    // hanya melayani link konfirmasi & "kirim ulang". Link signed dari notifikasi.
+    Route::get('/email/verify', fn () => redirect()->route('profile.edit'))
+        ->name('verification.notice');
+
+    Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
+        $request->fulfill();
+
+        return redirect()->route('profile.edit')
+            ->with('toast', ['type' => 'success', 'message' => 'Email berhasil diverifikasi.']);
+    })->middleware('signed')->name('verification.verify');
 
     // Setor Simpanan (menu utama — di luar group Simpanan). Mode "Setoran Tunggal":
     // sekali proses → banyak setoran per jenis. Immutable; koreksi via reversal.

@@ -110,13 +110,22 @@
             <div class="border-t border-border p-3">
                 @php($u = auth()->user())
                 <div class="flex items-center gap-3 rounded-xl px-3 py-2">
-                    <div class="grid h-9 w-9 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">
-                        {{ $u ? \Illuminate\Support\Str::of($u->name)->explode(' ')->take(2)->map(fn ($p) => mb_substr($p, 0, 1))->implode('') : 'GA' }}
-                    </div>
-                    <div class="min-w-0 leading-tight">
-                        <p class="truncate text-sm font-medium">{{ $u?->name ?? 'Pengguna' }}</p>
-                        <p class="truncate text-xs text-muted">{{ $u?->getRoleNames()->first() ?? 'Anggota' }}</p>
-                    </div>
+                    <a href="{{ route('profile.edit') }}"
+                       class="flex min-w-0 flex-1 items-center gap-3 rounded-lg transition duration-150 ease-out hover:opacity-80"
+                       aria-label="Profil saya">
+                        @if ($u?->avatarUrl())
+                            <img src="{{ $u->avatarUrl() }}" alt="{{ $u->name }}"
+                                 class="h-9 w-9 shrink-0 rounded-full object-cover">
+                        @else
+                            <div class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">
+                                {{ $u ? \Illuminate\Support\Str::of($u->name)->explode(' ')->take(2)->map(fn ($p) => mb_substr($p, 0, 1))->implode('') : 'GA' }}
+                            </div>
+                        @endif
+                        <div class="min-w-0 leading-tight">
+                            <p class="truncate text-sm font-medium">{{ $u?->name ?? 'Pengguna' }}</p>
+                            <p class="truncate text-xs text-muted">{{ $u?->getRoleNames()->first() ?? 'Anggota' }}</p>
+                        </div>
+                    </a>
                     <form method="POST" action="{{ route('logout') }}" class="ml-auto">
                         @csrf
                         <button type="submit"

@@ -75,9 +75,13 @@ Added to the `auth` group in `routes/web.php`:
 - `App\Filament\Pages\Auth\EditProfile extends Filament\Pages\Auth\EditProfile`
   adding an avatar `FileUpload` (`avatar_path`, image, public disk, `avatars/`
   directory, avatar/circle cropper) to the built-in name/email/password form.
-- `AdminPanelProvider`: `->profile(EditProfile::class)` and
-  `->emailVerification()` so email change re-verifies automatically within the
-  panel.
+- `AdminPanelProvider`: `->profile(EditProfile::class)`.
+- **Not** using the panel's `->emailVerification()` — it gates panel access
+  behind verification and would lock out the existing unverified user (mail is
+  `log`). Instead the page overrides `handleRecordUpdate()`: on email change it
+  nulls `email_verified_at` and calls `sendEmailVerificationNotification()`. The
+  notification's link targets the global `verification.verify` route defined in
+  `web.php`, so a single verification flow serves both surfaces.
 
 ### 5. Layout integration
 
