@@ -41,6 +41,8 @@ use App\Livewire\Settings\ManageSettings;
 use App\Livewire\System\ActivityLogs;
 use App\Livewire\System\RoleForm;
 use App\Livewire\System\Roles;
+use App\Livewire\System\UserForm;
+use App\Livewire\System\Users;
 use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\Loan;
@@ -273,4 +275,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/sistem/peran', Roles::class)->name('system.roles');
     Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
     Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
+
+    Route::get('/sistem/pengguna', Users::class)->name('system.users');
+    Route::get('/sistem/pengguna/create', UserForm::class)->name('system.users.create');
+    Route::get('/sistem/pengguna/{user}/edit', UserForm::class)->name('system.users.edit');
 });

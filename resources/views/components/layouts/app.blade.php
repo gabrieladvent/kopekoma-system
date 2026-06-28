@@ -62,20 +62,25 @@
                         ['Dashboard', 'home', 'dashboard'],
                         ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit],
                         ['Pinjaman', 'receipt-percent', 'loans.index', $canLoan],
+                        ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
                     ],
                     'Simpanan' => [
+                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
                         ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
                         ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
-                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
-                        ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
                     ],
                     'Pinjaman' => [
                         ['Angsuran', 'credit-card', 'installments.index', $canInstallment],
                         ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist],
                     ],
-                    'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
+                    'Master' => [
+                        ['Anggota', 'users', 'master.members'],
+                        ['Golongan', 'academic-cap', 'master.grades'],
+                        ['OPD / Instansi', 'building-office', 'master.agencies']
+                    ],
                     'Sistem' => [
                         ['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit],
+                        ['Pengguna', 'users', 'system.users', $isSuper],
                         ['Peran & Izin', 'shield', 'system.roles', $isSuper],
                         ['Pengaturan', 'cog', 'settings', $navUser?->can('manage_settings') ?? false],
                     ],
