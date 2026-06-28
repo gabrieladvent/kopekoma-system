@@ -71,13 +71,17 @@ Filament Resource KOPEKOMA (lihat memory `filament-resource-conventions`).
 - Register di `AuthServiceProvider`/auto-discovery sesuai pola existing.
 
 ### 5. Shield permissions + Seeder
-- Tambahkan `'user'` ke `RolePermissionSeeder::RESOURCES`.
-- `shield:generate --all` akan menghasilkan permission `view_user`,
-  `view_any_user`, `create_user`, `update_user`, dan (elevated) `delete_user`,
-  `delete_any_user`, dst.
-- Hanya `super_admin` yang punya `Permission::all()` → otomatis dapat `*_user`.
-  `pengurus`/`petugas` TIDAK menerima permission user (tidak ditambah ke
-  `permissionsFor()` mereka).
+- **Seeder TIDAK diubah.** `RESOURCES` di `RolePermissionSeeder` memberi makan
+  `permissionsFor()` yang dipakai petugas & pengurus — menambah `'user'` di sana
+  justru salah memberi mereka akses. Sebaliknya, `shield:generate --all`
+  otomatis membuat permission `view_user`/`create_user`/`update_user`/`delete_user`
+  dst. karena `UserResource` sudah ada.
+- Hanya `super_admin` yang menerima `Permission::all()` → otomatis dapat `*_user`.
+  `pengurus`/`petugas` tidak pernah menerimanya.
+
+> Catatan implementasi: password tidak di-hash manual di Resource — andalkan
+> cast `password => 'hashed'` di model; field hanya `dehydrated` saat diisi.
+> Avatar tidak dipakai (kolom belum ada di branch `development`).
 
 ## Guardrails (anti self-lockout)
 
