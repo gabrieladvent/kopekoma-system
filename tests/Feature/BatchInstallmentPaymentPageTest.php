@@ -88,7 +88,6 @@ it('processes the batch and records installments only for included members and l
         ->set('data.agency_id', $agency->id)
         ->set('data.period_month', '2026-06-01')
         ->set('data.payment_date', '2026-06-10')
-        ->set('data.refund_method', 'tunai')
         ->set('data.rows', [
             ['member_id' => $loanA->member_id, 'member_label' => 'a', 'include' => true, 'lines' => [
                 ['loan_id' => $loanA->id, 'schedule_id' => $schA[0]->id, 'total_due' => '1090000', 'loan_label' => 'A', 'include' => true, 'amount' => '1090000'],

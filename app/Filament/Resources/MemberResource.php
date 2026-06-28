@@ -618,6 +618,7 @@ class MemberResource extends Resource
             // Riwayat simpanan masuk+keluar ada di section "Riwayat Simpanan"
             // (buku mutasi) pada infolist — menggantikan tab setoran-saja yang
             // dulu menyesatkan (uang keluar tak tampil di sana).
+            MemberResource\RelationManagers\LoansRelationManager::class,
             MemberResource\RelationManagers\DocumentsRelationManager::class,
             AuditTrailRelationManager::class,
         ];

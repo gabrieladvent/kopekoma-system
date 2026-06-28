@@ -46,11 +46,6 @@ class InstallmentResource extends Resource
         'manual' => 'Manual',
     ];
 
-    public const REFUND_METHODS = [
-        'tunai' => 'Tunai',
-        'transfer' => 'Transfer',
-    ];
-
     /** @return array<string, string> Pinjaman aktif anggota, dibedakan tgl + nominal. */
     public static function activeLoanOptions(mixed $memberId): array
     {
@@ -100,21 +95,6 @@ class InstallmentResource extends Resource
             ->all();
     }
 
-    public static function isFinalUnpaid(mixed $scheduleId): bool
-    {
-        $schedule = InstallmentSchedule::find($scheduleId);
-
-        if ($schedule === null) {
-            return false;
-        }
-
-        return InstallmentSchedule::query()
-            ->where('loan_id', $schedule->loan_id)
-            ->where('status', 'Belum Bayar')
-            ->where('id', '!=', $schedule->id)
-            ->doesntExist();
-    }
-
     public static function prefillFromSchedule(mixed $scheduleId, Set $set): void
     {
         $schedule = InstallmentSchedule::find($scheduleId);
@@ -124,7 +104,7 @@ class InstallmentResource extends Resource
         }
 
         // Prefill = total tagihan bulan ini (Σ konstanta). Petugas ubah bila
-        // anggota bayar lebih; kelebihan jadi "Lain-lain" di kuitansi.
+        // anggota bayar lebih; kelebihan jadi "Kelebihan Bayar" di kuitansi.
         // MoneyInput (mask presisi 0) → buang desimal saat prefill.
         $set('amount_paid', self::rupiah($schedule->total_due));
     }
@@ -210,7 +190,7 @@ class InstallmentResource extends Resource
                         ->label('Metode Bayar')->options(self::PAYMENT_METHODS)
                         ->default('potong_gaji')->required()->native(false),
                     MoneyInput::make('amount_paid')->label('Nominal Dibayar')->required()
-                        ->helperText('Total uang yang benar-benar diterima. Tidak boleh kurang dari tagihan; kelebihan tercatat sebagai "Lain-lain" di kuitansi.')
+                        ->helperText('Total uang yang benar-benar diterima. Tidak boleh kurang dari tagihan; kelebihan tampil sebagai "Kelebihan Bayar" di kuitansi dan dikreditkan ke Simpanan Sukarela anggota.')
                         ->rule(fn (Get $get): \Closure => function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
                             $schedule = InstallmentSchedule::find($get('schedule_id'));
                             if ($schedule !== null && bccomp((string) (int) round((float) $value), (string) $schedule->total_due, 0) < 0) {
@@ -218,11 +198,6 @@ class InstallmentResource extends Resource
                             }
                         }),
                     Forms\Components\DatePicker::make('payment_date')->label('Tanggal Bayar')->default(now())->required(),
-                    Forms\Components\Select::make('refund_method')
-                        ->label('Metode Pengembalian (saat lunas)')
-                        ->options(self::REFUND_METHODS)->default('tunai')->native(false)
-                        ->visible(fn (Get $get): bool => self::isFinalUnpaid($get('schedule_id')))
-                        ->helperText('Jika ini angsuran pelunasan, SWP + Tabungan Berjangka dikembalikan via metode ini.'),
                     Forms\Components\SpatieMediaLibraryFileUpload::make('bukti')
                         ->collection('bukti')->label('Bukti Pembayaran')
                         ->image()->downloadable()->openable()->columnSpanFull()
@@ -245,7 +220,7 @@ class InstallmentResource extends Resource
                     ->state(fn (Installment $record): string => $record->breakdown()['interest']),
                 Infolists\Components\TextEntry::make('breakdown_time_deposit')->label('Tab. Berjangka')->money('IDR')
                     ->state(fn (Installment $record): string => $record->breakdown()['time_deposit']),
-                Infolists\Components\TextEntry::make('breakdown_other')->label('Lain-lain')->money('IDR')
+                Infolists\Components\TextEntry::make('breakdown_other')->label('Kelebihan Bayar')->money('IDR')
                     ->state(fn (Installment $record): string => $record->breakdown()['other']),
                 Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR')
                     ->state(fn (Installment $record): string => $record->loan->remainingPrincipal()),
@@ -275,16 +250,18 @@ class InstallmentResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\Action::make('printReceipt')
-                    ->label('Kuitansi')->icon('heroicon-o-printer')->color('gray')
-                    ->action(fn (Installment $record): StreamedResponse => self::printReceipt($record)),
-                Tables\Actions\Action::make('reverse')
-                    ->label('Reversal')->icon('heroicon-o-arrow-uturn-left')->color('danger')
-                    ->visible(fn (Installment $record): bool => self::canReverse($record))
-                    ->form(self::reverseFormSchema())
-                    ->requiresConfirmation()
-                    ->modalHeading('Reversal Pembayaran')
-                    ->action(fn (Installment $record, array $data) => self::performReversal($record, $data)),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('printReceipt')
+                        ->label('Kuitansi')->icon('heroicon-o-printer')->color('gray')
+                        ->action(fn (Installment $record): StreamedResponse => self::printReceipt($record)),
+                    Tables\Actions\Action::make('reverse')
+                        ->label('Reversal')->icon('heroicon-o-arrow-uturn-left')->color('danger')
+                        ->visible(fn (Installment $record): bool => self::canReverse($record))
+                        ->form(self::reverseFormSchema())
+                        ->requiresConfirmation()
+                        ->modalHeading('Reversal Pembayaran')
+                        ->action(fn (Installment $record, array $data) => self::performReversal($record, $data)),
+                ]),
             ]);
     }
 

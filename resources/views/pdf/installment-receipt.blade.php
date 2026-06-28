@@ -47,7 +47,7 @@
             <tr><td class="label">Bunga SP</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['interest'], 0, ',', '.') }}</td></tr>
             <tr><td class="label">Tabungan Berjangka</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['time_deposit'], 0, ',', '.') }}</td></tr>
             @if (bccomp($bd['other'], '0', 2) > 0)
-                <tr><td class="label">Lain-lain</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['other'], 0, ',', '.') }}</td></tr>
+                <tr><td class="label">Kelebihan Bayar</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['other'], 0, ',', '.') }}</td></tr>
             @endif
             <tr class="amount-row"><td class="label">Total Dibayar</td><td class="sep">:</td><td class="amount">Rp {{ number_format((float) $installment->amount_paid, 0, ',', '.') }}</td></tr>
             <tr><td class="label">Sisa Pokok</td><td class="sep">:</td><td>Rp {{ number_format((float) $installment->loan->remainingPrincipal(), 0, ',', '.') }}</td></tr>

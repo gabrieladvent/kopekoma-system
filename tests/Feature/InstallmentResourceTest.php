@@ -2,6 +2,7 @@
 
 use App\Filament\Resources\InstallmentResource;
 use App\Filament\Resources\InstallmentResource\Pages\CreateInstallment;
+use App\Filament\Resources\InstallmentResource\Pages\ViewInstallment;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -42,7 +43,6 @@ it('records a payment through the service, settles the loan and refunds (final i
             'payment_method' => 'manual',
             'amount_paid' => '1090000',
             'payment_date' => now()->toDateString(),
-            'refund_method' => 'tunai',
         ])
         ->call('create')
         ->assertHasNoFormErrors();
@@ -69,6 +69,14 @@ it('streams a kuitansi angsuran PDF', function () {
     $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
 
     expect(InstallmentResource::printReceipt($inst))->toBeInstanceOf(StreamedResponse::class);
+});
+
+it('labels the overpayment breakdown line as Kelebihan Bayar (not Lain-lain)', function () {
+    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+
+    Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
+        ->assertSee('Kelebihan Bayar')
+        ->assertDontSee('Lain-lain');
 });
 
 it('rejects a below-bill payment (no installment created)', function () {

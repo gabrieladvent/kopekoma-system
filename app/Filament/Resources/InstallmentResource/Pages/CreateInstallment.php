@@ -31,7 +31,6 @@ class CreateInstallment extends BaseCreateRecord
                 $schedule,
                 $input,
                 auth()->id(),
-                $data['refund_method'] ?? 'tunai',
             );
         } catch (CannotProcessPayment $e) {
             Notification::make()

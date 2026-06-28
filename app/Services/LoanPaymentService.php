@@ -7,6 +7,7 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
+use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
@@ -17,17 +18,22 @@ use Illuminate\Support\Str;
  * Pembayaran angsuran (ADR D5/D8 + amendment 2026-06-26). Prinsip:
  * - Petugas input SATU nominal diterima (`amount_paid`), divalidasi ≥ tagihan
  *   bulan ini (`installment_schedules.total_due` = Σ konstanta). Lebih = sah,
- *   jadi pos "Lain-lain" yang dihitung di nota (tak disimpan).
+ *   jadi pos "Kelebihan Bayar" yang dihitung di nota (tak disimpan).
  * - Breakdown (Pokok/Jasa/Tab), sisa pokok, & saldo Tab Berjangka DIHITUNG dari
  *   konstanta `loans.monthly_*` × jumlah angsuran terbayar (net reversal).
- * - Pelunasan (angsuran terakhir → Lunas) memicu refund SWP + Tabungan Berjangka
- *   secara atomik. Reversal pelunasan membatalkan refund (tak ada refund yatim).
+ * - Pelunasan (angsuran terakhir → Lunas) memicu pembuatan refund SWP + Tabungan
+ *   Berjangka sebagai DRAFT (D1) — saldo baru berkurang saat pengurus mencairkan.
+ *   Reversal pelunasan membatalkan refund yatim: draft/acc di-reject, cair
+ *   di-reverse (D4). Auto-create idempoten (D5) — satu refund aktif per tipe.
  */
 class LoanPaymentService
 {
     private const SCALE = 2;
 
-    public function __construct(private readonly ReverseTransaction $reverse) {}
+    public function __construct(
+        private readonly ReverseTransaction $reverse,
+        private readonly WithdrawalWorkflow $workflow,
+    ) {}
 
     /**
      * Catat pembayaran satu angsuran (jadwal). Atomic.
@@ -38,12 +44,11 @@ class LoanPaymentService
         InstallmentSchedule $schedule,
         array $input,
         ?int $causerId = null,
-        string $refundMethod = 'tunai',
         ?UploadedFile $bukti = null,
     ): Installment {
         $causerId ??= auth()->id();
 
-        return DB::transaction(function () use ($schedule, $input, $causerId, $refundMethod, $bukti): Installment {
+        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti): Installment {
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($schedule->loan_id);
             /** @var InstallmentSchedule $schedule */
@@ -61,7 +66,7 @@ class LoanPaymentService
 
             // Validasi anti-korupsi total-level (ADR 2026-06-26 D4): nominal
             // diterima tak boleh kurang dari tagihan bulan ini. Lebih = sah →
-            // pos "Lain-lain" yang dihitung di nota (tak disimpan).
+            // pos "Kelebihan Bayar" yang dihitung di nota (tak disimpan).
             $bill = $this->money($schedule->total_due);
             if (bccomp($amountPaid, $bill, self::SCALE) < 0) {
                 throw CannotProcessPayment::belowBill();
@@ -84,12 +89,20 @@ class LoanPaymentService
                 $installment->addMedia($bukti)->toMediaCollection('bukti');
             }
 
+            // Kelebihan bayar (amount_paid − tagihan) dikreditkan ke Simpanan
+            // Sukarela anggota — bisa dicairkan kapan saja. Tak menyentuh pokok
+            // (count-based) maupun konstanta breakdown.
+            $excess = bcsub($amountPaid, $bill, self::SCALE);
+            if (bccomp($excess, '0', self::SCALE) > 0) {
+                $this->creditOverpaymentToSukarela($installment, $loan, $excess, $causerId);
+            }
+
             $schedule->update(['status' => 'Terbayar']);
 
             // Auto-Lunas: semua jadwal terbayar → Lunas + refund SWP/Tab (atomik).
             if (! $this->hasUnpaidSchedules($loan)) {
                 $loan->update(['status' => 'Lunas']);
-                $this->createRefunds($loan, $refundMethod, $causerId);
+                $this->createRefunds($loan, $causerId);
             }
 
             activity()
@@ -123,28 +136,94 @@ class LoanPaymentService
                     ->update(['status' => 'Belum Bayar']);
             }
 
+            // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
+            $this->reverseOverpaymentCredit($installment, $reason, $causerId);
+
             if ($loan->status === 'Lunas') {
                 $loan->update(['status' => 'Cair']);
-                $this->reverseRefunds($loan, $reason, $causerId);
+                $this->cleanupRefunds($loan, $reason, $causerId);
             }
 
             return $reversal;
         });
     }
 
-    private function createRefunds(Loan $loan, string $method, ?int $causerId): void
+    /**
+     * Kredit kelebihan bayar ke Simpanan Sukarela anggota. Ditautkan ke angsuran
+     * via `reference_number` (= installment_number) agar bisa ditarik kembali saat
+     * angsuran di-reverse. Aktivitas tercatat otomatis (SavingsDeposit LogsActivity)
+     * + log eksplisit di bawah agar jejaknya jelas.
+     */
+    private function creditOverpaymentToSukarela(Installment $installment, Loan $loan, string $excess, ?int $causerId): void
     {
+        $deposit = SavingsDeposit::create([
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $loan->member_id,
+            'savings_type' => 'sukarela',
+            'amount' => $excess,
+            'deposit_date' => $installment->payment_date?->toDateString() ?? now()->toDateString(),
+            'deposit_method' => $installment->payment_method === 'potong_gaji' ? 'potong_gaji' : 'setor_sendiri',
+            'deposited_by' => 'bendahara',
+            'reference_number' => $installment->installment_number,
+            'notes' => "Kelebihan bayar angsuran {$installment->installment_number}",
+            'recorded_by' => $causerId,
+        ]);
+
+        activity()
+            ->performedOn($deposit)
+            ->causedBy($causerId)
+            ->event('kelebihan_bayar')
+            ->withProperties([
+                'installment_number' => $installment->installment_number,
+                'loan_id' => $loan->id,
+                'amount' => $excess,
+            ])
+            ->log("Kelebihan bayar angsuran {$installment->installment_number} dikreditkan ke Simpanan Sukarela");
+    }
+
+    /**
+     * Tarik kembali kredit Sukarela saat angsuran di-reverse: balikkan deposit
+     * sukarela yang tertaut (non-reversal, belum dibalik) via mekanisme reversal
+     * generik agar saldo ter-net ke semula.
+     */
+    private function reverseOverpaymentCredit(Installment $installment, string $reason, ?int $causerId): void
+    {
+        $reversedIds = SavingsDeposit::query()
+            ->whereNotNull('reversal_of_id')
+            ->pluck('reversal_of_id');
+
+        SavingsDeposit::query()
+            ->where('reference_number', $installment->installment_number)
+            ->where('savings_type', 'sukarela')
+            ->where('is_reversal', false)
+            ->whereNotIn('id', $reversedIds)
+            ->get()
+            ->each(fn (SavingsDeposit $deposit) => ($this->reverse)($deposit, $reason, $causerId));
+    }
+
+    private function createRefunds(Loan $loan, ?int $causerId): void
+    {
+        // Metode pengembalian diwarisi dari pinjaman (ditetapkan saat akad) — satu
+        // sumber kebenaran, terekam sejak awal. Fallback 'tunai' untuk pinjaman
+        // lama yang belum punya disbursement_method.
+        $method = $loan->disbursement_method ?? 'tunai';
+
         $swp = (string) $loan->swp_amount;
-        if (bccomp($swp, '0', self::SCALE) > 0) {
+        if (bccomp($swp, '0', self::SCALE) > 0 && ! $this->hasActiveRefund($loan, 'swp')) {
             $this->makeRefund($loan, 'swp', $swp, $method, $causerId);
         }
 
         $tab = $this->loanTimeDepositAccrued($loan);
-        if (bccomp($tab, '0', self::SCALE) > 0) {
+        if (bccomp($tab, '0', self::SCALE) > 0 && ! $this->hasActiveRefund($loan, 'tabungan_berjangka')) {
             $this->makeRefund($loan, 'tabungan_berjangka', $tab, $method, $causerId);
         }
     }
 
+    /**
+     * Refund auto sebagai DRAFT (D1) — saldo baru berkurang saat pengurus cair-kan
+     * lewat WithdrawalWorkflow. Metode pencairan dititip di draft untuk dipakai saat
+     * disburse.
+     */
     private function makeRefund(Loan $loan, string $type, string $amount, string $method, ?int $causerId): void
     {
         SavingsWithdrawal::create([
@@ -153,8 +232,7 @@ class LoanPaymentService
             'savings_type' => $type,
             'amount' => $amount,
             'withdrawal_date' => now()->toDateString(),
-            'status' => 'cair',
-            'disbursed_at' => now(),
+            'status' => 'draft',
             'related_loan_id' => $loan->id,
             'disbursement_method' => $method,
             'recorded_by' => $causerId,
@@ -162,22 +240,42 @@ class LoanPaymentService
         ]);
     }
 
-    private function reverseRefunds(Loan $loan, string $reason, ?int $causerId): void
+    /**
+     * Idempotensi (D5): ada refund aktif (draft/acc/cair, non-reversal) bertipe ini
+     * untuk pinjaman ini? Refund yang sudah `ditolak` tak menghalangi pembuatan baru
+     * (mis. bayar → lunas → reverse → bayar lagi).
+     */
+    private function hasActiveRefund(Loan $loan, string $type): bool
     {
-        $reversedIds = SavingsWithdrawal::query()
-            ->whereNotNull('reversal_of_id')
-            ->pluck('reversal_of_id');
+        return SavingsWithdrawal::query()
+            ->where('related_loan_id', $loan->id)
+            ->where('savings_type', $type)
+            ->where('is_reversal', false)
+            ->whereIn('status', ['draft', 'acc', 'cair'])
+            ->exists();
+    }
 
+    /**
+     * Bersihkan refund yatim saat pelunasan dibatalkan (D4): draft/acc → reject
+     * (terminal ditolak); cair → reverse (reversal-clone generik). Tak ada
+     * hard-delete dokumen bernomor.
+     */
+    private function cleanupRefunds(Loan $loan, string $reason, ?int $causerId): void
+    {
         /** @var Collection<int, SavingsWithdrawal> $refunds */
         $refunds = SavingsWithdrawal::query()
             ->where('related_loan_id', $loan->id)
             ->where('is_reversal', false)
             ->whereIn('savings_type', ['swp', 'tabungan_berjangka'])
-            ->whereNotIn('id', $reversedIds)
+            ->whereIn('status', ['draft', 'acc', 'cair'])
             ->get();
 
         foreach ($refunds as $refund) {
-            ($this->reverse)($refund, $reason, $causerId);
+            if ($refund->status === 'cair') {
+                ($this->reverse)($refund, $reason, $causerId);
+            } else {
+                $this->workflow->reject($refund, $causerId);
+            }
         }
     }
 

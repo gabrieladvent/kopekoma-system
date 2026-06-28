@@ -4,10 +4,12 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use App\Services\LoanPaymentService;
 use App\Services\SavingsBalanceService;
+use Spatie\Activitylog\Models\Activity;
 
 beforeEach(function () {
     $this->service = app(LoanPaymentService::class);
@@ -17,7 +19,7 @@ beforeEach(function () {
 });
 
 /** Pinjaman jangka panjang 1.000.000 dengan N jadwal identik (konstan). */
-function makeLoan(string $memberId, int $schedules = 1, float $swp = 10000): array
+function makeLoan(string $memberId, int $schedules = 1, float $swp = 10000, string $disbursementMethod = 'tunai'): array
 {
     $loan = Loan::factory()->create([
         'member_id' => $memberId,
@@ -28,6 +30,7 @@ function makeLoan(string $memberId, int $schedules = 1, float $swp = 10000): arr
         'monthly_principal' => 1000000,
         'monthly_interest' => 6500,
         'monthly_time_deposit' => 1000,
+        'disbursement_method' => $disbursementMethod,
     ]);
 
     $rows = collect(range(1, $schedules))->map(fn ($seq) => InstallmentSchedule::factory()->create([
@@ -84,10 +87,55 @@ it('records overpayment as "Lain-lain" without inflating tabungan berjangka or p
     expect($tab->amount)->toBe('1000.00');
 });
 
-it('auto-settles the loan and refunds SWP + tabungan berjangka on final payment', function () {
-    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
+it('credits installment overpayment to the member sukarela savings', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
 
-    $this->service->pay($rows[0], billPayment(), $this->user->id, refundMethod: 'transfer');
+    // tagihan 1.007.500; bayar 1.107.500 → kelebihan 100.000 → Simpanan Sukarela
+    $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
+    $deposit = SavingsDeposit::where('member_id', $this->member->id)
+        ->where('savings_type', 'sukarela')->first();
+
+    expect($deposit)->not->toBeNull()
+        ->and($deposit->amount)->toBe('100000.00')
+        ->and($this->balances->balanceByType($this->member, 'sukarela'))->toBe('100000.00');
+});
+
+it('logs the sukarela credit of an installment overpayment', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
+    $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
+    $deposit = SavingsDeposit::where('member_id', $this->member->id)->where('savings_type', 'sukarela')->first();
+
+    // Log eksplisit kelebihan_bayar + auto-log pembuatan deposit (LogsActivity).
+    expect(Activity::where('event', 'kelebihan_bayar')->exists())->toBeTrue()
+        ->and(Activity::where('subject_type', $deposit->getMorphClass())
+            ->where('subject_id', $deposit->id)->exists())->toBeTrue();
+});
+
+it('does not create a sukarela deposit when payment equals the bill exactly', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
+
+    $this->service->pay($rows[0], billPayment(), $this->user->id);
+
+    expect(SavingsDeposit::where('member_id', $this->member->id)->where('savings_type', 'sukarela')->exists())->toBeFalse();
+});
+
+it('reverses the sukarela overpayment deposit when the installment is reversed', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
+    $inst = $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('100000.00');
+
+    $this->service->reverse($inst, 'salah input nominal', $this->user->id);
+
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('0.00');
+});
+
+it('auto-settles the loan and creates DRAFT refunds for SWP + tabungan berjangka on final payment', function () {
+    // Metode refund diwarisi dari pinjaman (disbursement_method), bukan argumen.
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000, disbursementMethod: 'transfer');
+
+    $this->service->pay($rows[0], billPayment(), $this->user->id);
 
     expect($loan->fresh()->status)->toBe('Lunas');
 
@@ -95,15 +143,17 @@ it('auto-settles the loan and refunds SWP + tabungan berjangka on final payment'
     $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
 
     expect($swp->amount)->toBe('10000.00')
-        ->and($swp->status)->toBe('cair')
+        ->and($swp->status)->toBe('draft')
+        ->and($swp->disbursed_at)->toBeNull()
         ->and($swp->disbursement_method)->toBe('transfer')
         ->and($tab->amount)->toBe('1000.00')
-        // saldo ter-net: akumulasi − refund = 0
-        ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('0.00')
-        ->and($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('0.00');
+        ->and($tab->status)->toBe('draft')
+        // draft belum kurangi saldo — refund menunggu persetujuan (D3)
+        ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('10000.00')
+        ->and($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00');
 });
 
-it('reverses a settlement payment: loan back to Cair and refunds cancelled (M2)', function () {
+it('reverses a settlement: loan back to Cair and DRAFT refunds rejected, not reversed (D4)', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
     $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
 
@@ -111,14 +161,25 @@ it('reverses a settlement payment: loan back to Cair and refunds cancelled (M2)'
 
     expect($loan->fresh()->status)->toBe('Cair')
         ->and($rows[0]->fresh()->status)->toBe('Belum Bayar')
-        // refund SWP dibatalkan → saldo SWP kembali penuh (uang ditahan lagi)
         ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('10000.00')
         ->and($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('0.00');
 
-    // refund withdrawal swp punya baris reversal-nya
-    $swpReversed = SavingsWithdrawal::where('related_loan_id', $loan->id)
-        ->where('savings_type', 'swp')->where('is_reversal', true)->exists();
-    expect($swpReversed)->toBeTrue();
+    // Draft refund di-reject (terminal ditolak), BUKAN reversal-clone (D4).
+    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
+    expect($swp->status)->toBe('ditolak')
+        ->and(SavingsWithdrawal::where('related_loan_id', $loan->id)->where('is_reversal', true)->exists())->toBeFalse();
+});
+
+it('does not duplicate refunds when a settled loan is reversed then re-paid (D5)', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
+    $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
+    $this->service->reverse($inst, 'koreksi', $this->user->id);
+
+    $this->service->pay($rows[0]->fresh(), billPayment(), $this->user->id);
+
+    // Satu refund AKTIF (draft) per tipe; yang lama berstatus ditolak.
+    expect(SavingsWithdrawal::where('related_loan_id', $loan->id)
+        ->where('savings_type', 'swp')->where('status', 'draft')->where('is_reversal', false)->count())->toBe(1);
 });
 
 it('rejects paying a schedule that is already paid', function () {
