@@ -5,7 +5,112 @@
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
+/* Dark mode: aktif via class .dark di <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ | Design tokens KOPEKOMA — lihat memory livewire-style-guide.
+ | WAJIB dipakai via token (bg-primary, text-muted, border-border).
+ | DILARANG hardcode warna mentah (bg-emerald-600) di komponen.
+ | Primary/secondary bisa ditimpa runtime dari Settings via <style>:root{...}</style>.
+*/
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Brand — default emerald/teal */
+    --color-primary: #059669;
+    --color-primary-hover: #047857;
+    --color-secondary: #0d9488;
+    --color-secondary-hover: #0f766e;
+
+    /* Neutral / surface (light) */
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-border: #e5e7eb;
+    --color-text: #0f172a;
+    --color-muted: #64748b;
+
+    /* Status */
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+}
+
+/* Override neutral untuk dark mode — primary/secondary tetap (ikut Settings) */
+.dark {
+    --color-bg: #0b1120;
+    --color-surface: #111827;
+    --color-border: #1f2937;
+    --color-text: #e5e7eb;
+    --color-muted: #94a3b8;
+}
+
+@layer base {
+    [x-cloak] {
+        display: none !important;
+    }
+
+    html {
+        background-color: var(--color-bg);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* Transisi warna halus saat ganti theme (kecuali yang minta reduced-motion) */
+    @media (prefers-reduced-motion: no-preference) {
+        body {
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+    }
+}
+
+@layer components {
+    /*
+     | Signature anti-template (lihat memory livewire-style-guide §6):
+     | tekstur grid sangat halus di background halaman — bikin "berasa produk",
+     | bukan admin scaffold polos. Sangat lembut, tidak mengganggu keterbacaan.
+    */
+    .bg-grid {
+        background-image:
+            linear-gradient(to right, color-mix(in oklab, var(--color-border) 55%, transparent) 1px, transparent 1px),
+            linear-gradient(to bottom, color-mix(in oklab, var(--color-border) 55%, transparent) 1px, transparent 1px);
+        background-size: 28px 28px;
+        -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+        mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+    }
+
+    /* Spotlight signature: gradient brand untuk hero/feature card */
+    .bg-brand-gradient {
+        background-image: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    }
+
+    /*
+     | Aurora drift — orb gradient yang melayang pelan di panel brand login.
+     | Sangat halus & lambat; dimatikan otomatis bila user minta reduced-motion.
+    */
+    @keyframes aurora-a {
+        0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+        50% { transform: translate3d(8%, 12%, 0) scale(1.12); }
+    }
+    @keyframes aurora-b {
+        0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+        50% { transform: translate3d(-10%, -8%, 0) scale(0.95); }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .animate-aurora-a { animation: aurora-a 16s ease-in-out infinite; }
+        .animate-aurora-b { animation: aurora-b 20s ease-in-out infinite; }
+    }
+
+    /*
+     | Ken Burns — zoom + geser sangat pelan untuk gambar latar login.
+     | Dipakai single image maupun tiap slide slideshow. Mati saat reduced-motion.
+    */
+    @keyframes kenburns {
+        0% { transform: scale(1) translate3d(0, 0, 0); }
+        100% { transform: scale(1.14) translate3d(-2%, -2.5%, 0); }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .animate-kenburns { animation: kenburns 20s ease-in-out infinite alternate; }
+    }
 }
