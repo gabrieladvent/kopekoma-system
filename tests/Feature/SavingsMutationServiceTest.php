@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\MemberResource\Pages\ViewMember;
+use App\Livewire\Savings\MemberSavingsDetail;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
@@ -82,7 +83,7 @@ it('shows the ending total balance in the ledger table footer (Total row)', func
     $total = app(SavingsBalanceService::class)->totalBalance($member); // 160.000
 
     // Baris Total footer = Σ masuk − Σ keluar = saldo akhir = totalBalance().
-    Livewire::test(App\Livewire\Savings\MemberSavingsDetail::class, ['member' => $member])
+    Livewire::test(MemberSavingsDetail::class, ['member' => $member])
         ->assertOk()
         ->assertViewHas('totalSaldo', $total);
 });
