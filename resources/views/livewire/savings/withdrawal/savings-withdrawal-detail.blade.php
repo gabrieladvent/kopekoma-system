@@ -103,8 +103,14 @@
                         {{ $withdrawal->is_reversal ? 'Nominal Dikoreksi' : 'Nominal Pencairan' }}
                     </p>
                     <p class="mt-1 text-3xl font-bold tabular-nums {{ $withdrawal->is_reversal ? 'text-success' : 'text-primary' }}">
-                        {{ $withdrawal->is_reversal ? '+' : '−' }}Rp {{ number_format((float) $withdrawal->amount, 0, ',', '.') }}
+                        {{ $withdrawal->is_reversal ? '+' : '−' }}Rp {{ number_format((float) ($isRefund && ! $withdrawal->is_reversal ? $refundTotal : $withdrawal->amount), 0, ',', '.') }}
                     </p>
+                    @if ($isRefund && ! $withdrawal->is_reversal)
+                        <p class="mt-1 text-xs text-muted">
+                            SWP Rp {{ number_format((float) $refundSwp, 0, ',', '.') }}
+                            · Tab. Berjangka Rp {{ number_format((float) $refundTab, 0, ',', '.') }}
+                        </p>
+                    @endif
                 </div>
 
                 <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-5">
@@ -113,6 +119,12 @@
                             <x-ui.icon name="calendar" class="h-3.5 w-3.5" /> Tanggal Pengajuan
                         </dt>
                         <dd class="mt-1 text-sm text-text">{{ $withdrawal->withdrawal_date?->translatedFormat('d M Y') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                            <x-ui.icon name="banknotes" class="h-3.5 w-3.5" /> Jenis Pencairan
+                        </dt>
+                        <dd class="mt-1 text-sm text-text">{{ \App\Filament\Resources\SavingsWithdrawalResource::DISBURSEMENT_METHODS[$withdrawal->disbursement_method] ?? '—' }}</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">

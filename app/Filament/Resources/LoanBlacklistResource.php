@@ -31,6 +31,18 @@ class LoanBlacklistResource extends Resource
 
     protected static ?int $navigationSort = 30;
 
+    public static function hasActiveBlacklist(mixed $memberId): bool
+    {
+        if (blank($memberId)) {
+            return false;
+        }
+
+        return LoanBlacklist::query()
+            ->where('member_id', $memberId)
+            ->where('is_active', true)
+            ->exists();
+    }
+
     public static function release(LoanBlacklist $record): void
     {
         if (! $record->is_active) {
@@ -62,7 +74,12 @@ class LoanBlacklistResource extends Resource
                         ->getOptionLabelFromRecordUsing(fn (Member $record): string => "{$record->member_number} — {$record->full_name}")
                         ->searchable(['member_number', 'full_name'])
                         ->preload()
-                        ->required(),
+                        ->required()
+                        ->rule(static fn (): \Closure => static function (string $attribute, mixed $value, \Closure $fail): void {
+                            if (static::hasActiveBlacklist($value)) {
+                                $fail('Anggota ini masih dalam blacklist aktif — lepas dulu sebelum menandai ulang.');
+                            }
+                        }),
                     Forms\Components\DatePicker::make('blacklisted_at')
                         ->label('Tanggal Blacklist')
                         ->required()

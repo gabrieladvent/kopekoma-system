@@ -9,6 +9,7 @@ use App\Filament\Resources\SavingsWithdrawalResource as Resource;
 use App\Models\SavingsWithdrawal;
 use App\Services\WithdrawalWorkflow;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -100,6 +101,7 @@ class SavingsWithdrawals extends Component
     {
         return $record->status === 'cair'
             && ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -161,12 +163,21 @@ class SavingsWithdrawals extends Component
 
         $workflow = app(WithdrawalWorkflow::class);
 
+        // Pasangan refund pelunasan (swp+tab, related_loan_id sama) ditampilkan &
+        // diproses sebagai SATU entri (D2): transisi diterapkan ke kedua baris
+        // secara atomik. Pencairan biasa → refundPair() berisi dirinya saja.
+        $pair = Resource::refundPair($record);
+
         try {
-            match ($action) {
-                'approve' => $workflow->approve($record),
-                'disburse' => $workflow->disburse($record),
-                'reject' => $workflow->reject($record),
-            };
+            DB::transaction(function () use ($pair, $action, $workflow): void {
+                foreach ($pair as $member) {
+                    match ($action) {
+                        'approve' => $workflow->approve($member),
+                        'disburse' => $workflow->disburse($member),
+                        'reject' => $workflow->reject($member),
+                    };
+                }
+            });
 
             $messages = [
                 'approve' => 'Pencairan disetujui (ACC). Saldo belum berkurang — dana keluar saat dicairkan.',
@@ -215,8 +226,17 @@ class SavingsWithdrawals extends Component
             ['reverseReason' => 'alasan reversal'],
         );
 
+        // Refund pelunasan yang sudah cair di-reverse berpasangan (D2/D4) agar
+        // saldo SWP & Tab kembali bersama; pencairan biasa → dirinya saja.
+        $pair = Resource::refundPair($record);
+
         try {
-            app(ReverseTransaction::class)($record, $this->reverseReason);
+            DB::transaction(function () use ($pair): void {
+                $reverse = app(ReverseTransaction::class);
+                foreach ($pair as $member) {
+                    $reverse($member, $this->reverseReason);
+                }
+            });
 
             $this->closeReverse();
             $this->dispatch('toast', type: 'success', message: 'Reversal berhasil — saldo simpanan telah tersesuaikan.');
@@ -228,7 +248,10 @@ class SavingsWithdrawals extends Component
     public function render(): View
     {
         $withdrawals = SavingsWithdrawal::query()
-            ->with('member:id,member_number,full_name')
+            ->with(['member:id,member_number,full_name', 'reversal:id,reversal_of_id'])
+            // D2: sembunyikan baris tab sekunder yang punya saudara swp se-pinjaman;
+            // swp jadi wakil entri "Pengembalian Pelunasan" (total = swp+tab).
+            ->tap(fn ($q) => Resource::hideSecondaryPairRows($q))
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where('withdrawal_number', 'like', $term)
@@ -245,6 +268,7 @@ class SavingsWithdrawals extends Component
             'withdrawals' => $withdrawals,
             'withdrawalTypes' => Resource::WITHDRAWAL_TYPES,
             'statuses' => Resource::STATUSES,
+            'disbursementMethods' => Resource::DISBURSEMENT_METHODS,
         ])->layout('components.layouts.app', ['title' => 'Pencairan Simpanan']);
     }
 }

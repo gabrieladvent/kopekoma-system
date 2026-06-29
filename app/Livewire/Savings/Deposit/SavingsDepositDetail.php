@@ -32,6 +32,7 @@ class SavingsDepositDetail extends Component
     public function canReverse(SavingsDeposit $record): bool
     {
         return ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 

@@ -61,7 +61,7 @@ class SavingsWithdrawalDetail extends Component
 
     public function canReverse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'cair' && ! $record->is_reversal && (auth()->user()?->can('reverse', $record) ?? false);
+        return $record->status === 'cair' && ! $record->is_reversal && ! $record->isReversed() && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
     public function confirmMeta(): array
@@ -182,6 +182,7 @@ class SavingsWithdrawalDetail extends Component
             'savings_type' => 'Jenis Simpanan',
             'amount' => 'Nominal',
             'withdrawal_date' => 'Tanggal Pengajuan',
+            'disbursement_method' => 'Jenis Pencairan',
             'status' => 'Status',
             'period_year' => 'Tahun Program',
             'approved_by' => 'Disetujui Oleh',
@@ -199,6 +200,7 @@ class SavingsWithdrawalDetail extends Component
         return match ($key) {
             'amount' => 'Rp '.number_format((float) $value, 0, ',', '.'),
             'savings_type' => Resource::WITHDRAWAL_TYPES[$value] ?? (string) $value,
+            'disbursement_method' => Resource::DISBURSEMENT_METHODS[$value] ?? (string) $value,
             'status' => Resource::STATUSES[$value] ?? (string) $value,
             default => $this->defaultFormatAuditFieldValue($key, $value),
         };
@@ -215,11 +217,19 @@ class SavingsWithdrawalDetail extends Component
             ? $withdrawal->activities()->with('causer')->find($this->auditId)
             : null;
 
+        // Refund pelunasan (swp+tab, related_loan_id sama) = satu entri logis (D2):
+        // tampilkan rincian per komponen + total gabungan di detail.
+        $isRefund = Resource::isLoanRefund($withdrawal);
+
         return view('livewire.savings.withdrawal.savings-withdrawal-detail', [
             'withdrawal' => $withdrawal,
-            'typeLabel' => Resource::WITHDRAWAL_TYPES[$withdrawal->savings_type] ?? $withdrawal->savings_type,
-            'typeColor' => Resource::typeColor($withdrawal->savings_type),
+            'typeLabel' => $isRefund ? 'Pengembalian Pelunasan' : (Resource::WITHDRAWAL_TYPES[$withdrawal->savings_type] ?? $withdrawal->savings_type),
+            'typeColor' => $isRefund ? 'warning' : Resource::typeColor($withdrawal->savings_type),
             'statusLabel' => Resource::STATUSES[$withdrawal->status] ?? $withdrawal->status,
+            'isRefund' => $isRefund,
+            'refundSwp' => $isRefund ? Resource::pairAmount($withdrawal, 'swp') : null,
+            'refundTab' => $isRefund ? Resource::pairAmount($withdrawal, 'tabungan_berjangka') : null,
+            'refundTotal' => $isRefund ? Resource::pairTotal($withdrawal) : null,
             'activities' => $activities,
             'selectedActivity' => $selectedActivity,
             'diff' => $this->auditDiff($selectedActivity),

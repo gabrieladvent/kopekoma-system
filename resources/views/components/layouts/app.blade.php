@@ -36,7 +36,7 @@
         {{-- Sidebar: drawer off-canvas di mobile, statis di desktop.
              Item aktif = pill + accent kiri (bukan blok penuh). --}}
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
-               class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-out lg:static lg:z-auto lg:translate-x-0">
+               class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:z-auto lg:translate-x-0">
             <div class="flex h-16 items-center justify-between px-5">
                 <x-app-logo subtitle="Sistem Koperasi" />
                 <button type="button" @click="sidebarOpen = false" aria-label="Tutup menu"
@@ -54,20 +54,33 @@
                 @php($canBalance = $navUser?->can('view_any_member::savings::balance') ?? false)
                 @php($canDeposit = $navUser?->can('view_any_savings::deposit') ?? false)
                 @php($canWithdrawal = $navUser?->can('view_any_savings::withdrawal') ?? false)
+                @php($canLoan = $navUser?->can('view_any_loan') ?? false)
+                @php($canInstallment = $navUser?->can('view_any_installment') ?? false)
+                @php($canBlacklist = $navUser?->can('view_any_loan::blacklist') ?? false)
                 @php($groups = [
                     'Utama' => [
                         ['Dashboard', 'home', 'dashboard'],
                         ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit],
-                    ],
-                    'Simpanan' => [
-                        ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
-                        ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
-                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
+                        ['Pinjaman', 'receipt-percent', 'loans.index', $canLoan],
                         ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance],
                     ],
-                    'Master' => [['Anggota', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
+                    'Simpanan' => [
+                        ['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal],
+                        ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday],
+                        ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping],
+                    ],
+                    'Pinjaman' => [
+                        ['Angsuran', 'credit-card', 'installments.index', $canInstallment],
+                        ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist],
+                    ],
+                    'Master' => [
+                        ['Anggota', 'users', 'master.members'],
+                        ['Golongan', 'academic-cap', 'master.grades'],
+                        ['OPD / Instansi', 'building-office', 'master.agencies']
+                    ],
                     'Sistem' => [
                         ['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit],
+                        ['Pengguna', 'users', 'system.users', $isSuper],
                         ['Peran & Izin', 'shield', 'system.roles', $isSuper],
                         ['Pengaturan', 'cog', 'settings', $navUser?->can('manage_settings') ?? false],
                     ],
@@ -102,13 +115,22 @@
             <div class="border-t border-border p-3">
                 @php($u = auth()->user())
                 <div class="flex items-center gap-3 rounded-xl px-3 py-2">
-                    <div class="grid h-9 w-9 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">
-                        {{ $u ? \Illuminate\Support\Str::of($u->name)->explode(' ')->take(2)->map(fn ($p) => mb_substr($p, 0, 1))->implode('') : 'GA' }}
-                    </div>
-                    <div class="min-w-0 leading-tight">
-                        <p class="truncate text-sm font-medium">{{ $u?->name ?? 'Pengguna' }}</p>
-                        <p class="truncate text-xs text-muted">{{ $u?->getRoleNames()->first() ?? 'Anggota' }}</p>
-                    </div>
+                    <a href="{{ route('profile.edit') }}"
+                       class="flex min-w-0 flex-1 items-center gap-3 rounded-lg transition duration-150 ease-out hover:opacity-80"
+                       aria-label="Profil saya">
+                        @if ($u?->avatarUrl())
+                            <img src="{{ $u->avatarUrl() }}" alt="{{ $u->name }}"
+                                 class="h-9 w-9 shrink-0 rounded-full object-cover">
+                        @else
+                            <div class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary/15 text-sm font-semibold text-secondary">
+                                {{ $u ? \Illuminate\Support\Str::of($u->name)->explode(' ')->take(2)->map(fn ($p) => mb_substr($p, 0, 1))->implode('') : 'GA' }}
+                            </div>
+                        @endif
+                        <div class="min-w-0 leading-tight">
+                            <p class="truncate text-sm font-medium">{{ $u?->name ?? 'Pengguna' }}</p>
+                            <p class="truncate text-xs text-muted">{{ $u?->getRoleNames()->first() ?? 'Anggota' }}</p>
+                        </div>
+                    </a>
                     <form method="POST" action="{{ route('logout') }}" class="ml-auto">
                         @csrf
                         <button type="submit"

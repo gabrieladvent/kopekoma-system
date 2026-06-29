@@ -75,6 +75,7 @@ class SavingsDeposits extends Component
     public function canReverse(SavingsDeposit $record): bool
     {
         return ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -122,7 +123,7 @@ class SavingsDeposits extends Component
     public function render(): View
     {
         $deposits = SavingsDeposit::query()
-            ->with('member:id,member_number,full_name')
+            ->with(['member:id,member_number,full_name', 'reversal:id,reversal_of_id'])
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where('transaction_number', 'like', $term)

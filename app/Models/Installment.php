@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -137,6 +138,20 @@ class Installment extends Model implements HasMedia, Reversible
     public function reversalOf(): BelongsTo
     {
         return $this->belongsTo(Installment::class, 'reversal_of_id');
+    }
+
+    /** Baris-lawan reversal yang menunjuk record ini (≤ 1, `reversal_of_id` unik). */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(Installment::class, 'reversal_of_id');
+    }
+
+    /** Sudah pernah di-reversal? (mencegah reversal ganda + sembunyikan tombol). */
+    public function isReversed(): bool
+    {
+        return $this->relationLoaded('reversal')
+            ? $this->reversal !== null
+            : $this->reversal()->exists();
     }
 
     public function recordedBy(): BelongsTo

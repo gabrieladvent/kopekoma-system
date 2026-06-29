@@ -2,11 +2,14 @@
 
 namespace App\Livewire;
 
+use App\Models\InstallmentSchedule;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class Dashboard extends Component
@@ -24,16 +27,20 @@ class Dashboard extends Component
         $user = auth()->user();
         $canFinance = $user?->can('view_any_savings::deposit') ?? false;
         $canMembers = $user?->can('view_any_member') ?? false;
+        $canLoan = $user?->can('view_any_loan') ?? false;
 
         $finance = $canFinance ? $this->financeMetrics() : null;
         $members = $canMembers ? $this->memberMetrics() : null;
+        $loans = $canLoan ? $this->loanMetrics() : null;
         $recent = $canFinance ? $this->recentDeposits() : collect();
 
         return view('livewire.dashboard', [
             'canFinance' => $canFinance,
             'canMembers' => $canMembers,
+            'canLoan' => $canLoan,
             'finance' => $finance,
             'members' => $members,
+            'loans' => $loans,
             'recent' => $recent,
             'greeting' => $this->greeting(),
         ])->layout('components.layouts.app', ['title' => 'Dashboard']);
@@ -92,6 +99,59 @@ class Dashboard extends Component
             'savers_count' => $saversCount,
             'composition' => $composition,
             'composition_total' => $compositionTotal,
+        ];
+    }
+
+    /**
+     * Agregat pinjaman — outstanding, status, tunggakan & jatuh tempo dekat.
+     *
+     * @return array<string, mixed>
+     */
+    private function loanMetrics(): array
+    {
+        $today = Carbon::today();
+
+        $active = Loan::query()->where('status', 'Cair')->count();
+        $settled = Loan::query()->where('status', 'Lunas')->count();
+
+        // Sisa pokok berjalan = Σ principal pinjaman aktif − Σ pokok terbayar (net reversal).
+        $principalActive = (string) (Loan::query()->where('status', 'Cair')->sum('principal_amount') ?? '0');
+        $paidNet = (string) (DB::table('installments')
+            ->join('loans', 'loans.id', '=', 'installments.loan_id')
+            ->where('loans.status', 'Cair')
+            ->selectRaw('COALESCE(SUM((CASE WHEN installments.is_reversal = 0 THEN 1 ELSE -1 END) * loans.monthly_principal), 0) as net')
+            ->value('net') ?? '0');
+
+        $outstanding = bcsub(bcadd($principalActive, '0', 2), bcadd($paidNet, '0', 2), 2);
+        if (bccomp($outstanding, '0', 2) < 0) {
+            $outstanding = '0.00';
+        }
+
+        $overdue = InstallmentSchedule::query()->overdue()
+            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->count();
+
+        $dueSoon = InstallmentSchedule::query()
+            ->where('status', 'Belum Bayar')
+            ->whereDate('due_date', '>=', $today->toDateString())
+            ->whereDate('due_date', '<=', $today->copy()->addDays(7)->toDateString())
+            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->count();
+
+        $disbursedThisMonth = (string) (Loan::query()
+            ->whereBetween('disbursement_date', [
+                Carbon::now()->startOfMonth()->toDateString(),
+                Carbon::now()->endOfMonth()->toDateString(),
+            ])
+            ->sum('disbursed_amount') ?? '0');
+
+        return [
+            'active' => $active,
+            'settled' => $settled,
+            'outstanding' => $outstanding,
+            'overdue' => $overdue,
+            'due_soon' => $dueSoon,
+            'disbursed_this_month' => $disbursedThisMonth,
         ];
     }
 
