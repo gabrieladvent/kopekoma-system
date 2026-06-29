@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Exceptions\CannotProcessPayment;
 use App\Models\Agency;
+use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
 /**
@@ -29,7 +31,7 @@ class BatchInstallmentPaymentService
     public function __construct(private readonly LoanPaymentService $payments) {}
 
     /**
-     * @param  list<array{schedule_id:string, amount_paid:string|int|float, payment_date?:string}>  $rows
+     * @param  list<array{schedule_id:string, amount_paid:string|int|float, payment_date?:string, bukti_path?:?string, bukti_disk?:?string}>  $rows
      * @return array{created:int, skipped:int}
      */
     public function run(
@@ -75,7 +77,7 @@ class BatchInstallmentPaymentService
                 }
 
                 try {
-                    $this->payments->pay(
+                    $installment = $this->payments->pay(
                         $schedule,
                         [
                             'amount_paid' => $row['amount_paid'],
@@ -84,6 +86,8 @@ class BatchInstallmentPaymentService
                         ],
                         $causerId,
                     );
+
+                    $this->attachBukti($installment, $row['bukti_path'] ?? null, $row['bukti_disk'] ?? null);
 
                     $created++;
                 } catch (CannotProcessPayment) {
@@ -158,5 +162,26 @@ class BatchInstallmentPaymentService
     private function belongsToAgency(InstallmentSchedule $schedule, Agency $agency): bool
     {
         return $schedule->loan?->member?->agency_id === $agency->getKey();
+    }
+
+    /**
+     * Lampirkan bukti per-baris (opsional). File sudah tersimpan di disk media
+     * oleh FileUpload (getState) → pindahkan ke koleksi `bukti` angsuran. File
+     * tmp yang hilang (race / dibersihkan) di-skip diam-diam: bukti pendukung,
+     * bukan syarat sah pembayaran yang sudah ter-commit.
+     */
+    private function attachBukti(Installment $installment, ?string $path, ?string $disk): void
+    {
+        if (blank($path)) {
+            return;
+        }
+
+        $disk ??= config('media-library.disk_name');
+
+        if (! Storage::disk($disk)->exists($path)) {
+            return;
+        }
+
+        $installment->addMediaFromDisk($path, $disk)->toMediaCollection('bukti');
     }
 }

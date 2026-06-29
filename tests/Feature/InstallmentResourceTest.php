@@ -8,6 +8,8 @@ use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -63,6 +65,48 @@ it('prefills the total bill as integer rupiah, not scaled by decimals', function
         ->assertFormSet([
             'amount_paid' => '1090000',
         ]);
+});
+
+it('shows the readonly bill detail (Pokok/Jasa/Tab/Total) once a schedule is picked', function () {
+    Livewire::test(CreateInstallment::class)
+        ->fillForm([
+            'member_id' => $this->member->id,
+            'loan_id' => $this->loan->id,
+            'schedule_id' => $this->schedule->id,
+        ])
+        ->assertSee('Rincian Tagihan')
+        ->assertSee('Total Tagihan')
+        ->assertSee('Tabungan Berjangka');
+});
+
+it('shows a placeholder on the view page when no bukti was uploaded', function () {
+    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+
+    Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
+        ->assertSee('Bukti Pembayaran')
+        ->assertSee('Tidak ada bukti yang diunggah');
+});
+
+it('renders the image bukti inline with a link to open it full-size in a new tab', function () {
+    Storage::fake(config('media-library.disk_name'));
+    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+    $inst->addMedia(UploadedFile::fake()->image('bukti.jpg'))->toMediaCollection('bukti');
+
+    Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
+        ->assertSee('<img', escape: false)
+        ->assertSee('buka ukuran penuh')
+        ->assertSee('target="_blank"', escape: false)
+        ->assertDontSee('Buka bukti (PDF)');
+});
+
+it('renders an open-in-new-tab link when the bukti is a PDF', function () {
+    Storage::fake(config('media-library.disk_name'));
+    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+    $inst->addMedia(UploadedFile::fake()->create('bukti.pdf', 10, 'application/pdf'))->toMediaCollection('bukti');
+
+    Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
+        ->assertSee('Buka bukti (PDF) di tab baru')
+        ->assertSee('target="_blank"', escape: false);
 });
 
 it('streams a kuitansi angsuran PDF', function () {
