@@ -135,6 +135,7 @@
 
                 <tbody wire:loading.remove class="divide-y divide-border">
                     @forelse ($withdrawals as $withdrawal)
+                        @php($isRefund = \App\Filament\Resources\SavingsWithdrawalResource::isLoanRefund($withdrawal))
                         <tr class="transition hover:bg-bg/60" wire:key="wd-{{ $withdrawal->id }}">
                             <td class="px-5 py-4">
                                 <a href="{{ route('savings.withdrawals.show', $withdrawal) }}" wire:navigate class="font-mono text-xs font-medium text-text hover:text-primary">
@@ -149,20 +150,27 @@
                                 <p class="font-mono text-xs text-muted">{{ $withdrawal->member?->member_number }}</p>
                             </td>
                             <td class="px-5 py-4">
-                                <x-ui.badge :color="$typeBadge($withdrawal->savings_type)">{{ $withdrawalTypes[$withdrawal->savings_type] ?? $withdrawal->savings_type }}</x-ui.badge>
-                                @if ($withdrawal->period_year)
+                                <x-ui.badge :color="$isRefund ? 'warning' : $typeBadge($withdrawal->savings_type)">{{ $isRefund ? 'Pengembalian Pelunasan' : ($withdrawalTypes[$withdrawal->savings_type] ?? $withdrawal->savings_type) }}</x-ui.badge>
+                                @if ($isRefund)
+                                    <span class="block text-xs text-muted">SWP + Tab. Berjangka</span>
+                                @elseif ($withdrawal->period_year)
                                     <span class="ml-1 text-xs text-muted">{{ $withdrawal->period_year }}</span>
                                 @endif
                             </td>
                             <td class="px-5 py-4 text-right font-medium tabular-nums {{ $withdrawal->is_reversal ? 'text-success' : 'text-danger' }}">
-                                {{ $withdrawal->is_reversal ? '+' : '−' }}Rp {{ number_format((float) $withdrawal->amount, 0, ',', '.') }}
+                                {{ $withdrawal->is_reversal ? '+' : '−' }}Rp {{ number_format((float) ($isRefund ? \App\Filament\Resources\SavingsWithdrawalResource::pairTotal($withdrawal) : $withdrawal->amount), 0, ',', '.') }}
                             </td>
                             <td class="px-5 py-4">
                                 <x-ui.badge :color="$statusBadge($withdrawal->status)">{{ $statuses[$withdrawal->status] ?? $withdrawal->status }}</x-ui.badge>
                             </td>
                             <td class="px-5 py-4 text-text">
                                 {{ $withdrawal->withdrawal_date?->translatedFormat('d M Y') }}
-                                <span class="block text-xs text-muted">{{ $withdrawal->created_at?->translatedFormat('H.i') }} WIB</span>
+                                <span class="block text-xs text-muted">
+                                    {{ $withdrawal->created_at?->translatedFormat('H.i') }} WIB
+                                    @if ($withdrawal->disbursement_method)
+                                        · {{ $disbursementMethods[$withdrawal->disbursement_method] }}
+                                    @endif
+                                </span>
                             </td>
                             <td class="px-5 py-4">
                                 <div class="flex justify-end">

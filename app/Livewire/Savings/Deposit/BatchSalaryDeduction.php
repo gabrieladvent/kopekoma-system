@@ -144,6 +144,10 @@ class BatchSalaryDeduction extends Component
             $lines[] = ['savings_type' => 'hari_raya', 'amount' => (string) (int) round((float) $registration->monthly_amount)];
         }
 
+        // Sukarela: opsional & nominal bebas — nullable, default kosong, tidak
+        // tercentang default. Hanya ikut diproses bila petugas isi nominalnya.
+        $lines[] = ['savings_type' => 'sukarela', 'amount' => null];
+
         return array_map(function (array $line) use ($member, $periodDate, $registration): array {
             $type = $line['savings_type'];
 
@@ -191,6 +195,10 @@ class BatchSalaryDeduction extends Component
             'pokok' => ['type' => 'pokok', 'amount' => (string) $settings->savings_pokok_amount, 'period_month' => $periodDate],
             'wajib_belanja' => ['type' => 'wajib_belanja', 'amount' => (string) $settings->savings_wajib_belanja_amount, 'period_month' => $periodDate],
             'hari_raya' => $this->hariRayaDeposit($memberId, $period),
+            // Nominal sukarela nullable: tanpa nominal (atau ≤ 0) → tidak dibuat.
+            'sukarela' => (filled($rowAmount) && (int) round((float) $rowAmount) > 0)
+                ? ['type' => 'sukarela', 'amount' => (string) (int) round((float) $rowAmount), 'period_month' => $periodDate]
+                : null,
             default => null,
         };
     }

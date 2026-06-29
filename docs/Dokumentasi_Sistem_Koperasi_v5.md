@@ -246,24 +246,24 @@ Modul ini mencatat pembayaran cicilan pinjaman jangka panjang. Setiap angsuran b
 
 | Komponen | Cara Hitung | Keterangan |
 |---|---|---|
-| **Pokok** | Jumlah Pinjaman ÷ Jangka Waktu | Cicilan pokok pinjaman. |
-| **Jasa** | Pokok × **0,65%** | Imbal jasa untuk koperasi. |
-| **Tabungan Berjangka** | Pokok × **0,1%** | Simpanan milik anggota, dikembalikan saat lunas. |
+| **Pokok** | Jumlah Pinjaman ÷ Jangka Waktu (dibulatkan ke atas) | Cicilan pokok pinjaman. |
+| **Jasa** | **Jumlah Pinjaman × 0,65%** | Imbal jasa untuk koperasi (dari nilai pinjaman, bukan pokok). |
+| **Tabungan Berjangka** | **Jumlah Pinjaman × 0,1%** | Simpanan milik anggota, dikembalikan saat lunas (dari nilai pinjaman, bukan pokok). |
 
-> **Angsuran per Bulan = Pokok + Jasa + Tabungan Berjangka**
+> **Angsuran per Bulan = Pokok + Jasa + Tabungan Berjangka** (ketiganya konstan tiap bulan)
 
 #### Contoh Perhitungan
 
 > **Pinjaman Rp 12.000.000, jangka waktu 12 bulan** (pokok per bulan = Rp 1.000.000):
 >
 > - **Saat pencairan**: Admin 1% = Rp 120.000; SWP 1% = Rp 120.000 → **Diterima Rp 11.760.000**.
-> - **Angsuran tiap bulan**: Pokok Rp 1.000.000 + Jasa Rp 6.500 + Tabungan Berjangka Rp 1.000 = **Rp 1.007.500**.
-> - **Saat lunas**: SWP Rp 120.000 + total Tabungan Berjangka (12 × Rp 1.000 = Rp 12.000) **dikembalikan kepada anggota**.
+> - **Angsuran tiap bulan**: Pokok Rp 1.000.000 + Jasa (Rp 12.000.000 × 0,65% = Rp 78.000) + Tabungan Berjangka (Rp 12.000.000 × 0,1% = Rp 12.000) = **Rp 1.090.000**.
+> - **Saat lunas**: SWP Rp 120.000 + total Tabungan Berjangka (12 × Rp 12.000 = Rp 144.000) **dikembalikan kepada anggota**.
 
 #### Cara Pembayaran
 
 - **Potong gaji** (cara utama/wajib) atau **manual** (untuk kondisi tertentu / anggota lama).
-- Angsuran boleh **bolong** (terlewat) — sistem tetap mencatat tanpa memutus pinjaman secara otomatis.
+- Angsuran boleh **bolong** (terlewat) — sistem tetap mencatat tanpa memutus pinjaman secara otomatis. **Tidak ada sanksi/denda.** Namun bila anggota tersebut **mengajukan pinjaman baru**, sistem menampilkan **peringatan (warning)** bahwa ia memiliki riwayat angsuran terlewat/keluar tenor di pinjaman sebelumnya — sebagai bahan pertimbangan petugas/pengurus (tidak memblokir).
 
 #### Pengembalian Saat Lunas
 

@@ -1,6 +1,7 @@
 <?php
 
-use App\Exceptions\UnsupportedSavingsType;
+use App\Models\Installment;
+use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
@@ -61,11 +62,30 @@ it('computes two-sided shopping balance: deposits minus usage', function () {
         ->and($this->service->balanceByType($this->member, 'wajib_belanja'))->toBe('75000.00');
 });
 
-it('throws UnsupportedSavingsType for swp and tabungan_berjangka', function () {
-    expect(fn () => $this->service->balanceByType($this->member, 'swp'))
-        ->toThrow(UnsupportedSavingsType::class);
-    expect(fn () => $this->service->balanceByType($this->member, 'tabungan_berjangka'))
-        ->toThrow(UnsupportedSavingsType::class);
+it('computes swp balance from loans minus refunded withdrawals (ADR D7)', function () {
+    Loan::factory()->create(['member_id' => $this->member->id, 'swp_amount' => 120000]);
+
+    expect($this->service->balanceByType($this->member, 'swp'))->toBe('120000.00');
+
+    // Refund saat lunas (withdrawal type swp, cair) menetralkan saldo.
+    SavingsWithdrawal::factory()->type('swp')->cair()->create([
+        'member_id' => $this->member->id, 'amount' => 120000,
+    ]);
+
+    expect($this->service->balanceByType($this->member, 'swp'))->toBe('0.00');
+});
+
+it('computes tabungan_berjangka from paid installments × konstanta minus refund (ADR D7 + 2026-06-26 D5)', function () {
+    $loan = Loan::factory()->create(['member_id' => $this->member->id, 'monthly_time_deposit' => 12000]);
+    Installment::factory()->count(3)->create(['loan_id' => $loan->id]);
+
+    expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('36000.00');
+
+    SavingsWithdrawal::factory()->type('tabungan_berjangka')->cair()->create([
+        'member_id' => $this->member->id, 'amount' => 36000,
+    ]);
+
+    expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('0.00');
 });
 
 it('requires a year for hari_raya via balanceByType', function () {

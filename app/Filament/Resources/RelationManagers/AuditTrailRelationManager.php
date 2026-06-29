@@ -69,7 +69,7 @@ class AuditTrailRelationManager extends RelationManager
                             ->label('Waktu')
                             ->dateTime('d M Y H:i:s'),
                         Infolists\Components\TextEntry::make('causer.name')
-                            ->label('Pelaku')
+                            ->label('Diinput oleh')
                             ->placeholder('Sistem'),
                         Infolists\Components\TextEntry::make('description')
                             ->label('Deskripsi')
@@ -117,7 +117,7 @@ class AuditTrailRelationManager extends RelationManager
                 ->limit(40)
                 ->toggleable(),
             'causer.name' => Tables\Columns\TextColumn::make('causer.name')
-                ->label('Pelaku')
+                ->label('Diinput oleh')
                 ->placeholder('Sistem')
                 ->searchable(),
         ];

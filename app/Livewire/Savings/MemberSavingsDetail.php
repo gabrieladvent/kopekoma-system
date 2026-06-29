@@ -47,6 +47,11 @@ class MemberSavingsDetail extends Component
 
         $totalKeluar = array_reduce($ledger, fn (string $c, array $r) => bcadd($c, $r['keluar'], 2), '0');
 
+        // Saldo akhir baris Total = Σ masuk − Σ keluar dari mutasi yang tampil.
+        // Untuk filter "all" = total saldo anggota; saat difilter per jenis =
+        // saldo bersih jenis tersebut.
+        $totalSaldo = bcsub($totalMasuk, $totalKeluar, 2);
+
         return view('livewire.savings.member-savings-detail', [
             'member' => $member,
             'cards' => [
@@ -61,6 +66,7 @@ class MemberSavingsDetail extends Component
             'ledger' => $ledger,
             'totalMasuk' => $totalMasuk,
             'totalKeluar' => $totalKeluar,
+            'totalSaldo' => $totalSaldo,
         ])->layout('components.layouts.app', ['title' => 'Detail Saldo Anggota']);
     }
 }

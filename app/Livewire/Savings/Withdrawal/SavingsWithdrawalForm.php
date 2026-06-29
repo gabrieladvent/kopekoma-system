@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Savings\Withdrawal;
 
+use App\Filament\Resources\SavingsWithdrawalResource as Resource;
 use App\Livewire\Concerns\WithMemberPicker;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
@@ -17,6 +18,8 @@ class SavingsWithdrawalForm extends Component
     use WithMemberPicker;
 
     public ?string $withdrawal_date = null;
+
+    public ?string $disbursement_method = null;
 
     public ?string $notes = null;
 
@@ -59,6 +62,21 @@ class SavingsWithdrawalForm extends Component
             $lines[] = $this->makeLine('sukarela', null, 'Simpanan Sukarela', $sukarela);
         }
 
+        // SWP & Tabungan Berjangka — saldo dititip modul Pinjaman (ADR D7), kini
+        // dapat dicairkan manual. Saldo dasar dikurangi pencairan PENDING (draft+acc)
+        // tipe sama (D3): refund auto saat pelunasan masih draft belum mengurangi
+        // saldo, jadi tanpa ini pencairan manual bisa meng-klaim saldo yang sama →
+        // refund dobel.
+        $swp = $this->availablePendingAware($member, 'swp');
+        if (bccomp($swp, '0', 2) > 0) {
+            $lines[] = $this->makeLine('swp', null, 'SWP', $swp);
+        }
+
+        $tab = $this->availablePendingAware($member, 'tabungan_berjangka');
+        if (bccomp($tab, '0', 2) > 0) {
+            $lines[] = $this->makeLine('tabungan_berjangka', null, 'Tabungan Berjangka', $tab);
+        }
+
         // Hari Raya — saldo per tahun program, tiap tahun jadi baris terpisah.
         foreach ($service->holidayBalancesByYear($member) as $year => $balance) {
             if (bccomp($balance, '0', 2) > 0) {
@@ -68,6 +86,27 @@ class SavingsWithdrawalForm extends Component
 
         $this->lines = $lines;
         $this->dispatch('lines-updated');
+    }
+
+    /**
+     * Saldo tersedia tipe swp/tabungan_berjangka = saldo dasar − pencairan PENDING
+     * (draft+acc, non-reversal) tipe sama milik anggota (D3). Floor 0. Mirror
+     * SavingsWithdrawalResource::availableBalance.
+     */
+    protected function availablePendingAware(Member $member, string $type): string
+    {
+        $balance = app(SavingsBalanceService::class)->balanceByType($member, $type);
+
+        $pending = (string) SavingsWithdrawal::query()
+            ->where('member_id', $member->id)
+            ->where('savings_type', $type)
+            ->where('is_reversal', false)
+            ->whereIn('status', ['draft', 'acc'])
+            ->sum('amount');
+
+        $available = bcsub($balance, $pending, 2);
+
+        return bccomp($available, '0', 2) < 0 ? '0.00' : $available;
     }
 
     /**
@@ -109,6 +148,7 @@ class SavingsWithdrawalForm extends Component
         return [
             'member_id' => ['required', 'exists:members,id'],
             'withdrawal_date' => ['required', 'date', 'before_or_equal:today'],
+            'disbursement_method' => ['nullable', 'in:'.implode(',', array_keys(Resource::DISBURSEMENT_METHODS))],
             'notes' => ['nullable', 'string', 'max:65535'],
         ];
     }
@@ -118,6 +158,7 @@ class SavingsWithdrawalForm extends Component
         return [
             'member_id' => 'anggota',
             'withdrawal_date' => 'tanggal pengajuan',
+            'disbursement_method' => 'jenis pencairan',
             'notes' => 'catatan',
         ];
     }
@@ -181,6 +222,7 @@ class SavingsWithdrawalForm extends Component
                     'withdrawal_date' => $this->withdrawal_date,
                     'status' => 'draft',
                     'period_year' => $line['savings_type'] === 'hari_raya' ? (int) $line['period_year'] : null,
+                    'disbursement_method' => $this->disbursement_method ?: null,
                     'notes' => $this->notes ?: null,
                     'recorded_by' => auth()->id(),
                 ]);
@@ -210,6 +252,7 @@ class SavingsWithdrawalForm extends Component
         return view('livewire.savings.withdrawal.savings-withdrawal-form', [
             'total' => $this->totalAmount(),
             'includedCount' => $this->includedCount(),
+            'disbursementMethods' => Resource::DISBURSEMENT_METHODS,
         ])->layout('components.layouts.app', ['title' => 'Pencairan Simpanan']);
     }
 }

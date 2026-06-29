@@ -37,10 +37,22 @@ class SavingsMutationService
         $rows = collect();
 
         foreach ($member->savingsDeposits()->get() as $d) {
+            // Kelebihan bayar angsuran yang dialihkan ke Sukarela ditandai khusus di
+            // buku mutasi (ref = no. angsuran, prefix ANG-) — bukan setoran biasa.
+            $isOverpaymentTransfer = $d->savings_type === 'sukarela'
+                && str_starts_with((string) $d->reference_number, 'ANG-');
+
+            $description = match (true) {
+                $isOverpaymentTransfer && $d->is_reversal => 'Pembatalan pengalihan kelebihan dana',
+                $isOverpaymentTransfer => 'Pengalihan kelebihan dana',
+                $d->is_reversal => 'Pembatalan setoran',
+                default => 'Setoran',
+            };
+
             $rows->push($this->normalize(
                 $d->deposit_date, $d->created_at, $d->transaction_number, 'deposit',
                 $d->savings_type, $d->amount, $d->is_reversal,
-                $d->is_reversal ? 'Pembatalan setoran' : 'Setoran',
+                $description,
             ));
         }
 

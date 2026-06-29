@@ -29,11 +29,13 @@ class WithdrawalWorkflow
     ];
 
     /**
-     * Jenis yang punya saldo riil & boleh dicairkan di Minggu 2 (D8).
+     * Jenis yang punya saldo riil & boleh dicairkan. SWP & Tabungan Berjangka
+     * dibuka (revisi 2026-06-27) — saldo dititip modul Pinjaman, divalidasi via
+     * SavingsBalanceService::canWithdraw seperti tipe lain.
      *
      * @var list<string>
      */
-    public const WITHDRAWABLE_TYPES = ['hari_raya', 'sukarela'];
+    public const WITHDRAWABLE_TYPES = ['hari_raya', 'sukarela', 'swp', 'tabungan_berjangka'];
 
     public function __construct(private readonly SavingsBalanceService $balances) {}
 

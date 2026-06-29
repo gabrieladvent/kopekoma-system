@@ -149,7 +149,7 @@
                             <td class="px-6 py-3 text-text" colspan="4">Total</td>
                             <td class="whitespace-nowrap px-6 py-3 text-right tabular-nums text-success">{{ $fmt($totalMasuk) }}</td>
                             <td class="whitespace-nowrap px-6 py-3 text-right tabular-nums text-danger">{{ $fmt($totalKeluar) }}</td>
-                            <td class="px-6 py-3"></td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right font-bold tabular-nums text-text">{{ $fmt($totalSaldo) }}</td>
                         </tr>
                     </tfoot>
                 @endif

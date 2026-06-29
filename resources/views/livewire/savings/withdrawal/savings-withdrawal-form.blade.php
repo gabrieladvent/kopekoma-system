@@ -85,6 +85,22 @@
                         @error('withdrawal_date')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                     </div>
 
+                    <div class="space-y-1">
+                        <label for="disbursement_method" class="block text-sm font-medium text-text">Jenis Pencairan <span class="text-muted">(opsional)</span></label>
+                        <select id="disbursement_method" wire:model="disbursement_method"
+                                @class([
+                                    'h-10 w-full rounded-lg border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+                                    'border-border' => ! $errors->has('disbursement_method'),
+                                    'border-danger focus-visible:ring-danger' => $errors->has('disbursement_method'),
+                                ])>
+                            <option value="">Pilih jenis pencairan…</option>
+                            @foreach ($disbursementMethods as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('disbursement_method')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                    </div>
+
                     <div class="space-y-1 sm:col-span-2">
                         <label for="notes" class="block text-sm font-medium text-text">Catatan <span class="text-muted">(opsional)</span></label>
                         <textarea id="notes" wire:model="notes" rows="2" placeholder="Alasan / keterangan pengajuan…"
