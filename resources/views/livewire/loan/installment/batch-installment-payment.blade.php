@@ -187,8 +187,9 @@
                                                     </span>
                                                 </label>
 
-                                                {{-- Nominal --}}
-                                                <div class="shrink-0"
+                                                {{-- Nominal — wire:ignore agar nilai input tak ter-reset morphdom
+                                                     saat round-trip (mis. unggah bukti) sehingga total tak jadi 0. --}}
+                                                <div class="shrink-0" wire:ignore
                                                      x-data="{
                                                         raw: @entangle('rows.'.$i.'.lines.'.$j.'.amount'),
                                                         display: '',
