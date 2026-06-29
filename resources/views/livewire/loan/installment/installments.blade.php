@@ -11,12 +11,20 @@
             </div>
         </div>
 
-        @can('create_installment')
-            <x-ui.button :href="route('installments.create')" wire:navigate>
-                <x-ui.icon name="plus" class="h-4.5 w-4.5" />
-                Bayar Angsuran
-            </x-ui.button>
-        @endcan
+        <div class="flex shrink-0 items-center gap-2">
+            @can('access_batch_salary_deduction')
+                <x-ui.button variant="ghost" :href="route('installments.batch')" wire:navigate>
+                    <x-ui.icon name="users" class="h-4.5 w-4.5" />
+                    Batch Potong Gaji
+                </x-ui.button>
+            @endcan
+            @can('create_installment')
+                <x-ui.button :href="route('installments.create')" wire:navigate>
+                    <x-ui.icon name="plus" class="h-4.5 w-4.5" />
+                    Bayar Angsuran
+                </x-ui.button>
+            @endcan
+        </div>
     </div>
 
     {{-- Toolbar --}}

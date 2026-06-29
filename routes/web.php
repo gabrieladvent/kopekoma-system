@@ -8,6 +8,7 @@ use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
 use App\Livewire\Loan\Blacklist\LoanBlacklistDetail;
 use App\Livewire\Loan\Blacklist\LoanBlacklists;
+use App\Livewire\Loan\Installment\BatchInstallmentPayment;
 use App\Livewire\Loan\Installment\InstallmentDetail;
 use App\Livewire\Loan\Installment\InstallmentForm;
 use App\Livewire\Loan\Installment\Installments;
@@ -256,6 +257,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/angsuran/create', InstallmentForm::class)
         ->middleware('can:create_installment')
         ->name('installments.create');
+
+    Route::get('/angsuran/batch', BatchInstallmentPayment::class)
+        ->middleware('can:access_batch_salary_deduction')
+        ->name('installments.batch');
 
     Route::get('/angsuran/{installment}/kuitansi', function (Installment $installment) {
         return InstallmentResource::printReceipt($installment);
