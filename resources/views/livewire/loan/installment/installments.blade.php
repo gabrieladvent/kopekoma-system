@@ -11,12 +11,20 @@
             </div>
         </div>
 
-        @can('create_installment')
-            <x-ui.button :href="route('installments.create')" wire:navigate>
-                <x-ui.icon name="plus" class="h-4.5 w-4.5" />
-                Bayar Angsuran
-            </x-ui.button>
-        @endcan
+        <div class="flex shrink-0 items-center gap-2">
+            @can('access_batch_salary_deduction')
+                <x-ui.button variant="ghost" :href="route('installments.batch')" wire:navigate>
+                    <x-ui.icon name="users" class="h-4.5 w-4.5" />
+                    Batch Potong Gaji
+                </x-ui.button>
+            @endcan
+            @can('create_installment')
+                <x-ui.button :href="route('installments.create')" wire:navigate>
+                    <x-ui.icon name="plus" class="h-4.5 w-4.5" />
+                    Bayar Angsuran
+                </x-ui.button>
+            @endcan
+        </div>
     </div>
 
     {{-- Toolbar --}}
@@ -86,9 +94,16 @@
                     @forelse ($installments as $installment)
                         <tr class="transition hover:bg-bg/60" wire:key="ins-{{ $installment->id }}">
                             <td class="px-5 py-4">
-                                <a href="{{ route('installments.show', $installment) }}" wire:navigate class="font-mono text-xs font-medium text-text hover:text-primary">
-                                    {{ $installment->installment_number }}
-                                </a>
+                                <div class="flex items-center gap-1.5">
+                                    <a href="{{ route('installments.show', $installment) }}" wire:navigate class="font-mono text-xs font-medium text-text hover:text-primary">
+                                        {{ $installment->installment_number }}
+                                    </a>
+                                    @if ($installment->hasMedia('bukti'))
+                                        <span title="Ada bukti — buka di detail" class="text-muted">
+                                            <x-ui.icon name="paper-clip" class="h-3.5 w-3.5" />
+                                        </span>
+                                    @endif
+                                </div>
                                 @if ($installment->is_reversal)
                                     <div class="mt-1"><x-ui.badge color="danger">Reversal</x-ui.badge></div>
                                 @endif

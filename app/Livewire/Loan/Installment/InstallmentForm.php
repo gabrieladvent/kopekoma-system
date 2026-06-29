@@ -148,7 +148,7 @@ class InstallmentForm extends Component
             'amount_paid' => ['required', 'integer', 'min:1'],
             'payment_method' => ['required', 'in:'.implode(',', array_keys(Resource::PAYMENT_METHODS))],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
-            'bukti' => ['nullable', 'image', 'max:5120'],
+            'bukti' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ];
     }
 

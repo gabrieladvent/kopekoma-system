@@ -110,6 +110,10 @@
                                         <p class="mt-0.5 font-medium tabular-nums text-text">Rp {{ number_format((float) $schedule->loan->monthly_time_deposit, 0, ',', '.') }}</p>
                                     </div>
                                 </div>
+                                <div class="mt-3 flex items-center justify-between border-t border-secondary/15 pt-3 text-sm">
+                                    <span class="font-semibold text-secondary">Total Tagihan</span>
+                                    <span class="font-bold tabular-nums text-text">Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}</span>
+                                </div>
                             </div>
                             @error('schedule_id')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                         @else
@@ -199,7 +203,7 @@
                                         <span class="text-xs text-muted">Klik untuk ganti</span>
                                     @else
                                         <span class="block font-medium text-text">Slip / foto / kuitansi</span>
-                                        <span class="text-xs text-muted">JPG atau PNG · maks. 5 MB</span>
+                                        <span class="text-xs text-muted">JPG, PNG, WebP, atau PDF · maks. 5 MB</span>
                                     @endif
                                 </span>
                                 <span wire:loading wire:target="bukti">
@@ -208,7 +212,7 @@
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                                     </svg>
                                 </span>
-                                <input id="bukti" type="file" wire:model="bukti" accept=".jpg,.jpeg,.png" class="hidden">
+                                <input id="bukti" type="file" wire:model="bukti" accept=".jpg,.jpeg,.png,.webp,.pdf" class="hidden">
                             </label>
                             @error('bukti')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                         </div>

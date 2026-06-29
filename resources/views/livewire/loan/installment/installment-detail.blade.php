@@ -150,15 +150,41 @@
                 </dl>
 
                 @if ($bukti)
+                    @php
+                        $buktiExt = strtolower(pathinfo((string) $bukti->file_name, PATHINFO_EXTENSION));
+                        $buktiIsImage = str_starts_with((string) $bukti->mime_type, 'image/')
+                            || in_array($buktiExt, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+                        $buktiIsPdf = $bukti->mime_type === 'application/pdf' || $buktiExt === 'pdf';
+                    @endphp
                     <div class="mt-5 border-t border-border pt-4">
                         <p class="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="paper-clip" class="h-3.5 w-3.5" /> Bukti Pembayaran
                         </p>
-                        <a href="{{ $bukti->getUrl() }}" target="_blank"
-                           class="inline-flex items-center gap-2 rounded-lg border border-border bg-bg/40 px-3 py-2 text-sm text-text transition hover:border-primary/40 hover:text-primary">
-                            <x-ui.icon name="document" class="h-4 w-4 shrink-0" />
-                            <span class="max-w-[14rem] truncate">{{ $bukti->name }}</span>
-                        </a>
+
+                        @if ($buktiIsImage)
+                            {{-- Gambar: tampil ukuran wajar; klik buka penuh di tab baru. --}}
+                            <a href="{{ $bukti->getUrl() }}" target="_blank" rel="noopener" class="inline-block space-y-1.5">
+                                <img src="{{ $bukti->getUrl() }}" alt="Bukti pembayaran {{ $installment->installment_number }}"
+                                     class="h-auto max-h-64 w-auto max-w-xs rounded-lg object-contain ring-1 ring-border transition hover:opacity-90">
+                                <span class="flex items-center gap-1 text-xs text-muted">
+                                    <x-ui.icon name="arrow-up-tray" class="h-3.5 w-3.5 rotate-45" />
+                                    Klik untuk buka ukuran penuh di tab baru.
+                                </span>
+                            </a>
+                        @elseif ($buktiIsPdf)
+                            {{-- PDF: buka di tab baru (browser merender PDF natif). --}}
+                            <a href="{{ $bukti->getUrl() }}" target="_blank" rel="noopener"
+                               class="inline-flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-secondary/90">
+                                <x-ui.icon name="document" class="h-4 w-4 shrink-0" />
+                                Buka bukti (PDF) di tab baru
+                            </a>
+                        @else
+                            <a href="{{ $bukti->getUrl() }}" target="_blank" rel="noopener"
+                               class="inline-flex items-center gap-2 rounded-lg border border-border bg-bg/40 px-3 py-2 text-sm text-text transition hover:border-primary/40 hover:text-primary">
+                                <x-ui.icon name="document" class="h-4 w-4 shrink-0" />
+                                <span class="max-w-[14rem] truncate">{{ $bukti->name }}</span>
+                            </a>
+                        @endif
                     </div>
                 @endif
             </x-ui.card>

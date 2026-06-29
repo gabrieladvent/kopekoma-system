@@ -6,6 +6,7 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -31,7 +32,7 @@ class BatchInstallmentPaymentService
     public function __construct(private readonly LoanPaymentService $payments) {}
 
     /**
-     * @param  list<array{schedule_id:string, amount_paid:string|int|float, payment_date?:string, bukti_path?:?string, bukti_disk?:?string}>  $rows
+     * @param  list<array{schedule_id:string, amount_paid:string|int|float, payment_date?:string, bukti?:?UploadedFile, bukti_path?:?string, bukti_disk?:?string}>  $rows
      * @return array{created:int, skipped:int}
      */
     public function run(
@@ -85,8 +86,11 @@ class BatchInstallmentPaymentService
                             'payment_date' => $row['payment_date'] ?? $period,
                         ],
                         $causerId,
+                        // Livewire: UploadedFile langsung dilampirkan di dalam pay().
+                        $row['bukti'] ?? null,
                     );
 
+                    // Filament: file sudah tersimpan di disk (getState) → lampirkan dari path.
                     $this->attachBukti($installment, $row['bukti_path'] ?? null, $row['bukti_disk'] ?? null);
 
                     $created++;

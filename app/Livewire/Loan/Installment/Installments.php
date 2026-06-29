@@ -113,7 +113,7 @@ class Installments extends Component
     public function render(): View
     {
         $installments = Installment::query()
-            ->with(['loan:id,loan_number,member_id', 'loan.member:id,member_number,full_name', 'reversal:id,reversal_of_id'])
+            ->with(['loan:id,loan_number,member_id', 'loan.member:id,member_number,full_name', 'reversal:id,reversal_of_id', 'media'])
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where('installment_number', 'like', $term)
