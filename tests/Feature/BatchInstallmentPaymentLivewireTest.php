@@ -96,6 +96,8 @@ it('attaches the per-line bukti to the recorded installment', function () {
             ]],
         ])
         ->set('bukti.'.$sch[0]->id, UploadedFile::fake()->create('bukti.pdf', 100, 'application/pdf'))
+        // Upload memicu recompute ringkasan di klien agar total tak ter-reset ke 0.
+        ->assertDispatched('rows-updated')
         ->call('process');
 
     $installment = Installment::where('loan_id', $loan->id)->firstOrFail();

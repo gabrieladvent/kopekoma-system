@@ -59,6 +59,16 @@ class BatchInstallmentPayment extends Component
         $this->rebuildRows();
     }
 
+    /**
+     * Unggah bukti memicu round-trip Livewire (morph DOM). Ringkasan total di
+     * kanan dihitung di klien dengan men-scan input nominal; minta hitung ulang
+     * setelah morph agar tidak sempat ter-reset ke 0.
+     */
+    public function updatedBukti(): void
+    {
+        $this->dispatch('rows-updated');
+    }
+
     public function rebuildRows(): void
     {
         // Bukti dikunci ke schedule_id; reset saat OPD ganti agar tak nyangkut.
