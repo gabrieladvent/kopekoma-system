@@ -18,6 +18,7 @@ use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /**
  * Batch potong gaji ANGSURAN per OPD (ADR pinjaman 3c / D6). Mode kolektif untuk
@@ -32,6 +33,10 @@ class BatchInstallmentPayment extends Page implements HasForms
 
     // Reuse permission batch potong gaji Simpanan — aksi sejenis (Petugas+, D11).
     public const PERMISSION = 'access_batch_salary_deduction';
+
+    // Bukti per-baris diunggah ke disk media lebih dulu (getState menyimpannya),
+    // lalu dilampirkan ke Installment via addMediaFromDisk saat batch diproses.
+    private const BUKTI_DIR = 'tmp/installment-bukti';
 
     protected static ?string $title = 'Batch Potong Gaji Angsuran per OPD';
 
@@ -111,32 +116,72 @@ class BatchInstallmentPayment extends Page implements HasForms
                                     ->deletable(false)
                                     ->reorderable(false)
                                     ->columnSpanFull()
-                                    ->columns(3)
+                                    ->columns(2)
                                     ->visible(fn (Get $get): bool => (bool) $get('include'))
                                     ->schema([
                                         Forms\Components\Hidden::make('schedule_id'),
                                         Forms\Components\Hidden::make('loan_id'),
                                         Forms\Components\Hidden::make('total_due'),
                                         Forms\Components\TextInput::make('loan_label')
-                                            ->label('Pinjaman / Angsuran')
+                                            ->label('Angsuran')
                                             ->disabled()
                                             ->dehydrated(false)
-                                            ->columnSpan(2),
+                                            ->columnSpanFull(),
+                                        Forms\Components\TextInput::make('loan_total_label')
+                                            ->label('Pinjaman')
+                                            ->disabled()
+                                            ->dehydrated(false)
+                                            ->columnSpanFull(),
                                         Forms\Components\Toggle::make('include')
                                             ->label('Ikut')
-                                            ->inline(false),
+                                            ->inline(false)
+                                            ->live(),
                                         MoneyInput::make('amount')
                                             ->label('Nominal')
                                             ->dehydrated()
+                                            ->live(onBlur: true)
                                             ->required(fn (Get $get): bool => (bool) $get('include'))
                                             ->minValue(fn (Get $get): int => (int) $get('total_due'))
                                             ->helperText('Tidak boleh kurang dari tagihan.'),
+                                        Forms\Components\FileUpload::make('bukti')
+                                            ->label('Bukti Pembayaran')
+                                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                                            ->openable()
+                                            ->downloadable()
+                                            ->disk(config('media-library.disk_name'))
+                                            ->directory(self::BUKTI_DIR)
+                                            ->visibility('public')
+                                            ->columnSpanFull()
+                                            ->helperText('Opsional. Gambar atau PDF — slip/foto/kuitansi pendukung untuk anggota ini.'),
                                     ]),
                             ])
                             ->visible(fn (Get $get): bool => filled($get('agency_id'))),
+                        Forms\Components\Placeholder::make('grand_total')
+                            ->label('Total Potong Gaji (yang diikutkan)')
+                            ->visible(fn (Get $get): bool => filled($get('agency_id')))
+                            ->content(fn (Get $get): HtmlString => new HtmlString(
+                                '<span class="text-lg font-bold text-primary-600 dark:text-primary-400">Rp '
+                                .number_format($this->grandTotal($get('rows') ?? []), 0, ',', '.')
+                                .'</span>'
+                            )),
                     ]),
             ])
             ->statePath('data');
+    }
+
+    /**
+     * Total nominal seluruh baris yang diikutkan (anggota Ikut & pinjaman Ikut).
+     * Konsisten dengan filter di {@see process()} agar angka di layar = yang diproses.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    public function grandTotal(array $rows): float
+    {
+        return collect($rows)
+            ->filter(fn (array $r): bool => (bool) ($r['include'] ?? false))
+            ->flatMap(fn (array $r): array => $r['lines'] ?? [])
+            ->filter(fn (array $line): bool => (bool) ($line['include'] ?? false))
+            ->sum(fn (array $line): float => (float) ($line['amount'] ?? 0));
     }
 
     /**
@@ -185,7 +230,7 @@ class BatchInstallmentPayment extends Page implements HasForms
      * `InstallmentResource::unpaidScheduleOptions`). Null bila tak ada jadwal
      * belum bayar (anomali — pinjaman Cair semestinya punya sisa jadwal).
      *
-     * @return array{loan_id:string, schedule_id:string, total_due:string, loan_label:string, include:bool, amount:string}|null
+     * @return array{loan_id:string, schedule_id:string, total_due:string, loan_label:string, loan_total_label:string, include:bool, amount:string, bukti:null}|null
      */
     protected function buildLoanLine(Loan $loan): ?array
     {
@@ -214,8 +259,15 @@ class BatchInstallmentPayment extends Page implements HasForms
                 $schedule->due_date?->format('d/m/Y'),
                 number_format((float) $schedule->total_due, 0, ',', '.'),
             ),
+            // Konteks total pinjaman biar petugas yakin baris ini pinjaman mana.
+            'loan_total_label' => sprintf(
+                'Total pinjaman Rp %s — sisa pokok Rp %s',
+                number_format((float) $loan->principal_amount, 0, ',', '.'),
+                number_format((float) $loan->remainingPrincipal(), 0, ',', '.'),
+            ),
             'include' => true,
             'amount' => $bill,
+            'bukti' => null,
         ];
     }
 
@@ -237,6 +289,9 @@ class BatchInstallmentPayment extends Page implements HasForms
                     'schedule_id' => (string) $line['schedule_id'],
                     'amount_paid' => $line['amount'] ?? '0',
                     'payment_date' => $paymentDate,
+                    // getState() sudah menyimpan unggahan ke disk media → state = path.
+                    'bukti_path' => is_string($line['bukti'] ?? null) ? $line['bukti'] : null,
+                    'bukti_disk' => config('media-library.disk_name'),
                 ])
                 ->values()
                 ->all())

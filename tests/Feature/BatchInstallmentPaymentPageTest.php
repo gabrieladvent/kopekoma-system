@@ -105,6 +105,28 @@ it('processes the batch and records installments only for included members and l
         ->and($schA[0]->fresh()->status)->toBe('Terbayar');
 });
 
+it('shows the grand total of only the included lines', function () {
+    asSuperAdmin();
+    $agency = Agency::factory()->create();
+    [, $loanA, $schA] = memberWithLoan($agency->id);
+    [, $loanB, $schB] = memberWithLoan($agency->id);
+
+    $component = Livewire::test(BatchInstallmentPayment::class)
+        ->set('data.agency_id', $agency->id)
+        ->set('data.rows', [
+            ['member_id' => $loanA->member_id, 'member_label' => 'a', 'include' => true, 'lines' => [
+                ['loan_id' => $loanA->id, 'schedule_id' => $schA[0]->id, 'total_due' => '1090000', 'loan_label' => 'A', 'include' => true, 'amount' => '1200000'],
+            ]],
+            // Anggota tak diikutkan → tak masuk total.
+            ['member_id' => $loanB->member_id, 'member_label' => 'b', 'include' => false, 'lines' => [
+                ['loan_id' => $loanB->id, 'schedule_id' => $schB[0]->id, 'total_due' => '1090000', 'loan_label' => 'B', 'include' => true, 'amount' => '1090000'],
+            ]],
+        ]);
+
+    // Hanya baris A (1.200.000) yang dihitung; B dikecualikan.
+    expect($component->instance()->grandTotal($component->get('data')['rows']))->toBe(1200000.0);
+});
+
 it('skips a line whose toggle is off', function () {
     asSuperAdmin();
     $agency = Agency::factory()->create();

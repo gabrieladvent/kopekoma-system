@@ -8,7 +8,9 @@ use App\Models\Member;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use App\Services\BatchInstallmentPaymentService;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Activitylog\Models\Activity;
 
 beforeEach(function () {
@@ -48,6 +50,39 @@ it('pays one installment per row and marks the schedule terbayar', function () {
         ->and($schedules[1]->fresh()->status)->toBe('Belum Bayar')
         ->and(Installment::where('loan_id', $loan->id)->count())->toBe(1)
         ->and(Installment::first()->payment_method)->toBe('potong_gaji');
+});
+
+it('attaches the per-row bukti from disk to the installment, then removes the tmp file', function () {
+    $disk = config('media-library.disk_name');
+    Storage::fake($disk);
+
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 1);
+
+    // Simulasikan file yang sudah ditaruh FileUpload (getState) di disk media.
+    $path = UploadedFile::fake()->image('bukti.jpg')->storeAs('tmp/installment-bukti', 'bukti.jpg', ['disk' => $disk]);
+
+    $result = $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000', 'bukti_path' => $path, 'bukti_disk' => $disk],
+    ], $this->user->id);
+
+    $installment = Installment::where('loan_id', $loan->id)->firstOrFail();
+
+    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+        ->and($installment->hasMedia('bukti'))->toBeTrue()
+        // addMediaFromDisk memindahkan file → tmp tak menyisa.
+        ->and(Storage::disk($disk)->exists($path))->toBeFalse();
+});
+
+it('records the installment even when the row carries no bukti', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 1);
+
+    $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000', 'bukti_path' => null],
+    ], $this->user->id);
+
+    $installment = Installment::where('loan_id', $loan->id)->firstOrFail();
+
+    expect($installment->hasMedia('bukti'))->toBeFalse();
 });
 
 it('skips a schedule that is already terbayar without creating a duplicate', function () {

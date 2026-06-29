@@ -22,6 +22,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -114,6 +115,47 @@ class InstallmentResource extends Resource
         return (string) (int) round((float) $value);
     }
 
+    /**
+     * Rincian tagihan jadwal terpilih untuk ditampilkan readonly di form Create —
+     * petugas tahu komposisi tagihan (Pokok/Jasa/Tab) sebelum memasukkan nominal.
+     * Diambil langsung dari `installment_schedules` (Σ konstanta = total_due).
+     */
+    public static function scheduleBillDetail(mixed $scheduleId): HtmlString
+    {
+        $schedule = InstallmentSchedule::find($scheduleId);
+
+        if ($schedule === null) {
+            return new HtmlString('<span class="text-sm text-gray-500 dark:text-gray-400">Pilih angsuran untuk melihat rincian tagihan.</span>');
+        }
+
+        $rows = [
+            ['Angsuran ke', '#'.$schedule->installment_seq],
+            ['Jatuh tempo', $schedule->due_date?->format('d M Y') ?? '—'],
+            ['Pokok', self::idr($schedule->principal_due)],
+            ['Jasa / Bunga', self::idr($schedule->interest_due)],
+            ['Tabungan Berjangka', self::idr($schedule->time_deposit_due)],
+            ['Total Tagihan', self::idr($schedule->total_due)],
+        ];
+
+        $body = collect($rows)->map(function (array $row): string {
+            $isTotal = $row[0] === 'Total Tagihan';
+            $class = $isTotal
+                ? 'flex justify-between py-1.5 mt-1 border-t border-gray-200 dark:border-white/10 font-semibold text-gray-950 dark:text-white'
+                : 'flex justify-between py-1.5 text-gray-700 dark:text-gray-300';
+
+            return sprintf('<div class="%s"><span>%s</span><span>%s</span></div>', $class, $row[0], $row[1]);
+        })->implode('');
+
+        return new HtmlString(
+            '<div class="text-sm rounded-lg bg-gray-50 px-4 py-2 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10">'.$body.'</div>'
+        );
+    }
+
+    private static function idr(string|int|float|null $value): string
+    {
+        return 'Rp '.number_format((float) $value, 0, ',', '.');
+    }
+
     public static function canReverse(Installment $record): bool
     {
         return ! $record->is_reversal
@@ -186,6 +228,11 @@ class InstallmentResource extends Resource
                         ->options(fn (Get $get): array => self::unpaidScheduleOptions($get('loan_id')))
                         ->required()->live()->native(false)
                         ->afterStateUpdated(fn (?string $state, Set $set) => self::prefillFromSchedule($state, $set)),
+                    Forms\Components\Placeholder::make('bill_detail')
+                        ->label('Rincian Tagihan')
+                        ->columnSpanFull()
+                        ->visible(fn (Get $get): bool => filled($get('schedule_id')))
+                        ->content(fn (Get $get): HtmlString => self::scheduleBillDetail($get('schedule_id'))),
                     Forms\Components\Select::make('payment_method')
                         ->label('Metode Bayar')->options(self::PAYMENT_METHODS)
                         ->default('potong_gaji')->required()->native(false),
@@ -200,8 +247,9 @@ class InstallmentResource extends Resource
                     Forms\Components\DatePicker::make('payment_date')->label('Tanggal Bayar')->default(now())->required(),
                     Forms\Components\SpatieMediaLibraryFileUpload::make('bukti')
                         ->collection('bukti')->label('Bukti Pembayaran')
-                        ->image()->downloadable()->openable()->columnSpanFull()
-                        ->helperText('Slip/foto/kuitansi pendukung nominal diterima.'),
+                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                        ->downloadable()->openable()->columnSpanFull()
+                        ->helperText('Gambar (JPG/PNG/WebP) atau PDF — slip/foto/kuitansi pendukung nominal diterima.'),
                 ]),
         ]);
     }
@@ -227,6 +275,13 @@ class InstallmentResource extends Resource
                 Infolists\Components\TextEntry::make('payment_date')->label('Tgl Bayar')->date('d M Y'),
                 Infolists\Components\IconEntry::make('is_reversal')->label('Reversal')->boolean(),
             ]),
+            Infolists\Components\Section::make('Bukti Pembayaran')->schema([
+                // Gambar → klik perbesar; PDF → buka tab baru (lihat blade).
+                Infolists\Components\ViewEntry::make('bukti')
+                    ->hiddenLabel()
+                    ->view('filament.installment-bukti')
+                    ->columnSpanFull(),
+            ]),
         ]);
     }
 
@@ -242,6 +297,11 @@ class InstallmentResource extends Resource
                 Tables\Columns\TextColumn::make('payment_method')->label('Metode')->badge()
                     ->formatStateUsing(fn (string $state): string => self::PAYMENT_METHODS[$state] ?? $state)->toggleable(),
                 Tables\Columns\TextColumn::make('payment_date')->label('Tanggal')->date('d M Y')->sortable(),
+                Tables\Columns\IconColumn::make('bukti')->label('Bukti')->boolean()
+                    ->getStateUsing(fn (Installment $record): bool => $record->hasMedia('bukti'))
+                    ->trueIcon('heroicon-o-paper-clip')->falseIcon('heroicon-o-minus-small')
+                    ->tooltip(fn (Installment $record): string => $record->hasMedia('bukti') ? 'Ada bukti — buka di detail' : 'Tanpa bukti')
+                    ->toggleable(),
                 Tables\Columns\IconColumn::make('is_reversal')->label('Reversal')->boolean()->toggleable(),
             ])
             ->filters([
