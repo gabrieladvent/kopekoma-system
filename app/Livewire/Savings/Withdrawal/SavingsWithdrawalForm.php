@@ -25,6 +25,11 @@ class SavingsWithdrawalForm extends Component
 
     public array $lines = [];
 
+    /** Rekening tujuan anggota — ditampilkan saat jenis pencairan "transfer". */
+    public ?string $memberBankName = null;
+
+    public ?string $memberAccountNumber = null;
+
     public function mount(): void
     {
         $this->authorize('create', SavingsWithdrawal::class);
@@ -42,6 +47,8 @@ class SavingsWithdrawalForm extends Component
     {
         $this->lines = [];
         $this->resetErrorBag('lines');
+        $this->memberBankName = null;
+        $this->memberAccountNumber = null;
 
         if (blank($this->member_id)) {
             return;
@@ -52,6 +59,9 @@ class SavingsWithdrawalForm extends Component
         if ($member === null) {
             return;
         }
+
+        $this->memberBankName = $member->bank_name;
+        $this->memberAccountNumber = $member->payroll_account_number;
 
         $service = app(SavingsBalanceService::class);
         $lines = [];
@@ -78,7 +88,21 @@ class SavingsWithdrawalForm extends Component
         }
 
         // Hari Raya — saldo per tahun program, tiap tahun jadi baris terpisah.
+        // Hanya tawarkan tahun yang MASIH punya registrasi AKTIF (is_active).
+        // Program tahun lama yang sudah ditutup / di luar periode tidak lagi
+        // muncul di pencairan (soft gate: saldo tetap utuh, tinggal aktifkan
+        // kembali registrasinya bila perlu dicairkan lagi).
+        $activeHolidayYears = $member->holidaySavings()
+            ->where('is_active', true)
+            ->pluck('period_year')
+            ->map(fn ($year): int => (int) $year)
+            ->all();
+
         foreach ($service->holidayBalancesByYear($member) as $year => $balance) {
+            if (! in_array((int) $year, $activeHolidayYears, true)) {
+                continue;
+            }
+
             if (bccomp($balance, '0', 2) > 0) {
                 $lines[] = $this->makeLine('hari_raya', (int) $year, 'Simpanan Hari Raya '.$year, $balance);
             }

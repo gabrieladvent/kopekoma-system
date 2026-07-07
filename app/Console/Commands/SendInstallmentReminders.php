@@ -80,13 +80,23 @@ class SendInstallmentReminders extends Command
         return $schedules->count();
     }
 
-    /** Angsuran Belum Bayar yang sudah lewat tempo & belum diingatkan sebagai nunggak. */
+    /**
+     * Angsuran Belum Bayar yang sudah lewat tempo (nunggak). Berbeda dgn pengingat
+     * jatuh-tempo yang sekali saja, tunggakan DIINGATKAN BERULANG selama belum
+     * dibayar: syaratnya belum pernah diingatkan ATAU terakhir diingatkan sebelum
+     * hari ini. Jadi tiap kali command berjalan (harian), tunggakan yang masih
+     * berdiri kembali muncul — dan otomatis berhenti begitu status bukan lagi
+     * "Belum Bayar" (sudah dibayar).
+     */
     private function sendOverdue(Collection $recipients, Carbon $today): int
     {
         $schedules = InstallmentSchedule::query()
             ->with(['loan.member'])
             ->where('status', 'Belum Bayar')
-            ->whereNull('overdue_reminder_sent_at')
+            ->where(function ($q) use ($today) {
+                $q->whereNull('overdue_reminder_sent_at')
+                    ->orWhereDate('overdue_reminder_sent_at', '<', $today);
+            })
             ->whereDate('due_date', '<', $today)
             ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
             ->orderBy('due_date')

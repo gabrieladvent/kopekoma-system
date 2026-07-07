@@ -1,5 +1,13 @@
 @php($isEdit = filled($memberId))
-<div class="space-y-6">
+<div class="space-y-6"
+     x-data
+     @scroll-to-error.window="$nextTick(() => {
+        const el = $el.querySelector('.border-danger, [aria-invalid=&quot;true&quot;]');
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            (el.querySelector('input, select, textarea') ?? el).focus?.({ preventScroll: true });
+        }
+     })">
     {{-- Back --}}
     <a href="{{ $isEdit ? route('master.members.show', $memberId) : route('master.members') }}" wire:navigate
        class="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition hover:text-text">
@@ -46,7 +54,7 @@
 
                 <x-ui.input label="Tempat Lahir" name="birth_place" wire:model="birth_place" placeholder="Kota kelahiran" :error="$errors->first('birth_place')" />
 
-                <x-ui.input label="Tanggal Lahir" name="birth_date" type="date" wire:model="birth_date" :error="$errors->first('birth_date')" />
+                <x-ui.input label="Tanggal Lahir" name="birth_date" type="date" wire:model="birth_date" max="{{ now()->toDateString() }}" :error="$errors->first('birth_date')" />
 
                 <div class="space-y-1">
                     <label for="gender" class="block text-sm font-medium text-text">Jenis Kelamin</label>
@@ -300,15 +308,17 @@
                     </div>
                 @endif
 
-                {{-- Tambah berkas baru --}}
+                {{-- Tambah berkas baru — bisa pilih beberapa sekaligus atau menambah
+                     bertahap; tiap pilihan digabung ke antrean di bawah. --}}
                 <div class="space-y-2">
-                    <input type="file" wire:model="uploads" multiple accept="application/pdf,image/jpeg,image/png"
+                    <input type="file" wire:model="newUploads" multiple accept="application/pdf,image/jpeg,image/png"
                            class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20">
-                    <p class="text-xs text-muted">KTP, SK, formulir, dll. PDF/JPG/PNG, maks 5 MB per berkas. Berkas dilampirkan saat form disimpan.</p>
+                    <p class="text-xs text-muted">KTP, SK, formulir, dll. PDF/JPG/PNG, maks 5 MB per berkas. Bisa pilih beberapa berkas sekaligus atau menambah bertahap. Dilampirkan saat form disimpan.</p>
+                    @error('newUploads.*')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                     @error('uploads.*')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                     @error('uploads')<p class="text-xs text-danger">{{ $message }}</p>@enderror
 
-                    <div class="flex items-center gap-2" wire:loading wire:target="uploads">
+                    <div class="flex items-center gap-2" wire:loading wire:target="newUploads">
                         <svg class="h-4 w-4 animate-spin text-muted" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>

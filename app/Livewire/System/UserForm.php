@@ -4,6 +4,7 @@ namespace App\Livewire\System;
 
 use App\Models\User;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Spatie\Permission\Models\Role;
@@ -26,6 +27,12 @@ class UserForm extends Component
     public bool $is_active = true;
 
     public bool $email_verified = false;
+
+    /** Kata sandi acak yang digenerate saat membuat pengguna baru (ditampilkan sekali). */
+    public ?string $generatedPassword = null;
+
+    /** Kontrol tampil modal "salin kata sandi" setelah create berhasil. */
+    public bool $showCredentials = false;
 
     public function mount(?User $user = null): void
     {
@@ -55,11 +62,11 @@ class UserForm extends Component
                 'required', 'email', 'max:255',
                 Rule::unique('users', 'email')->ignore($this->userId),
             ],
-            'password' => [
-                $this->userId ? 'nullable' : 'required',
-                'confirmed',
-                'min:8',
-            ],
+            // Saat create, kata sandi digenerate otomatis (tidak diinput user).
+            // Saat edit, opsional: kosongkan bila tidak ingin mengubah.
+            'password' => $this->userId
+                ? ['nullable', 'confirmed', 'min:8']
+                : ['nullable'],
             'selectedRoles' => ['array'],
             'selectedRoles.*' => ['string', Rule::exists('roles', 'name')],
         ];
@@ -90,26 +97,49 @@ class UserForm extends Component
             'is_active' => $isActive,
         ];
 
-        if (filled($validated['password'])) {
-            $data['password'] = $validated['password'];
-        }
-
         if ($this->userId) {
+            // Edit: ganti kata sandi hanya bila diisi.
+            if (filled($validated['password'] ?? null)) {
+                $data['password'] = $validated['password'];
+            }
+
             $user = User::findOrFail($this->userId);
             $user->fill($data);
-            $message = 'Pengguna diperbarui.';
-        } else {
-            $user = new User($data);
-            $message = 'Pengguna ditambahkan.';
+            $user->email_verified_at = $this->email_verified ? now() : null;
+            $user->save();
+            $user->syncRoles($this->selectedRoles);
+
+            // Dinonaktifkan lewat form edit → akhiri sesinya (langsung ter-logout).
+            if (! $isActive) {
+                $user->invalidateSessions();
+            }
+
+            session()->flash('toast', ['type' => 'success', 'message' => 'Pengguna diperbarui.']);
+
+            return $this->redirectRoute('system.users', navigate: true);
         }
 
-        // email_verified_at bukan field mass-assignable → set eksplisit.
+        // Create: generate kata sandi acak yang kuat, lalu tampilkan sekali agar
+        // admin bisa menyalin & memberikannya ke pengguna.
+        $plainPassword = Str::password(14);
+        $data['password'] = $plainPassword;
+
+        $user = new User($data);
         $user->email_verified_at = $this->email_verified ? now() : null;
         $user->save();
-
         $user->syncRoles($this->selectedRoles);
 
-        session()->flash('toast', ['type' => 'success', 'message' => $message]);
+        $this->generatedPassword = $plainPassword;
+        $this->showCredentials = true;
+
+        // Jangan redirect: modal kredensial harus tampil dulu (lihat finishCreate()).
+        return null;
+    }
+
+    /** Tutup modal kredensial & lanjut ke daftar pengguna. */
+    public function finishCreate()
+    {
+        session()->flash('toast', ['type' => 'success', 'message' => 'Pengguna ditambahkan.']);
 
         return $this->redirectRoute('system.users', navigate: true);
     }

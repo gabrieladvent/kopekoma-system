@@ -4,6 +4,7 @@ namespace App\Livewire\System;
 
 use App\Models\User;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -12,6 +13,13 @@ class Users extends Component
     use WithPagination;
 
     public string $search = '';
+
+    /** Kredensial hasil reset password — ditampilkan sekali lewat modal. */
+    public bool $showResetPassword = false;
+
+    public ?string $resetPasswordValue = null;
+
+    public ?string $resetPasswordUserName = null;
 
     public function mount(): void
     {
@@ -66,9 +74,49 @@ class Users extends Component
 
         $user->update(['is_active' => ! $user->is_active]);
 
+        // Dinonaktifkan → hapus sesinya supaya langsung ter-logout dari semua perangkat.
+        if (! $user->is_active) {
+            $user->invalidateSessions();
+        }
+
         $this->dispatch('toast', type: 'success', message: $user->is_active
             ? 'Pengguna diaktifkan.'
-            : 'Pengguna dinonaktifkan.');
+            : 'Pengguna dinonaktifkan. Sesi loginnya telah diakhiri.');
+    }
+
+    /**
+     * Reset paksa password pengguna: generate password acak baru, akhiri seluruh
+     * sesi login pengguna tsb (force logout), lalu tampilkan password baru sekali
+     * lewat modal agar admin bisa menyalin & menyerahkannya.
+     */
+    public function resetPassword(int $id): void
+    {
+        abort_unless($this->canManage(), 403);
+
+        $user = User::find($id);
+
+        if (! $user) {
+            return;
+        }
+
+        if ($user->is(auth()->user())) {
+            $this->dispatch('toast', type: 'danger', message: 'Gunakan halaman Profil untuk mengganti password Anda sendiri.');
+
+            return;
+        }
+
+        $plain = Str::password(14);
+        $user->update(['password' => $plain]);
+        $user->invalidateSessions(); // force logout semua perangkat
+
+        $this->resetPasswordValue = $plain;
+        $this->resetPasswordUserName = $user->name;
+        $this->showResetPassword = true;
+    }
+
+    public function closeResetPassword(): void
+    {
+        $this->reset('showResetPassword', 'resetPasswordValue', 'resetPasswordUserName');
     }
 
     public function render(): View

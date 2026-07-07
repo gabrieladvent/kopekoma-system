@@ -74,7 +74,7 @@
                         ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist],
                     ],
                     'Master' => [
-                        ['Anggota', 'users', 'master.members'],
+                        ['Nasabah Koperasi', 'users', 'master.members'],
                         ['Golongan', 'academic-cap', 'master.grades'],
                         ['OPD / Instansi', 'building-office', 'master.agencies']
                     ],

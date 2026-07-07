@@ -2,7 +2,7 @@
 
 use App\Livewire\Profile\EditProfile;
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use App\Notifications\VerifyEmail;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -85,12 +85,12 @@ it('changes the password with the correct current password', function () {
     Livewire::actingAs($user)
         ->test(EditProfile::class)
         ->set('current_password', 'password')
-        ->set('password', 'new-secret-password')
-        ->set('password_confirmation', 'new-secret-password')
+        ->set('password', 'new-secret-pass1')
+        ->set('password_confirmation', 'new-secret-pass1')
         ->call('savePassword')
         ->assertHasNoErrors();
 
-    expect(Hash::check('new-secret-password', $user->fresh()->password))->toBeTrue();
+    expect(Hash::check('new-secret-pass1', $user->fresh()->password))->toBeTrue();
 });
 
 it('rejects a password change with the wrong current password', function () {

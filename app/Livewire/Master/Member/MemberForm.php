@@ -7,6 +7,7 @@ use App\Models\Grade;
 use App\Models\Member;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -19,11 +20,23 @@ class MemberForm extends Component
     public ?string $memberId = null;
 
     /**
-     * Berkas baru yang akan dilampirkan saat form disimpan (opsional).
+     * Antrean berkas yang akan dilampirkan saat form disimpan (terakumulasi
+     * lintas beberapa kali pilih berkas — lihat updatedNewUploads()).
      *
      * @var array<int, TemporaryUploadedFile>
      */
     public array $uploads = [];
+
+    /**
+     * Input berkas sementara (transient). Tiap kali user memilih berkas,
+     * isinya digabung ke $uploads lalu dikosongkan, sehingga user bisa
+     * menambah berkas dalam beberapa kali pilih (multi-dokumen).
+     *
+     * @var array<int, TemporaryUploadedFile>
+     */
+    public array $newUploads = [];
+
+    public const MAX_DOCUMENTS = 10;
 
     // Identitas
     public string $member_number = '';
@@ -155,16 +168,25 @@ class MemberForm extends Component
             'mandatory_savings_amount' => ['required', 'integer', 'min:0'],
             'payroll_account_number' => ['required', 'string', 'max:30'],
             'bank_name' => ['nullable', 'string', 'max:50'],
-            'phone_number' => ['required', 'string', 'max:15'],
+            'phone_number' => ['required', 'string', 'max:15', 'regex:/^[0-9]{8,15}$/'],
             'address' => ['required', 'string'],
             'join_date' => ['required', 'date'],
             'statusForm' => ['required', Rule::in(['Aktif', 'Non-Aktif', 'Keluar', 'Meninggal'])],
             'exit_date' => [Rule::requiredIf(in_array($this->statusForm, ['Keluar', 'Meninggal'], true)), 'nullable', 'date'],
             'heir_name' => ['required', 'string', 'max:100'],
             'heir_relationship' => ['required', Rule::in(array_keys(Member::HEIR_RELATIONSHIPS))],
-            'heir_phone_number' => ['required', 'string', 'max:15'],
-            'uploads' => ['nullable', 'array', 'max:10'],
+            'heir_phone_number' => ['required', 'string', 'max:15', 'regex:/^[0-9]{8,15}$/'],
+            'uploads' => ['nullable', 'array', 'max:'.self::MAX_DOCUMENTS],
             'uploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'newUploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+        ];
+    }
+
+    protected function messages(): array
+    {
+        return [
+            'phone_number.regex' => 'No. HP hanya boleh berisi angka (8–15 digit), tanpa huruf atau simbol.',
+            'heir_phone_number.regex' => 'No. HP ahli waris hanya boleh berisi angka (8–15 digit), tanpa huruf atau simbol.',
         ];
     }
 
@@ -193,7 +215,30 @@ class MemberForm extends Component
             'heir_relationship' => 'hubungan ahli waris',
             'heir_phone_number' => 'no. HP ahli waris',
             'uploads.*' => 'berkas',
+            'newUploads.*' => 'berkas',
         ];
+    }
+
+    /**
+     * Setiap kali user memilih berkas (bisa beberapa sekaligus), validasi lalu
+     * gabungkan ke antrean $uploads sehingga user dapat menambah dokumen dalam
+     * beberapa kali pilih. Ini yang memungkinkan multi-dokumen sebenarnya.
+     */
+    public function updatedNewUploads(): void
+    {
+        $this->validate([
+            'newUploads.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+        ], attributes: ['newUploads.*' => 'berkas']);
+
+        foreach ($this->newUploads as $file) {
+            if (count($this->uploads) >= self::MAX_DOCUMENTS) {
+                $this->dispatch('toast', type: 'warning', message: 'Maksimal '.self::MAX_DOCUMENTS.' berkas.');
+                break;
+            }
+            $this->uploads[] = $file;
+        }
+
+        $this->newUploads = [];
     }
 
     /** Buang satu berkas dari antrean unggah sebelum form disimpan. */
@@ -226,7 +271,16 @@ class MemberForm extends Component
             ? $this->authorize('update', Member::findOrFail($this->memberId))
             : $this->authorize('create', Member::class);
 
-        $validated = $this->validate();
+        try {
+            $validated = $this->validate();
+        } catch (ValidationException $e) {
+            // Beri sinyal jelas ke user: toast + scroll ke isian pertama yang
+            // bermasalah, supaya kesalahan tidak "diam-diam" di tengah form panjang.
+            $this->dispatch('toast', type: 'danger', message: 'Ada isian yang belum benar. Periksa bagian yang ditandai merah.');
+            $this->dispatch('scroll-to-error');
+
+            throw $e;
+        }
 
         $exit = in_array($validated['statusForm'], ['Keluar', 'Meninggal'], true)
             ? $validated['exit_date']
