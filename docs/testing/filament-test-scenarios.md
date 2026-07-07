@@ -1,4 +1,4 @@
-# Skenario Pengujian — Filament Resources & Pages (KOPEKOMA)
+# Skenario Pengujian — Filament Resources & Pages (KOPEKOMA Koperasi System)
 
 > Dokumen ini memetakan skenario uji **positif (+)** dan **negatif (−)** untuk seluruh Filament Resource & Page yang ada.
 > Format tabel dirancang agar mudah dikonversi ke Excel (1 baris = 1 test case).
