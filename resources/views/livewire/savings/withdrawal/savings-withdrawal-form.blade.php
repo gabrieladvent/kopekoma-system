@@ -85,9 +85,9 @@
                         @error('withdrawal_date')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                     </div>
 
-                    <div class="space-y-1">
+                    <div class="space-y-1" x-data="{ method: @entangle('disbursement_method') }">
                         <label for="disbursement_method" class="block text-sm font-medium text-text">Jenis Pencairan <span class="text-muted">(opsional)</span></label>
-                        <select id="disbursement_method" wire:model="disbursement_method"
+                        <select id="disbursement_method" x-model="method"
                                 @class([
                                     'h-10 w-full rounded-lg border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
                                     'border-border' => ! $errors->has('disbursement_method'),
@@ -99,6 +99,21 @@
                             @endforeach
                         </select>
                         @error('disbursement_method')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+
+                        {{-- Rekening tujuan — tampil saat transfer dipilih. --}}
+                        <div x-show="method === 'transfer'" x-cloak class="mt-2 rounded-lg border border-border bg-bg/50 p-3">
+                            <p class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                <x-ui.icon name="banknotes" class="h-3.5 w-3.5" /> Rekening Tujuan
+                            </p>
+                            @if (filled($memberAccountNumber))
+                                <div class="mt-1.5 space-y-0.5 text-sm">
+                                    <p class="text-text"><span class="text-muted">Bank:</span> <span class="font-medium">{{ $memberBankName ?: '—' }}</span></p>
+                                    <p class="font-mono font-medium text-text">{{ $memberAccountNumber }}</p>
+                                </div>
+                            @else
+                                <p class="mt-1.5 text-xs text-warning">Anggota belum memiliki data rekening. Lengkapi di data anggota sebelum transfer.</p>
+                            @endif
+                        </div>
                     </div>
 
                     <div class="space-y-1 sm:col-span-2">

@@ -6,6 +6,7 @@ use App\Livewire\Savings\Withdrawal\SavingsWithdrawals;
 use App\Models\Installment;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\MemberHolidaySaving;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
@@ -60,6 +61,13 @@ function memberWithWithdrawableBalance(int $sukarela = 200000, int $holiday = 15
         'amount' => $holiday,
         'period_month' => "{$year}-06-01",
         'is_reversal' => false,
+    ]);
+
+    // Baris Hari Raya hanya ditawarkan bila ada registrasi AKTIF utk tahun tsb.
+    MemberHolidaySaving::factory()->create([
+        'member_id' => $member->id,
+        'period_year' => $year,
+        'is_active' => true,
     ]);
 
     return $member;

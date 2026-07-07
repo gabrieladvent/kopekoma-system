@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\VerifyEmail;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasAvatar;
@@ -11,7 +12,9 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Permission\Traits\HasRoles;
@@ -76,6 +79,41 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, MustVerif
         return LogOptions::defaults()
             ->logOnly(['name', 'email', 'is_active', 'email_verified_at'])
             ->logOnlyDirty();
+    }
+
+    /**
+     * Kirim email verifikasi memakai notifikasi berbranding koperasi
+     * (menggantikan template bawaan Laravel).
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerifyEmail);
+    }
+
+    /**
+     * Hapus seluruh sesi login milik user ini dari penyimpanan sesi database,
+     * dan cabut remember-token sehingga cookie "ingat saya" di perangkat lama
+     * ikut mati. Efeknya: user langsung ter-logout dari semua perangkat pada
+     * request berikutnya. Dipakai saat akun dinonaktifkan / password direset.
+     *
+     * @param  string|null  $exceptSessionId  sesi yang dipertahankan (mis. sesi
+     *                                        perangkat yang baru saja login) — untuk penegakan satu-perangkat.
+     */
+    public function invalidateSessions(?string $exceptSessionId = null): void
+    {
+        // Cabut remember-token lama agar cookie recaller perangkat lain invalid.
+        if ($exceptSessionId === null) {
+            $this->forceFill(['remember_token' => Str::random(60)])->save();
+        }
+
+        if (config('session.driver') !== 'database') {
+            return;
+        }
+
+        DB::table(config('session.table', 'sessions'))
+            ->where('user_id', $this->getKey())
+            ->when($exceptSessionId !== null, fn ($query) => $query->where('id', '!=', $exceptSessionId))
+            ->delete();
     }
 
     /**

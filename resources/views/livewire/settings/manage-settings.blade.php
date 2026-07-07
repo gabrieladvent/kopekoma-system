@@ -332,11 +332,11 @@
     <div x-show="tab === 'koperasi'" x-transition.opacity.duration.200ms x-cloak class="space-y-6">
         <x-ui.card title="Simpanan">
             <div class="grid gap-5 sm:grid-cols-3">
-                <x-ui.input label="Simpanan Pokok (sekali)" type="number" wire:model="savings_pokok_amount"
+                <x-ui.money-input label="Simpanan Pokok (sekali)" model="savings_pokok_amount"
                     :error="$errors->first('savings_pokok_amount')" />
-                <x-ui.input label="Wajib Belanja / Bulan" type="number" wire:model="savings_wajib_belanja_amount"
+                <x-ui.money-input label="Wajib Belanja / Bulan" model="savings_wajib_belanja_amount"
                     :error="$errors->first('savings_wajib_belanja_amount')" />
-                <x-ui.input label="Minimal Setor Sukarela" type="number" wire:model="savings_sukarela_min"
+                <x-ui.money-input label="Minimal Setor Sukarela" model="savings_sukarela_min"
                     :error="$errors->first('savings_sukarela_min')" />
             </div>
         </x-ui.card>
@@ -350,8 +350,8 @@
                     :error="$errors->first('loan_interest_rate')" />
                 <x-ui.input label="Tabungan Berjangka (× pokok)" type="number" step="0.00001"
                     wire:model="loan_time_deposit_rate" :error="$errors->first('loan_time_deposit_rate')" />
-                <x-ui.input label="Batas Pinjaman Jangka Pendek" type="number" wire:model="loan_short_term_max"
-                    :error="$errors->first('loan_short_term_max')" />
+                <x-ui.money-input label="Batas Pinjaman Jangka Pendek" model="loan_short_term_max"
+                    :error="$errors->first('loan_short_term_max')" hint="Nominal maksimal pinjaman jangka pendek." />
             </div>
         </x-ui.card>
     </div>

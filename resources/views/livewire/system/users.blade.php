@@ -86,6 +86,13 @@
                                             <x-ui.dropdown-item icon="power" wire:click="toggleActive({{ $user->id }})">
                                                 {{ $user->is_active ? 'Nonaktifkan' : 'Aktifkan' }}
                                             </x-ui.dropdown-item>
+                                            <x-ui.dropdown-item icon="key"
+                                                x-on:click="$dispatch('confirm-action', {
+                                                    title: 'Reset password {{ $user->name }}?',
+                                                    message: 'Password baru akan dibuat otomatis dan seluruh sesi login pengguna ini diakhiri (ter-logout paksa).',
+                                                    confirmLabel: 'Reset Password', variant: 'danger',
+                                                    method: 'resetPassword', params: [{{ $user->id }}],
+                                                })">Reset Password</x-ui.dropdown-item>
                                             <div class="my-1 border-t border-border"></div>
                                             <x-ui.dropdown-item icon="trash" variant="danger"
                                                 x-on:click="$dispatch('confirm-action', {
@@ -114,6 +121,51 @@
     @if ($users->hasPages())
         <div>{{ $users->links() }}</div>
     @endif
+
+    {{-- Modal: password baru hasil reset (tampil sekali, bisa disalin). --}}
+    <div x-data="{ show: @entangle('showResetPassword'), copied: false,
+                   copy() {
+                       navigator.clipboard.writeText($refs.pwd.value).then(() => {
+                           this.copied = true;
+                           setTimeout(() => this.copied = false, 2000);
+                       });
+                   } }"
+         x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div x-show="show" x-transition.opacity class="absolute inset-0 bg-black/40"></div>
+        <div x-show="show"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+             role="dialog" aria-modal="true"
+             class="relative w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-success/10 text-success">
+                    <x-ui.icon name="key" class="h-5 w-5" />
+                </span>
+                <div>
+                    <h3 class="text-base font-semibold tracking-tight text-text">Password direset</h3>
+                    <p class="mt-1 text-xs text-muted">Password baru untuk <span class="font-medium text-text">{{ $resetPasswordUserName }}</span>. Sesi lamanya telah diakhiri. Salin & serahkan — password ini <span class="font-medium text-danger">hanya ditampilkan sekali</span>.</p>
+                </div>
+            </div>
+
+            <div class="mt-5 space-y-1.5">
+                <label class="block text-sm font-medium text-text">Password Baru</label>
+                <div class="flex items-center gap-2">
+                    <input x-ref="pwd" type="text" readonly value="{{ $resetPasswordValue }}"
+                           class="h-10 w-full rounded-lg border border-border bg-bg px-3 font-mono text-sm text-text focus-visible:outline-none">
+                    <button type="button" @click="copy()"
+                            class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-text transition hover:bg-border/50">
+                        <x-ui.icon name="document" class="h-4 w-4" />
+                        <span x-show="! copied">Salin</span>
+                        <span x-show="copied" x-cloak class="text-success">Tersalin!</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end">
+                <x-ui.button type="button" wire:click="closeResetPassword">Selesai</x-ui.button>
+            </div>
+        </div>
+    </div>
 
     <x-ui.confirm-modal />
     <x-ui.toast-host />

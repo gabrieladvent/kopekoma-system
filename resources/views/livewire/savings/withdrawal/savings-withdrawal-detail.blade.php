@@ -126,6 +126,21 @@
                         </dt>
                         <dd class="mt-1 text-sm text-text">{{ \App\Filament\Resources\SavingsWithdrawalResource::DISBURSEMENT_METHODS[$withdrawal->disbursement_method] ?? '—' }}</dd>
                     </div>
+                    @if ($withdrawal->disbursement_method === 'transfer')
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="banknotes" class="h-3.5 w-3.5" /> Rekening Tujuan
+                            </dt>
+                            <dd class="mt-1 text-sm text-text">
+                                @if (filled($withdrawal->member?->payroll_account_number))
+                                    <span class="font-medium">{{ $withdrawal->member->bank_name ?: 'Bank —' }}</span>
+                                    <span class="ml-1 font-mono">{{ $withdrawal->member->payroll_account_number }}</span>
+                                @else
+                                    <span class="text-warning">Belum ada data rekening anggota.</span>
+                                @endif
+                            </dd>
+                        </div>
+                    @endif
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="gift" class="h-3.5 w-3.5" /> Tahun Program

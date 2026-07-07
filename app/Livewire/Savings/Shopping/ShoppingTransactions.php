@@ -54,10 +54,15 @@ class ShoppingTransactions extends Component
         return $this->search !== '' || $this->reversal !== 'all';
     }
 
-    /** Reversal hanya atas baris asli (bukan reversal) + ber-permission (D7). */
+    /**
+     * Reversal hanya atas baris asli (bukan reversal), yang BELUM pernah
+     * di-reversal, + ber-permission (D7). Baris yang sudah di-reversal tidak
+     * lagi menampilkan tombol (aksinya memang akan ditolak ReverseTransaction).
+     */
     public function canReverse(ShoppingTransaction $record): bool
     {
         return ! $record->is_reversal
+            && ! $record->isReversed()
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
@@ -106,6 +111,7 @@ class ShoppingTransactions extends Component
     {
         $transactions = ShoppingTransaction::query()
             ->with('member:id,member_number,full_name')
+            ->with('reversal:id,reversal_of_id')
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where('transaction_number', 'like', $term)

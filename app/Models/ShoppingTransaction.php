@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -51,6 +52,24 @@ class ShoppingTransaction extends Model implements Reversible
     public function reversalOf(): BelongsTo
     {
         return $this->belongsTo(ShoppingTransaction::class, 'reversal_of_id');
+    }
+
+    /**
+     * Baris reversal yang menargetkan transaksi ini (paling banyak satu —
+     * `reversal_of_id` unik). Dipakai untuk menyembunyikan tombol Reversal
+     * pada transaksi yang sudah pernah di-reversal.
+     */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(ShoppingTransaction::class, 'reversal_of_id');
+    }
+
+    /** Apakah transaksi ini sudah pernah di-reversal. */
+    public function isReversed(): bool
+    {
+        return $this->relationLoaded('reversal')
+            ? $this->reversal !== null
+            : $this->reversal()->exists();
     }
 
     public function recordedBy(): BelongsTo

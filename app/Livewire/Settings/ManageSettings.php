@@ -182,6 +182,9 @@ class ManageSettings extends Component
     {
         $this->validate();
 
+        // Snapshot nilai lama SEBELUM dimutasi, untuk audit log (lihat item 2).
+        $before = $this->settingsSnapshot();
+
         $general = app(GeneralSettings::class);
 
         $general->theme_primary = $this->theme_primary ?: null;
@@ -234,7 +237,75 @@ class ManageSettings extends Component
         $coop->loan_short_term_max = (float) $this->loan_short_term_max;
         $coop->save();
 
+        // Catat perubahan ke audit log (hanya field yang benar-benar berubah).
+        $this->logSettingsChange($before, $this->settingsSnapshot());
+
         $this->dispatch('toast', type: 'success', message: 'Pengaturan tersimpan. Muat ulang halaman untuk menerapkan tema baru ke seluruh aplikasi.');
+    }
+
+    /**
+     * Ambil snapshot nilai pengaturan saat ini untuk perbandingan audit.
+     * Password SMTP tidak disimpan mentah — hanya penanda terisi/kosong.
+     *
+     * @return array<string, string>
+     */
+    private function settingsSnapshot(): array
+    {
+        $general = app(GeneralSettings::class);
+        $mail = app(MailSettings::class);
+        $coop = app(CooperativeSettings::class);
+
+        return [
+            'Nama Aplikasi' => (string) $general->app_name,
+            'Warna Primer' => (string) $general->theme_primary,
+            'Warna Sekunder' => (string) $general->theme_secondary,
+            'Logo' => (string) $general->logo_path,
+            'Favicon' => (string) $general->favicon_path,
+            'Jumlah Gambar Login' => (string) count($general->login_background_images ?? []),
+            'SMTP Host' => (string) $mail->mail_host,
+            'SMTP Port' => (string) $mail->mail_port,
+            'SMTP Username' => (string) $mail->mail_username,
+            'SMTP Password' => filled($mail->mail_password) ? '••••••' : '(kosong)',
+            'SMTP Enkripsi' => (string) $mail->mail_encryption,
+            'Email Pengirim' => (string) $mail->mail_from_address,
+            'Nama Pengirim' => (string) $mail->mail_from_name,
+            'Simpanan Pokok' => (string) $coop->savings_pokok_amount,
+            'Wajib Belanja / Bulan' => (string) $coop->savings_wajib_belanja_amount,
+            'Minimal Setor Sukarela' => (string) $coop->savings_sukarela_min,
+            'Biaya Admin Pinjaman' => (string) $coop->loan_admin_fee_rate,
+            'Rasio SWP' => (string) $coop->loan_swp_rate,
+            'Rasio Jasa' => (string) $coop->loan_interest_rate,
+            'Rasio Tabungan Berjangka' => (string) $coop->loan_time_deposit_rate,
+            'Batas Pinjaman Jangka Pendek' => (string) $coop->loan_short_term_max,
+        ];
+    }
+
+    /**
+     * Log perubahan pengaturan ke activity log — hanya field yang nilainya
+     * berubah, lengkap dengan nilai lama → nilai baru per field.
+     *
+     * @param  array<string, string>  $before
+     * @param  array<string, string>  $after
+     */
+    private function logSettingsChange(array $before, array $after): void
+    {
+        $changes = [];
+        foreach ($after as $label => $newValue) {
+            $oldValue = $before[$label] ?? '';
+            if ($oldValue !== $newValue) {
+                $changes[$label] = ['old' => $oldValue, 'new' => $newValue];
+            }
+        }
+
+        if ($changes === []) {
+            return;
+        }
+
+        activity()
+            ->causedBy(auth()->user())
+            ->event('updated')
+            ->withProperties(['changes' => $changes])
+            ->log('Memperbarui pengaturan: '.implode(', ', array_keys($changes)));
     }
 
     public function sendTestEmail(): void
