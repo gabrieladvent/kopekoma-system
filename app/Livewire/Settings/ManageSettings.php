@@ -72,6 +72,17 @@ class ManageSettings extends Component
 
     public ?float $loan_short_term_max = null;
 
+    // --- Identitas Koperasi (kop laporan PDF) ---
+    public ?string $cooperative_address = null;
+
+    public ?string $cooperative_city = null;
+
+    public ?string $cooperative_phone = null;
+
+    public ?string $signatory_name = null;
+
+    public ?string $signatory_position = null;
+
     // Email tes
     public string $testRecipient = '';
 
@@ -104,6 +115,11 @@ class ManageSettings extends Component
         $this->loan_interest_rate = $coop->loan_interest_rate;
         $this->loan_time_deposit_rate = $coop->loan_time_deposit_rate;
         $this->loan_short_term_max = $coop->loan_short_term_max;
+        $this->cooperative_address = $coop->cooperative_address;
+        $this->cooperative_city = $coop->cooperative_city;
+        $this->cooperative_phone = $coop->cooperative_phone;
+        $this->signatory_name = $coop->signatory_name;
+        $this->signatory_position = $coop->signatory_position;
 
         $this->testRecipient = (string) (auth()->user()?->email ?? '');
     }
@@ -135,6 +151,11 @@ class ManageSettings extends Component
             'loan_interest_rate' => ['required', 'numeric', 'min:0'],
             'loan_time_deposit_rate' => ['required', 'numeric', 'min:0'],
             'loan_short_term_max' => ['required', 'numeric', 'min:0'],
+            'cooperative_address' => ['nullable', 'string', 'max:255'],
+            'cooperative_city' => ['nullable', 'string', 'max:100'],
+            'cooperative_phone' => ['nullable', 'string', 'max:50'],
+            'signatory_name' => ['nullable', 'string', 'max:100'],
+            'signatory_position' => ['nullable', 'string', 'max:100'],
         ];
     }
 
@@ -235,6 +256,11 @@ class ManageSettings extends Component
         $coop->loan_interest_rate = (float) $this->loan_interest_rate;
         $coop->loan_time_deposit_rate = (float) $this->loan_time_deposit_rate;
         $coop->loan_short_term_max = (float) $this->loan_short_term_max;
+        $coop->cooperative_address = $this->cooperative_address ?: null;
+        $coop->cooperative_city = $this->cooperative_city ?: null;
+        $coop->cooperative_phone = $this->cooperative_phone ?: null;
+        $coop->signatory_name = $this->signatory_name ?: null;
+        $coop->signatory_position = $this->signatory_position ?: null;
         $coop->save();
 
         // Catat perubahan ke audit log (hanya field yang benar-benar berubah).
@@ -277,6 +303,11 @@ class ManageSettings extends Component
             'Rasio Jasa' => (string) $coop->loan_interest_rate,
             'Rasio Tabungan Berjangka' => (string) $coop->loan_time_deposit_rate,
             'Batas Pinjaman Jangka Pendek' => (string) $coop->loan_short_term_max,
+            'Alamat Koperasi' => (string) $coop->cooperative_address,
+            'Kota Koperasi' => (string) $coop->cooperative_city,
+            'Telepon Koperasi' => (string) $coop->cooperative_phone,
+            'Nama Penandatangan' => (string) $coop->signatory_name,
+            'Jabatan Penandatangan' => (string) $coop->signatory_position,
         ];
     }
 

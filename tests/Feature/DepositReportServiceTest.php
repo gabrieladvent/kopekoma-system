@@ -135,3 +135,29 @@ it('returns empty total and no rows when the period has no transactions', functi
     expect($this->service->totals($filters))->toBe('0.00')
         ->and($this->service->rows($filters))->toHaveCount(0);
 });
+
+it('groups by OPD then member with net subtotals and a grand total consistent with totals()', function () {
+    $agencyA = Agency::factory()->create(['agency_name' => 'Dinas A']);
+    $agencyB = Agency::factory()->create(['agency_name' => 'Dinas B']);
+    $memberA = Member::factory()->create(['agency_id' => $agencyA->id]);
+    $memberB = Member::factory()->create(['agency_id' => $agencyB->id]);
+
+    $original = makeDeposit($memberA, ['amount' => 100000]);
+    makeDeposit($memberA, ['amount' => 30000, 'is_reversal' => true, 'reversal_of_id' => $original->id]);
+    makeDeposit($memberB, ['amount' => 50000]);
+
+    $filters = ['basis' => 'period_month', 'start' => '2026-06-01', 'end' => '2026-06-30'];
+    $grouped = $this->service->grouped($filters);
+
+    expect($grouped['groups'])->toHaveCount(2)
+        // Grand total = (100000 − 30000) + 50000 = 120000, konsisten dengan totals().
+        ->and($grouped['grand_total'])->toBe('120000.00')
+        ->and($grouped['grand_total'])->toBe($this->service->totals($filters));
+
+    $dinasA = collect($grouped['groups'])->firstWhere('agency', 'Dinas A');
+    expect($dinasA['subtotal'])->toBe('70000.00')
+        ->and($dinasA['members'])->toHaveCount(1)
+        ->and($dinasA['members'][0]['subtotal'])->toBe('70000.00')
+        // Baris reversal tetap ikut di grup (transparansi audit).
+        ->and($dinasA['members'][0]['rows'])->toHaveCount(2);
+});

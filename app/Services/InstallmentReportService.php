@@ -44,6 +44,56 @@ class InstallmentReportService
     }
 
     /**
+     * Baris ter-grup OPD → anggota untuk PDF, dengan subtotal per anggota, per
+     * OPD, dan grand total (semua bcmath, net of reversal). Dibangun dari rows()
+     * — satu query — jadi grand total konsisten dengan totals(). OPD/anggota
+     * ditelusuri lewat rantai loan.member.agency.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{groups: array<int, array<string, mixed>>, grand_total: string}
+     */
+    public function grouped(array $filters): array
+    {
+        $rows = $this->rows($filters);
+
+        $groups = [];
+        $grand = '0';
+
+        foreach ($rows->groupBy(fn (Installment $r): string => $r->loan?->member?->agency?->agency_name ?? '—') as $agency => $agencyRows) {
+            $members = [];
+            $agencySubtotal = '0';
+
+            foreach ($agencyRows->groupBy(fn (Installment $r): string => (string) ($r->loan?->member_id ?? 0)) as $memberRows) {
+                $member = $memberRows->first()?->loan?->member;
+                $memberSubtotal = '0';
+
+                foreach ($memberRows as $r) {
+                    $memberSubtotal = bcadd($memberSubtotal, (string) $r->signed_amount, self::SCALE);
+                }
+
+                $members[] = [
+                    'number' => $member?->member_number,
+                    'name' => $member?->full_name,
+                    'rows' => $memberRows,
+                    'subtotal' => $memberSubtotal,
+                ];
+
+                $agencySubtotal = bcadd($agencySubtotal, $memberSubtotal, self::SCALE);
+            }
+
+            $groups[] = [
+                'agency' => (string) $agency,
+                'members' => $members,
+                'subtotal' => $agencySubtotal,
+            ];
+
+            $grand = bcadd($grand, $agencySubtotal, self::SCALE);
+        }
+
+        return ['groups' => $groups, 'grand_total' => $grand];
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      * @return Builder<Installment>
      */

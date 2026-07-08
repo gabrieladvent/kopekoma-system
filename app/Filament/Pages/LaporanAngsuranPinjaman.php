@@ -3,10 +3,13 @@
 namespace App\Filament\Pages;
 
 use App\Exports\InstallmentReportExport;
+use App\Filament\Pages\Concerns\LogsReportExport;
 use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\Member;
 use App\Services\InstallmentReportService;
+use App\Support\ReportLetterhead;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Forms;
@@ -19,10 +22,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LaporanAngsuranPinjaman extends Page implements HasForms
 {
     use InteractsWithForms;
+    use LogsReportExport;
 
     /** Lihat/preview on-screen — petugas + pengurus (grant di RolePermissionSeeder). */
     public const PERMISSION = 'access_laporan_angsuran';
@@ -67,6 +72,12 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
                 ->color('success')
                 ->visible(fn (): bool => auth()->user()?->can(self::EXPORT_PERMISSION) ?? false)
                 ->action(fn (): BinaryFileResponse => $this->exportExcel()),
+            Action::make('exportPdf')
+                ->label('Export PDF')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('danger')
+                ->visible(fn (): bool => auth()->user()?->can(self::EXPORT_PERMISSION) ?? false)
+                ->action(fn (): StreamedResponse => $this->exportPdf()),
         ];
     }
 
@@ -79,12 +90,68 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
 
         $service = app(InstallmentReportService::class);
 
+        $rows = $service->rows($filters);
+
+        $this->logReportExport('angsuran', 'excel', $filters, $rows->count());
+
         $filename = 'laporan-angsuran-'.now()->format('Ymd-His').'.xlsx';
 
         return Excel::download(
-            new InstallmentReportExport($service->rows($filters), $service->totals($filters)),
+            new InstallmentReportExport($rows, $service->totals($filters)),
             $filename,
         );
+    }
+
+    public function exportPdf(): StreamedResponse
+    {
+        abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
+
+        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
+        $filters = $this->form->getState();
+
+        $grouped = app(InstallmentReportService::class)->grouped($filters);
+
+        $this->logReportExport('angsuran', 'pdf', $filters, $this->countGroupedRows($grouped));
+
+        $pdf = Pdf::loadView('reports.installment-pdf', [
+            'title' => static::$title,
+            'subtitle' => $this->filterSummary($filters),
+            'kop' => ReportLetterhead::make(),
+            'groups' => $grouped['groups'],
+            'grandTotal' => $grouped['grand_total'],
+            'generatedAt' => now(),
+        ]);
+
+        $filename = 'laporan-angsuran-'.now()->format('Ymd-His').'.pdf';
+
+        return response()->streamDownload(
+            fn () => print ($pdf->output()),
+            $filename,
+            ['Content-Type' => 'application/pdf'],
+        );
+    }
+
+    /**
+     * Ringkasan filter yang diterapkan, untuk sub-judul PDF (jejak audit visual).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function filterSummary(array $filters): string
+    {
+        $parts = [
+            'Periode Bayar: '.Carbon::parse($filters['start'])->format('d/m/Y').' – '.Carbon::parse($filters['end'])->format('d/m/Y'),
+        ];
+
+        if (! empty($filters['agency_id'])) {
+            $parts[] = 'OPD: '.(Agency::find($filters['agency_id'])?->agency_name ?? $filters['agency_id']);
+        }
+
+        if (! empty($filters['member_id'])) {
+            $member = Member::withTrashed()->find($filters['member_id']);
+            $parts[] = 'Anggota: '.($member?->full_name ?? $filters['member_id']);
+        }
+
+        return implode('  |  ', $parts);
     }
 
     public function mount(): void

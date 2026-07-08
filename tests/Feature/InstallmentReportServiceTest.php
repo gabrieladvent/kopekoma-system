@@ -91,3 +91,26 @@ it('returns empty total and no rows for an empty period', function () {
     expect($this->service->totals($filters))->toBe('0.00')
         ->and($this->service->rows($filters))->toHaveCount(0);
 });
+
+it('groups by OPD then member with net subtotals via the loan.member chain', function () {
+    $agency = Agency::factory()->create(['agency_name' => 'Dinas X']);
+    $member = Member::factory()->create(['agency_id' => $agency->id]);
+    $loan = Loan::factory()->create(['member_id' => $member->id]);
+
+    $original = makeInstallment($loan, ['amount_paid' => 1000000, 'installment_seq' => 1]);
+    makeInstallment($loan, [
+        'amount_paid' => 400000, 'installment_seq' => 2,
+        'is_reversal' => true, 'reversal_of_id' => $original->id,
+    ]);
+
+    $filters = ['start' => '2026-06-01', 'end' => '2026-06-30'];
+    $grouped = $this->service->grouped($filters);
+
+    expect($grouped['groups'])->toHaveCount(1)
+        ->and($grouped['groups'][0]['agency'])->toBe('Dinas X')
+        // net = 1000000 − 400000 = 600000, konsisten dengan totals().
+        ->and($grouped['grand_total'])->toBe('600000.00')
+        ->and($grouped['grand_total'])->toBe($this->service->totals($filters))
+        ->and($grouped['groups'][0]['members'][0]['subtotal'])->toBe('600000.00')
+        ->and($grouped['groups'][0]['members'][0]['rows'])->toHaveCount(2);
+});

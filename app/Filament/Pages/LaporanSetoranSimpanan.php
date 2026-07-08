@@ -3,11 +3,14 @@
 namespace App\Filament\Pages;
 
 use App\Exports\DepositReportExport;
+use App\Filament\Pages\Concerns\LogsReportExport;
 use App\Filament\Resources\SavingsDepositResource;
 use App\Models\Agency;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Services\DepositReportService;
+use App\Support\ReportLetterhead;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Forms;
@@ -20,10 +23,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LaporanSetoranSimpanan extends Page implements HasForms
 {
     use InteractsWithForms;
+    use LogsReportExport;
 
     /** Lihat/preview on-screen — petugas + pengurus (grant di RolePermissionSeeder). */
     public const PERMISSION = 'access_laporan_setoran';
@@ -69,6 +74,12 @@ class LaporanSetoranSimpanan extends Page implements HasForms
                 ->color('success')
                 ->visible(fn (): bool => auth()->user()?->can(self::EXPORT_PERMISSION) ?? false)
                 ->action(fn (): BinaryFileResponse => $this->exportExcel()),
+            Action::make('exportPdf')
+                ->label('Export PDF')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('danger')
+                ->visible(fn (): bool => auth()->user()?->can(self::EXPORT_PERMISSION) ?? false)
+                ->action(fn (): StreamedResponse => $this->exportPdf()),
         ];
     }
 
@@ -81,12 +92,83 @@ class LaporanSetoranSimpanan extends Page implements HasForms
 
         $service = app(DepositReportService::class);
 
+        $rows = $service->rows($filters);
+
+        $this->logReportExport('setoran', 'excel', $filters, $rows->count());
+
         $filename = 'laporan-setoran-'.now()->format('Ymd-His').'.xlsx';
 
         return Excel::download(
-            new DepositReportExport($service->rows($filters), $service->totals($filters)),
+            new DepositReportExport($rows, $service->totals($filters)),
             $filename,
         );
+    }
+
+    public function exportPdf(): StreamedResponse
+    {
+        abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
+
+        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
+        $filters = $this->form->getState();
+
+        $grouped = app(DepositReportService::class)->grouped($filters);
+
+        $this->logReportExport('setoran', 'pdf', $filters, $this->countGroupedRows($grouped));
+
+        $pdf = Pdf::loadView('reports.deposit-pdf', [
+            'title' => static::$title,
+            'subtitle' => $this->filterSummary($filters),
+            'kop' => ReportLetterhead::make(),
+            'groups' => $grouped['groups'],
+            'grandTotal' => $grouped['grand_total'],
+            'generatedAt' => now(),
+            'savingsTypeLabel' => fn (?string $t): string => $this->savingsTypeLabel($t),
+            'depositMethodLabel' => fn (?string $m): string => $this->depositMethodLabel($m),
+        ]);
+
+        $filename = 'laporan-setoran-'.now()->format('Ymd-His').'.pdf';
+
+        return response()->streamDownload(
+            fn () => print ($pdf->output()),
+            $filename,
+            ['Content-Type' => 'application/pdf'],
+        );
+    }
+
+    /**
+     * Ringkasan filter yang diterapkan, untuk sub-judul PDF (jejak audit visual).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function filterSummary(array $filters): string
+    {
+        $parts = [
+            'Basis: '.(($filters['basis'] ?? '') === DepositReportService::BASIS_DEPOSIT_DATE
+                ? 'Tanggal Setor'
+                : 'Periode Potong Gaji'),
+            'Periode: '.Carbon::parse($filters['start'])->format('d/m/Y').' – '.Carbon::parse($filters['end'])->format('d/m/Y'),
+        ];
+
+        if (! empty($filters['savings_type'])) {
+            $parts[] = 'Jenis: '.collect((array) $filters['savings_type'])
+                ->map(fn (string $t): string => $this->savingsTypeLabel($t))
+                ->implode(', ');
+        }
+
+        if (! empty($filters['deposit_method'])) {
+            $parts[] = 'Metode: '.$this->depositMethodLabel($filters['deposit_method']);
+        }
+
+        if (! empty($filters['agency_id'])) {
+            $parts[] = 'OPD: '.(Agency::find($filters['agency_id'])?->agency_name ?? $filters['agency_id']);
+        }
+
+        if (! empty($filters['member_id'])) {
+            $member = Member::withTrashed()->find($filters['member_id']);
+            $parts[] = 'Anggota: '.($member?->full_name ?? $filters['member_id']);
+        }
+
+        return implode('  |  ', $parts);
     }
 
     public function mount(): void

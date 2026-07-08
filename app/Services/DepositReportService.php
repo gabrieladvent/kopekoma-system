@@ -53,6 +53,55 @@ class DepositReportService
     }
 
     /**
+     * Baris ter-grup OPD → anggota untuk PDF, dengan subtotal per anggota, per
+     * OPD, dan grand total (semua bcmath, net of reversal). Dibangun dari rows()
+     * — satu query, tak ada re-query — jadi grand total konsisten dengan totals().
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{groups: array<int, array<string, mixed>>, grand_total: string}
+     */
+    public function grouped(array $filters): array
+    {
+        $rows = $this->rows($filters);
+
+        $groups = [];
+        $grand = '0';
+
+        foreach ($rows->groupBy(fn (SavingsDeposit $r): string => $r->member?->agency?->agency_name ?? '—') as $agency => $agencyRows) {
+            $members = [];
+            $agencySubtotal = '0';
+
+            foreach ($agencyRows->groupBy(fn (SavingsDeposit $r): string => (string) ($r->member_id ?? 0)) as $memberRows) {
+                $first = $memberRows->first();
+                $memberSubtotal = '0';
+
+                foreach ($memberRows as $r) {
+                    $memberSubtotal = bcadd($memberSubtotal, (string) $r->signed_amount, self::SCALE);
+                }
+
+                $members[] = [
+                    'number' => $first->member?->member_number,
+                    'name' => $first->member?->full_name,
+                    'rows' => $memberRows,
+                    'subtotal' => $memberSubtotal,
+                ];
+
+                $agencySubtotal = bcadd($agencySubtotal, $memberSubtotal, self::SCALE);
+            }
+
+            $groups[] = [
+                'agency' => (string) $agency,
+                'members' => $members,
+                'subtotal' => $agencySubtotal,
+            ];
+
+            $grand = bcadd($grand, $agencySubtotal, self::SCALE);
+        }
+
+        return ['groups' => $groups, 'grand_total' => $grand];
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      * @return Builder<SavingsDeposit>
      */

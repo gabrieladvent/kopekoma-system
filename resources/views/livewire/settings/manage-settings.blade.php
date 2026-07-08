@@ -354,6 +354,46 @@
                     :error="$errors->first('loan_short_term_max')" hint="Nominal maksimal pinjaman jangka pendek." />
             </div>
         </x-ui.card>
+        <x-ui.card title="Identitas Koperasi (Kop Laporan)"
+            subtitle="Tampil di kop & blok tanda tangan pada laporan PDF (setoran & angsuran).">
+            <div class="grid gap-5 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                    <x-ui.input label="Alamat Koperasi" wire:model="cooperative_address"
+                        placeholder="Jl. Contoh No. 1, Kel. Dauh Puri, Kec. Denpasar Barat"
+                        hint="Baris alamat di bawah nama koperasi pada kop." :error="$errors->first('cooperative_address')" />
+                </div>
+                <x-ui.input label="Kota" wire:model="cooperative_city" placeholder="Denpasar"
+                    hint="Dipakai juga di baris tanggal blok tanda tangan (mis. “Denpasar, 08/07/2026”)."
+                    :error="$errors->first('cooperative_city')" />
+
+                {{-- Telepon dengan prefix +62 (visual). Simpan tanpa awalan; ditampilkan sebagai +62 di kop. --}}
+                <div class="space-y-1">
+                    <label class="block text-sm font-medium text-text">Telepon</label>
+                    <div @class([
+                        'flex items-center rounded-lg border bg-surface transition focus-within:ring-2 focus-within:ring-primary',
+                        'border-border' => ! $errors->first('cooperative_phone'),
+                        'border-danger focus-within:ring-danger' => $errors->first('cooperative_phone'),
+                    ])>
+                        <span class="pl-3 text-sm text-muted">+62</span>
+                        <input type="tel" inputmode="tel" wire:model="cooperative_phone"
+                            placeholder="812 3456 7890"
+                            class="h-10 w-full rounded-lg bg-transparent px-2 text-sm text-text placeholder:text-muted focus-visible:outline-none">
+                    </div>
+                    @if ($errors->first('cooperative_phone'))
+                        <p class="text-xs text-danger">{{ $errors->first('cooperative_phone') }}</p>
+                    @else
+                        <p class="text-xs text-muted">Tanpa awalan 0. Nomor tetap (mis. 361 234567) atau HP (mis. 812 3456 7890).</p>
+                    @endif
+                </div>
+
+                <x-ui.input label="Nama Penandatangan" wire:model="signatory_name"
+                    placeholder="mis. I Made Sudana"
+                    hint="Nama yang tercetak di blok tanda tangan laporan." :error="$errors->first('signatory_name')" />
+                <x-ui.input label="Jabatan Penandatangan" wire:model="signatory_position"
+                    placeholder="mis. Ketua / Sekretaris / Bendahara"
+                    hint="Tampil di atas nama penandatangan." :error="$errors->first('signatory_position')" />
+            </div>
+        </x-ui.card>
     </div>
 
     {{-- ===== KLIEN TOKO ===== --}}
