@@ -28,6 +28,9 @@ class RolePermissionSeeder extends Seeder
         'access_batch_salary_deduction',
         // Reversal pembayaran angsuran = uniform Petugas+ (D5/D7).
         'reverse_installment',
+        // Laporan: lihat/preview on-screen boleh Petugas+ (export terpisah, Pengurus-only).
+        'access_laporan_setoran',
+        'access_laporan_angsuran',
     ];
 
     private const CUSTOM_PENGURUS = [
@@ -43,6 +46,11 @@ class RolePermissionSeeder extends Seeder
         // Koreksi salah-input pinjaman = reversal seluruh record → Pengurus+ saja (D3/2d).
         'reverse_loan',
         'manage_settings',
+        // Laporan: akses view (juga di Petugas) + export PII finansial se-koperasi → Pengurus-only.
+        'access_laporan_setoran',
+        'access_laporan_angsuran',
+        'export_laporan_setoran',
+        'export_laporan_angsuran',
     ];
 
     private const CUSTOM_ADMIN_ONLY = [

@@ -33,7 +33,7 @@ class SavingsDepositResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-arrow-down-on-square-stack';
 
-    protected static ?string $navigationGroup = 'Simpanan';
+    protected static ?string $navigationGroup = 'Utama';
 
     protected static ?string $navigationLabel = 'Setoran Simpanan';
 
@@ -41,7 +41,7 @@ class SavingsDepositResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Setoran Simpanan';
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 20;
 
     public const SAVINGS_TYPES = [
         'pokok' => 'Simpanan Pokok',

@@ -16,7 +16,7 @@ class MemberSavingsBalanceResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-wallet';
 
-    protected static ?string $navigationGroup = 'Simpanan';
+    protected static ?string $navigationGroup = 'Utama';
 
     protected static ?string $navigationLabel = 'Saldo Anggota';
 
@@ -24,7 +24,7 @@ class MemberSavingsBalanceResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Saldo Anggota';
 
-    protected static ?int $navigationSort = 90;
+    protected static ?int $navigationSort = 30;
 
     // Halaman rekap, bukan CRUD: saldo dikelola lewat transaksi.
     public static function canCreate(): bool

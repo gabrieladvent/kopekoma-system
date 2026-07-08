@@ -30,13 +30,13 @@ class MemberResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationGroup = 'Master';
+    protected static ?string $navigationGroup = 'Master Data';
 
-    protected static ?string $navigationLabel = 'Anggota';
+    protected static ?string $navigationLabel = 'Nasabah';
 
     protected static ?string $modelLabel = 'Anggota';
 
-    protected static ?int $navigationSort = 90;
+    protected static ?int $navigationSort = 10;
 
     protected static ?string $pluralModelLabel = 'Anggota';
 

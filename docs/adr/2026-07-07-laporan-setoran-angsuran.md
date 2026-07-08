@@ -154,13 +154,13 @@ Seed (5) **sebelum** optimize:clear (6) agar permission cache rebuild bersih. Ti
 | 1a | `DepositReportService` — `rows()` (per-row signed CASE pakai `amount`, `withTrashed` member, eager `member.agency`) + `totals()` (grouped net, mirror `SavingsBalanceService`), basis periode + `deposit_method` filter | M | setelah 0 | Done |
 | 1b | `InstallmentReportService` — `rows()`/`totals()` pakai **`amount_paid`** total (tanpa split pokok/jasa — sudah diputuskan), rantai `loan.member.agency` | M | setelah 0, ∥ 1a | Done |
 | 1c | Unit test service: net reversal + bcmath presisi + baris `period_month` NULL + rekonsiliasi vs batch (wajib+potong_gaji) | M | setelah 1a/1b | Done |
-| 2a | Page `LaporanSetoranSimpanan` — filter (basis periode, savings_type, deposit_method, OPD, member) + validasi range ≤ 1 thn + preview | M | setelah 1a | Pending |
-| 2b | Page `LaporanAngsuranPinjaman` — filter (payment_date range ≤ 1 thn, OPD, member) + preview | M | setelah 1b | Pending |
-| 3a | Excel export (`FromCollection`+`WithMapping`) — **kolom whitelist** (`member_number`,`full_name`,`agency_name`+transaksi; TANPA nik/nip/rekening/alamat/heir), `abort_unless(export perm)` | M | setelah 2a/2b | Pending |
+| 2a | Page `LaporanSetoranSimpanan` — filter (basis periode, savings_type, deposit_method, OPD, member) + validasi range ≤ 1 thn + preview | M | setelah 1a | Done |
+| 2b | Page `LaporanAngsuranPinjaman` — filter (payment_date range ≤ 1 thn, OPD, member) + preview | M | setelah 1b | Done |
+| 3a | Excel export (`FromCollection`+`WithMapping`) — **kolom whitelist** (`member_number`,`full_name`,`agency_name`+transaksi; TANPA nik/nip/rekening/alamat/heir), `abort_unless(export perm)` | M | setelah 2a/2b | Done |
 | 3b | PDF export (dompdf) + Blade, kop dari `GeneralSettings` (`app_name`+`logo_path`) + field kop baru (item 7), kolom whitelist sama, `abort_unless` | M | setelah 2a/2b, 7 | Pending |
 | 3c | Activity log export: aktor(model) + **format(pdf/excel)** + semua filter (sentinel `ALL_OPD`/`ALL_MEMBER`) + row count; tanpa PII | S | setelah 3a/3b | Pending |
-| 3d | Verifikasi `config/excel.php` temp-file disk **private** + cleanup aktif (publish config bila perlu) | S | setelah 3a | Pending |
-| 4 | Permission **2 buah**: `access_laporan_*` (petugas+pengurus) + `export_laporan_*` (**pengurus-only**), di `RolePermissionSeeder` (array role → auto create+assign) + `RoleForm::CUSTOM_LABELS` + Page `PERMISSION`/`EXPORT_PERMISSION` + nav group "Laporan" | S | setelah 2a/2b | Pending |
+| 3d | Verifikasi `config/excel.php` temp-file disk **private** + cleanup aktif (publish config bila perlu) | S | setelah 3a | Done — default `local_path`=`storage/framework/cache/laravel-excel` (di luar web root), `remote_disk`=null, cleanup default aktif; publish tak perlu |
+| 4 | Permission **2 buah**: `access_laporan_*` (petugas+pengurus) + `export_laporan_*` (**pengurus-only**), di `RolePermissionSeeder` (array role → auto create+assign) + `RoleForm::CUSTOM_LABELS` + Page `PERMISSION`/`EXPORT_PERMISSION` + nav group "Laporan" | S | setelah 2a/2b | Done |
 | 5 | Feature test: filter + net benar, rekonsiliasi vs batch (scoped), **gating export pengurus-only + petugas ditolak**, export ter-log dgn format | M | setelah 3a/3b/3c | Pending |
 | 6 | **Deploy**: sisipkan `db:seed --class=RolePermissionSeeder --force` ke maintenance window (deploy.sh tak seed) + backup tabel permission dulu (syncPermissions destruktif) | S | saat deploy | Pending |
 | 7 | **Field settings baru untuk kop PDF** (alamat + penandatangan/pengurus) — migration settings + `CooperativeSettings`/`GeneralSettings` + input di halaman Settings | M | — | Pending |

@@ -37,7 +37,7 @@ class ShoppingTransactionResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Belanja Toko';
 
-    protected static ?int $navigationSort = 40;
+    protected static ?int $navigationSort = 30;
 
     /**
      * Saldo Wajib Belanja anggota (deposits − pemakaian). Null bila anggota
