@@ -40,7 +40,7 @@ class InstallmentResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Angsuran';
 
-    protected static ?int $navigationSort = 20;
+    protected static ?int $navigationSort = 10;
 
     public const PAYMENT_METHODS = [
         'potong_gaji' => 'Potong Gaji',

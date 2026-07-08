@@ -58,6 +58,10 @@ class RoleForm extends Component
         'approve_savings::withdrawal' => 'Setujui Penarikan (ACC)',
         'disburse_savings::withdrawal' => 'Cairkan Penarikan',
         'export_savings_recap' => 'Ekspor Rekap Simpanan',
+        'access_laporan_setoran' => 'Akses Laporan Setoran Simpanan',
+        'access_laporan_angsuran' => 'Akses Laporan Angsuran Pinjaman',
+        'export_laporan_setoran' => 'Ekspor Laporan Setoran Simpanan',
+        'export_laporan_angsuran' => 'Ekspor Laporan Angsuran Pinjaman',
         'manage_settings' => 'Kelola Pengaturan',
         'copy_store_client_secret' => 'Salin Secret Store Client',
     ];
