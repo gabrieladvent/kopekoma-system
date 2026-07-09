@@ -199,23 +199,25 @@ Seed (5) **sebelum** optimize:clear (6) agar permission cache rebuild bersih. Ti
 
 ## Verification
 
-- [ ] Filter rentang tanggal mengembalikan hanya transaksi dalam rentang (batas inklusif, cek boundary timezone).
-- [ ] Filter savings_type / OPD / anggota bisa dikombinasikan dan hasilnya benar.
-- [ ] Grand total & subtotal = signed net (terbayar − reversal), dihitung bcmath; baris reversal tetap tampil di detail.
-- [ ] **Rekonsiliasi (scoped)**: laporan setoran basis `period_month` + `savings_type=wajib` + `deposit_method=potong_gaji` + tanpa reversal, untuk satu OPD+periode = hasil `BatchSalaryDeduction` OPD+periode yang sama. (Tanpa scope ini angka TIDAK akan sama — itu ekspektasi benar.)
-- [ ] Setoran `sukarela`/`hari_raya` (`period_month` NULL) muncul di basis `deposit_date`, dan UI memperingatkan saat basis `period_month`.
-- [ ] Transaksi anggota **soft-deleted (resign)** tetap muncul di laporan historis (`withTrashed`).
-- [ ] Export Excel: kolom (termasuk `is_reversal`) & total cocok dengan preview.
-- [ ] Export PDF: kop koperasi tampil, subtotal per grup + grand total benar.
-- [ ] **Kolom export = whitelist**: NIK/NIP/rekening/alamat/heir TIDAK muncul di PDF/Excel.
-- [ ] Setiap export ter-log: aktor + **format (pdf/excel)** + filter (sentinel `ALL_OPD`/`ALL_MEMBER`) + row count; tanpa nilai PII.
-- [ ] **Gating export**: petugas bisa lihat page tapi **tak** bisa export (button hilang + `abort_unless` 403 kalau dipaksa); pengurus bisa export.
-- [ ] User tanpa `access_laporan_*` tidak bisa akses page (403, bukan white-screen).
-- [ ] `config/excel.php` temp-file disk private + cleanup aktif (tak ada residu XLSX PII di disk publik).
-- [ ] `EXPLAIN` query angsuran memakai index `payment_date`; query setoran basis `period_month` memakai index existing (bukan full scan).
-- [ ] Worst-case export (1 thn, semua OPD, tanpa filter anggota) tak timeout/OOM di server prod.
-- [ ] Periode kosong (tak ada transaksi) → laporan tampil rapi "tidak ada data", bukan error.
-- [ ] **Deploy**: setelah `db:seed`, pengurus & petugas dapat permission-nya; sebelum seed super_admin tetap bisa (Gate::before).
+**Validated 2026-07-09 via test suite** (50 passed, 2 skipped) — code-verified items dicentang; item prod/deploy-runtime tetap terbuka sampai bisa dijalankan di staging/prod.
+
+- [x] Filter rentang tanggal mengembalikan hanya transaksi dalam rentang (batas inklusif, cek boundary timezone). — `DepositReportServiceTest`/`InstallmentReportServiceTest`
+- [x] Filter savings_type / OPD / anggota bisa dikombinasikan dan hasilnya benar. — service tests
+- [x] Grand total & subtotal = signed net (terbayar − reversal), dihitung bcmath; baris reversal tetap tampil di detail. — service tests
+- [x] **Rekonsiliasi (scoped)**: laporan setoran basis `period_month` + `savings_type=wajib` + `deposit_method=potong_gaji` + tanpa reversal, untuk satu OPD+periode = hasil `BatchSalaryDeduction` OPD+periode yang sama. (Tanpa scope ini angka TIDAK akan sama — itu ekspektasi benar.) — `DepositReportServiceTest`
+- [x] Setoran `sukarela`/`hari_raya` (`period_month` NULL) muncul di basis `deposit_date`, dan UI memperingatkan saat basis `period_month`. — service tests
+- [x] Transaksi anggota **soft-deleted (resign)** tetap muncul di laporan historis (`withTrashed`). — service tests
+- [x] Export Excel: kolom (termasuk `is_reversal`) & total cocok dengan preview. — `LaporanExportTest`
+- [x] Export PDF: kop koperasi tampil, subtotal per grup + grand total benar. — `LaporanExportTest` (valid `%PDF`, letterhead, grouped OPD)
+- [x] **Kolom export = whitelist**: NIK/NIP/rekening/alamat/heir TIDAK muncul di PDF/Excel. — `LaporanExportTest`
+- [x] Setiap export ter-log: aktor + **format (pdf/excel)** + filter (sentinel `ALL_OPD`/`ALL_MEMBER`) + row count; tanpa nilai PII. — `LaporanExportTest` (incl. e2e pengurus asli)
+- [x] **Gating export**: petugas bisa lihat page tapi **tak** bisa export (button hilang + `abort_unless` 403 kalau dipaksa); pengurus bisa export. — `LaporanExportTest` + `LaporanPermissionTest`
+- [x] User tanpa `access_laporan_*` tidak bisa akses page (403, bukan white-screen). — `LaporanPermissionTest`
+- [x] `config/excel.php` temp-file disk private + cleanup aktif (tak ada residu XLSX PII di disk publik). — pakai package default (`local_path` di `storage/framework/cache`, di luar web root); publish tak perlu (item 3d)
+- [ ] `EXPLAIN` query angsuran memakai index `payment_date`; query setoran basis `period_month` memakai index existing (bukan full scan). <!-- source: manual | butuh DB staging/prod dengan data -->
+- [ ] Worst-case export (1 thn, semua OPD, tanpa filter anggota) tak timeout/OOM di server prod. <!-- source: manual | butuh server prod -->
+- [x] Periode kosong (tak ada transaksi) → laporan tampil rapi "tidak ada data", bukan error. — page test empty-state
+- [ ] **Deploy**: setelah `db:seed`, pengurus & petugas dapat permission-nya; sebelum seed super_admin tetap bisa (Gate::before). <!-- source: manual | bagian Key Item #6 (deploy window) -->
 
 ---
 
@@ -256,6 +258,7 @@ Seed (5) **sebelum** optimize:clear (6) agar permission cache rebuild bersih. Ti
 
 ## Changelog
 
+- **2026-07-09 validate**: Phase readiness check (implementation → deploy-verified). Semua Key Item Done kecuali #6 (Deploy, Pending). Test suite report+permission+settings hijau (50 passed, 2 skipped). 14/17 Verification items code-verified & dicentang; 3 sisanya (`EXPLAIN` index, worst-case export OOM/timeout, deploy seed permission) tetap terbuka — hanya bisa dijalankan di staging/prod, blocked pada Key Item #6. Sumber prod (`/mamen`/Flare/Grafana) tak applicable (read-only report). Siap deploy.
 - **2026-07-08 exec item 5**: Feature test lengkap — sebagian besar sudah terakumulasi dari item sebelumnya, ditutup gap terakhir: semua test export positif sebelumnya pakai `asSuperAdmin` (bypass `Gate::before`), jadi ditambah 2 test e2e pakai `asPengurus` (permission `export_*` yang di-grant, bukan bypass) untuk excel & pdf → download sukses + activity ter-log dgn `causer_id` = pengurus + `format`. Requirement item 5 ter-map ke: filter/net (service test), rekonsiliasi scoped (service test), gating (permission + export test, excel & pdf, button+403), log+format (export test).
 - **2026-07-08 exec item 3c**: Audit log export. Trait `App\Filament\Pages\Concerns\LogsReportExport` — `activity()->causedBy(auth()->user())` (aktor = model User) `->event('export')` dengan properties: `report`, `format` (excel/pdf), `start`/`end`, `agency_id` (sentinel `ALL_OPD` bila kosong), `member_id` (sentinel `ALL_MEMBER`), `rows` (row count), plus `basis`/`savings_type`(ALL)/`deposit_method`(ALL) khusus setoran. Tanpa nilai PII (hanya id + hitungan). Dipasang di keempat method export (`exportExcel`+`exportPdf` × setoran/angsuran); Excel kini memakai `rows` collection sekali (dipakai buat count + export). Tested: sentinel saat tanpa filter, id konkret saat difilter, tak ada nama/NIK di properties, `report=angsuran` tanpa key deposit-only.
 - **2026-07-08 exec item 3b**: PDF export terpasang. `exportPdf()` di `LaporanSetoranSimpanan` + `LaporanAngsuranPinjaman` (`abort_unless(EXPORT_PERMISSION)` + tombol `->visible()` pengurus-only, mirror Excel). Grouping OPD→anggota + subtotal per anggota/OPD + grand total via `DepositReportService::grouped()` / `InstallmentReportService::grouped()` (bcmath, dibangun dari `rows()` — satu query, grand total konsisten dgn `totals()`). Blade `resources/views/reports/{deposit,installment}-pdf.blade.php` + partial `_letterhead`/`_signature`/`_styles`. `App\Support\ReportLetterhead` gabung `GeneralSettings` (app_name + logo→data-URI) & `CooperativeSettings` (alamat/kota/telp/penandatangan item 7); telepon dirapikan ke format `+62 …`. Kolom = whitelist sama dgn Excel (tanpa PII berat). Kop input diperbaiki (prefix +62, placeholder, hint) di kedua UI settings. Catatan: activity-log export = item 3c (belum). Tested: grouped subtotal/konsistensi, gating pengurus-only, render PDF valid (`%PDF`), format telepon.

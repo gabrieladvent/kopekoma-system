@@ -23,6 +23,8 @@ use App\Livewire\Master\Member\MemberDetail;
 use App\Livewire\Master\Member\MemberForm;
 use App\Livewire\Master\Member\Members;
 use App\Livewire\Profile\EditProfile;
+use App\Livewire\Reports\LaporanAngsuranPinjaman;
+use App\Livewire\Reports\LaporanSetoranSimpanan;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
 use App\Livewire\Savings\Deposit\SavingsDepositDetail;
 use App\Livewire\Savings\Deposit\SavingsDepositForm;
@@ -221,6 +223,16 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/simpanan/saldo-anggota/{member}', MemberSavingsDetail::class)
         ->name('savings.balances.show');
+
+    // Laporan — read-only, net of reversals. View di-gate route (petugas+pengurus);
+    // export PDF/Excel di-gate ulang di dalam komponen (abort_unless, pengurus-only).
+    Route::get('/laporan/setoran-simpanan', LaporanSetoranSimpanan::class)
+        ->middleware('can:access_laporan_setoran')
+        ->name('reports.setoran');
+
+    Route::get('/laporan/angsuran-pinjaman', LaporanAngsuranPinjaman::class)
+        ->middleware('can:access_laporan_angsuran')
+        ->name('reports.angsuran');
 
     // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
     // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.
