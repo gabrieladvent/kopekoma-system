@@ -68,6 +68,40 @@ it('saves cooperative parameters', function () {
     expect(app(CooperativeSettings::class)->savings_pokok_amount)->toBe(75000.0);
 });
 
+it('saves cooperative identity for the report letterhead', function () {
+    asSuperAdmin();
+
+    Livewire::test(ManageSettings::class)
+        ->set('cooperative_address', 'Jl. Merdeka No. 1')
+        ->set('cooperative_city', 'Denpasar')
+        ->set('cooperative_phone', '(0361) 123456')
+        ->set('signatory_name', 'Budi Santoso')
+        ->set('signatory_position', 'Ketua')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $coop = app(CooperativeSettings::class);
+    expect($coop->cooperative_address)->toBe('Jl. Merdeka No. 1')
+        ->and($coop->cooperative_city)->toBe('Denpasar')
+        ->and($coop->cooperative_phone)->toBe('(0361) 123456')
+        ->and($coop->signatory_name)->toBe('Budi Santoso')
+        ->and($coop->signatory_position)->toBe('Ketua');
+});
+
+it('normalizes empty cooperative identity fields to null', function () {
+    asSuperAdmin();
+
+    Livewire::test(ManageSettings::class)
+        ->set('cooperative_address', '')
+        ->set('signatory_name', '')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $coop = app(CooperativeSettings::class);
+    expect($coop->cooperative_address)->toBeNull()
+        ->and($coop->signatory_name)->toBeNull();
+});
+
 it('previews and stores an uploaded logo', function () {
     Storage::fake('public');
     asSuperAdmin();

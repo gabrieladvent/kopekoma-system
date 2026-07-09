@@ -79,6 +79,11 @@ class ManageSettings extends Page implements HasForms, HasTable
             'loan_interest_rate' => $coop->loan_interest_rate,
             'loan_time_deposit_rate' => $coop->loan_time_deposit_rate,
             'loan_short_term_max' => $coop->loan_short_term_max,
+            'cooperative_address' => $coop->cooperative_address,
+            'cooperative_city' => $coop->cooperative_city,
+            'cooperative_phone' => $coop->cooperative_phone,
+            'signatory_name' => $coop->signatory_name,
+            'signatory_position' => $coop->signatory_position,
         ]);
     }
 
@@ -194,6 +199,38 @@ class ManageSettings extends Page implements HasForms, HasTable
                                         TextInput::make('loan_short_term_max')
                                             ->label('Batas Pinjaman Jangka Pendek')
                                             ->numeric()->prefix('Rp')->required(),
+                                    ])->columns(2),
+                                Section::make('Identitas Koperasi (Kop Laporan)')
+                                    ->description('Tampil di kop & blok tanda tangan pada laporan PDF (setoran & angsuran).')
+                                    ->schema([
+                                        TextInput::make('cooperative_address')
+                                            ->label('Alamat Koperasi')
+                                            ->placeholder('Jl. Contoh No. 1, Kel. Dauh Puri, Kec. Denpasar Barat')
+                                            ->helperText('Baris alamat di bawah nama koperasi pada kop.')
+                                            ->maxLength(255)
+                                            ->columnSpanFull(),
+                                        TextInput::make('cooperative_city')
+                                            ->label('Kota')
+                                            ->placeholder('Denpasar')
+                                            ->helperText('Dipakai juga di baris tanggal blok tanda tangan.')
+                                            ->maxLength(100),
+                                        TextInput::make('cooperative_phone')
+                                            ->label('Telepon')
+                                            ->tel()
+                                            ->prefix('+62')
+                                            ->placeholder('812 3456 7890')
+                                            ->helperText('Tanpa awalan 0. Ditampilkan sebagai +62 di kop laporan.')
+                                            ->maxLength(50),
+                                        TextInput::make('signatory_name')
+                                            ->label('Nama Penandatangan')
+                                            ->placeholder('mis. I Made Sudana')
+                                            ->helperText('Nama yang tercetak di blok tanda tangan laporan.')
+                                            ->maxLength(100),
+                                        TextInput::make('signatory_position')
+                                            ->label('Jabatan Penandatangan')
+                                            ->placeholder('mis. Ketua / Sekretaris / Bendahara')
+                                            ->helperText('Tampil di atas nama penandatangan.')
+                                            ->maxLength(100),
                                     ])->columns(2),
                             ]),
                     ]),
@@ -398,6 +435,11 @@ class ManageSettings extends Page implements HasForms, HasTable
         $coop->loan_interest_rate = (float) $data['loan_interest_rate'];
         $coop->loan_time_deposit_rate = (float) $data['loan_time_deposit_rate'];
         $coop->loan_short_term_max = (float) $data['loan_short_term_max'];
+        $coop->cooperative_address = $data['cooperative_address'] ?: null;
+        $coop->cooperative_city = $data['cooperative_city'] ?: null;
+        $coop->cooperative_phone = $data['cooperative_phone'] ?: null;
+        $coop->signatory_name = $data['signatory_name'] ?: null;
+        $coop->signatory_position = $data['signatory_position'] ?: null;
         $coop->save();
 
         Notification::make()

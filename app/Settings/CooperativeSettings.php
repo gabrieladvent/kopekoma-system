@@ -24,6 +24,17 @@ class CooperativeSettings extends Settings
 
     public float $loan_short_term_max;
 
+    // Identitas koperasi untuk kop + blok tanda tangan laporan PDF (ADR item 7).
+    public ?string $cooperative_address;
+
+    public ?string $cooperative_city;
+
+    public ?string $cooperative_phone;
+
+    public ?string $signatory_name;
+
+    public ?string $signatory_position;
+
     public static function group(): string
     {
         return 'cooperative';
