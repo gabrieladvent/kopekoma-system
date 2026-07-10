@@ -30,10 +30,8 @@ class LaporanSetoranSimpanan extends Page implements HasForms
     use InteractsWithForms;
     use LogsReportExport;
 
-    /** Lihat/preview on-screen — petugas + pengurus (grant di RolePermissionSeeder). */
     public const PERMISSION = 'access_laporan_setoran';
 
-    /** Export PDF/Excel — pengurus-only. Dipakai di item 3a/3b. */
     public const EXPORT_PERMISSION = 'export_laporan_setoran';
 
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
@@ -87,7 +85,6 @@ class LaporanSetoranSimpanan extends Page implements HasForms
     {
         abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
 
-        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
         $filters = $this->form->getState();
 
         $service = app(DepositReportService::class);
@@ -108,7 +105,6 @@ class LaporanSetoranSimpanan extends Page implements HasForms
     {
         abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
 
-        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
         $filters = $this->form->getState();
 
         $grouped = app(DepositReportService::class)->grouped($filters);

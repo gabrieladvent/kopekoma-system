@@ -4,21 +4,12 @@ namespace App\Livewire\Concerns;
 
 use Spatie\Activitylog\Models\Activity;
 
-/**
- * Audit-trail popup behaviour for full-page detail components.
- *
- * Menyediakan state popup + format label/warna event + builder diff
- * (Sebelum/Sesudah) yang konsisten dengan AuditTrailRelationManager Filament.
- * Komponen pemakai cukup override auditFieldLabel()/formatAuditFieldValue()
- * untuk label & format nilai per kolom model masing-masing.
- */
 trait InteractsWithAuditTrail
 {
     public ?int $auditId = null;
 
     public bool $showAudit = false;
 
-    /** Label event activity-log (badge). */
     public const AUDIT_EVENT_LABELS = [
         'created' => 'Dibuat',
         'updated' => 'Diubah',
@@ -26,7 +17,6 @@ trait InteractsWithAuditTrail
         'restored' => 'Dipulihkan',
     ];
 
-    /** Warna badge — dipetakan ke palet <x-ui.badge>. */
     public const AUDIT_EVENT_COLORS = [
         'created' => 'success',
         'updated' => 'warning',
@@ -37,6 +27,7 @@ trait InteractsWithAuditTrail
     public function viewAudit(int $id): void
     {
         $this->auditId = $id;
+
         $this->showAudit = true;
     }
 
@@ -67,9 +58,11 @@ trait InteractsWithAuditTrail
         }
 
         $new = (array) ($activity->properties['attributes'] ?? []);
+
         $old = (array) ($activity->properties['old'] ?? []);
 
         $keys = array_keys($new + $old);
+
         $rows = [];
 
         foreach ($keys as $key) {
@@ -83,7 +76,6 @@ trait InteractsWithAuditTrail
         return $rows;
     }
 
-    /** Label kolom — override di komponen untuk nama yang ramah (fallback: defaultAuditFieldLabel). */
     protected function auditFieldLabel(string $key): string
     {
         return $this->defaultAuditFieldLabel($key);
@@ -94,7 +86,6 @@ trait InteractsWithAuditTrail
         return ucfirst(str_replace('_', ' ', $key));
     }
 
-    /** Format nilai kolom — override di komponen (mis. rupiah, status; fallback: defaultFormatAuditFieldValue). */
     protected function formatAuditFieldValue(string $key, mixed $value): string
     {
         return $this->defaultFormatAuditFieldValue($key, $value);

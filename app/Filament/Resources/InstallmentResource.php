@@ -77,8 +77,6 @@ class InstallmentResource extends Resource
             return [];
         }
 
-        // FIFO: hanya angsuran terlama yang belum bayar yang boleh dibayar,
-        // supaya tidak ada gap di urutan pencatatan.
         return InstallmentSchedule::query()
             ->where('loan_id', $loanId)
             ->where('status', 'Belum Bayar')
@@ -104,9 +102,6 @@ class InstallmentResource extends Resource
             return;
         }
 
-        // Prefill = total tagihan bulan ini (Σ konstanta). Petugas ubah bila
-        // anggota bayar lebih; kelebihan jadi "Kelebihan Bayar" di kuitansi.
-        // MoneyInput (mask presisi 0) → buang desimal saat prefill.
         $set('amount_paid', self::rupiah($schedule->total_due));
     }
 
@@ -115,11 +110,6 @@ class InstallmentResource extends Resource
         return (string) (int) round((float) $value);
     }
 
-    /**
-     * Rincian tagihan jadwal terpilih untuk ditampilkan readonly di form Create —
-     * petugas tahu komposisi tagihan (Pokok/Jasa/Tab) sebelum memasukkan nominal.
-     * Diambil langsung dari `installment_schedules` (Σ konstanta = total_due).
-     */
     public static function scheduleBillDetail(mixed $scheduleId): HtmlString
     {
         $schedule = InstallmentSchedule::find($scheduleId);
@@ -276,7 +266,6 @@ class InstallmentResource extends Resource
                 Infolists\Components\IconEntry::make('is_reversal')->label('Reversal')->boolean(),
             ]),
             Infolists\Components\Section::make('Bukti Pembayaran')->schema([
-                // Gambar → klik perbesar; PDF → buka tab baru (lihat blade).
                 Infolists\Components\ViewEntry::make('bukti')
                     ->hiddenLabel()
                     ->view('filament.installment-bukti')

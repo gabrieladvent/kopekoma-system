@@ -73,10 +73,6 @@ class LoanResource extends Resource
         return $state === 'jangka_panjang' ? 'primary' : 'warning';
     }
 
-    /**
-     * Batalkan salah-input: hanya pinjaman Cair, BELUM ada angsuran terbayar,
-     * & pemakai punya ability `reverse`. Pinjaman jadi Dibatalkan (tetap histori).
-     */
     public static function canCorrect(Loan $record): bool
     {
         return $record->status === 'Cair'
@@ -155,9 +151,8 @@ class LoanResource extends Resource
                 ])
                 ->log('Pembatalan salah-input pinjaman: '.$data['reason']);
 
-            // Jadwal = proyeksi; dibuang agar tak terhitung tunggakan. Record
-            // pinjaman DIPERTAHANKAN sebagai histori, ditandai Dibatalkan.
             InstallmentSchedule::where('loan_id', $record->id)->delete();
+
             $record->update(['status' => 'Dibatalkan']);
         });
 
@@ -256,17 +251,18 @@ class LoanResource extends Resource
                         ->placeholder('Pilih jenis pencairan')
                         ->live()
                         ->afterStateUpdated(function (string $state, Get $get, Set $set): void {
-                            // Prefill rekening tujuan dari rekening payroll anggota
-                            // (boleh diedit). Bersihkan saat bukan transfer.
                             if ($state !== 'transfer') {
                                 $set('disbursement_bank', null);
+
                                 $set('disbursement_account_number', null);
 
                                 return;
                             }
 
                             $member = Member::find($get('member_id'));
+
                             $set('disbursement_bank', $member?->bank_name);
+
                             $set('disbursement_account_number', $member?->payroll_account_number);
                         }),
                     Forms\Components\TextInput::make('disbursement_bank')
@@ -345,32 +341,20 @@ class LoanResource extends Resource
         ]);
     }
 
-    /**
-     * MoneyInput menampilkan nilai ter-mask (pemisah ribuan '.'); buang agar bcmath valid.
-     */
     private static function sanitizePrincipal(mixed $value): string
     {
         return preg_replace('/[^0-9]/', '', (string) $value) ?? '';
     }
 
-    /**
-     * Label "<base> (<rate>%)" dengan persen diturunkan dari setting koperasi
-     * (rate desimal, mis. 0.0065 → "0.65%"). Tidak ada persen yang di-hardcode.
-     */
     private static function rateLabel(string $base, float $rate): string
     {
         return $base.' ('.self::formatPercent($rate).')';
     }
 
-    /**
-     * " (<rate>%)" dengan persen efektif dari nominal yang benar-benar dipotong
-     * (amount ÷ principal) — dipakai di tanda terima agar persen selalu cocok
-     * dengan rupiah di dokumen, tanpa terpengaruh perubahan setting berikutnya.
-     * Mengembalikan string kosong bila basis ≤ 0 (mis. Sebrakan tanpa potongan).
-     */
     private static function amountRateLabel(string|float|null $amount, string|float|null $base): string
     {
         $base = (float) $base;
+
         if ($base <= 0 || (float) $amount <= 0) {
             return '';
         }
@@ -378,18 +362,11 @@ class LoanResource extends Resource
         return ' ('.self::formatPercent((float) $amount / $base).')';
     }
 
-    /**
-     * Rate desimal → persen ringkas tanpa nol di belakang, mis. 0.0065 → "0.65%".
-     */
     private static function formatPercent(float $rate): string
     {
         return rtrim(rtrim(number_format($rate * 100, 4, '.', ''), '0'), '.').'%';
     }
 
-    /**
-     * Ambang nominal pemisah Jangka Pendek (Sebrakan) vs Jangka Panjang,
-     * dari setting `loan_short_term_max` — tidak di-hardcode.
-     */
     private static function shortTermMax(): int
     {
         return (int) round((float) app(CooperativeSettings::class)->loan_short_term_max);
@@ -403,6 +380,7 @@ class LoanResource extends Resource
     private static function previewMoney(Get $get, string $key): string
     {
         $principal = self::sanitizePrincipal($get('principal_amount'));
+
         if (blank($principal)) {
             return '—';
         }
@@ -415,7 +393,9 @@ class LoanResource extends Resource
     private static function previewConstant(Get $get, string $key): string
     {
         $principal = self::sanitizePrincipal($get('principal_amount'));
+
         $term = (int) $get('term_months');
+
         if (blank($principal) || $term < 1) {
             return '—';
         }

@@ -30,10 +30,6 @@ class UserResource extends Resource
 
     protected static ?string $pluralModelLabel = 'User';
 
-    /**
-     * Whether the given record is the currently authenticated user. Used to
-     * guard against self-lockout (deleting / deactivating your own account).
-     */
     protected static function isSelf(?Model $record): bool
     {
         return $record !== null && auth()->id() === $record->getKey();

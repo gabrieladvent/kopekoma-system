@@ -29,11 +29,6 @@ class EditProfile extends BaseEditProfile
             ]);
     }
 
-    /**
-     * Saat email berubah: reset status verifikasi & kirim ulang link verifikasi
-     * (link mengarah ke rute global `verification.verify`). Akses panel TIDAK
-     * digate oleh verifikasi, jadi pengguna tidak terkunci.
-     */
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
         $emailChanged = array_key_exists('email', $data) && $data['email'] !== $record->email;

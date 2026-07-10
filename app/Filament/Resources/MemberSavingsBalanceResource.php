@@ -26,7 +26,6 @@ class MemberSavingsBalanceResource extends Resource
 
     protected static ?int $navigationSort = 30;
 
-    // Halaman rekap, bukan CRUD: saldo dikelola lewat transaksi.
     public static function canCreate(): bool
     {
         return false;

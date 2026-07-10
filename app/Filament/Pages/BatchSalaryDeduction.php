@@ -73,7 +73,7 @@ class BatchSalaryDeduction extends Page implements HasForms
             ->where('deposit_method', BatchSalaryDeductionService::METHOD)
             ->whereDate('period_month', $period)
             ->where('is_reversal', false)
-            ->whereHas('member', fn ($q) => $q->where('agency_id', $agency->getKey()))
+            ->whereHas('member', fn ($query) => $query->where('agency_id', $agency->getKey()))
             ->with('member')
             ->orderBy('transaction_number')
             ->get();
@@ -181,14 +181,12 @@ class BatchSalaryDeduction extends Page implements HasForms
                                         Forms\Components\Toggle::make('include')
                                             ->label('Ikut')
                                             ->inline(false)
-                                            // Sudah disetor → terkunci (tak bisa dicentang ulang).
                                             ->disabled(fn (Get $get): bool => (bool) $get('done')),
                                         MoneyInput::make('amount')
                                             ->label('Nominal')
                                             ->dehydrated()
                                             ->disabled(fn (Get $get): bool => (bool) $get('done')
                                                 || in_array($get('savings_type'), SavingsDepositResource::LOCKED_AMOUNT_TYPES, true))
-                                            // Locked types nominalnya di-derive server-side → tak wajib diisi client.
                                             ->required(fn (Get $get): bool => (bool) $get('include')
                                                 && ! (bool) $get('done')
                                                 && ! in_array($get('savings_type'), SavingsDepositResource::LOCKED_AMOUNT_TYPES, true))

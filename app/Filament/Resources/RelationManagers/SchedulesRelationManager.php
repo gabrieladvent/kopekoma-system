@@ -17,16 +17,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\HtmlString;
 
-/**
- * Progres angsuran satu pinjaman (ADR 2026-06-24). Read-only & presentasi murni:
- * sumber baris = installment_schedules (rencana N baris sejak akad), realisasi
- * pembayaran ditarik dari installments asli (is_reversal = false). Nempel di
- * halaman View Pinjaman (bukan menu navigasi baru).
- *
- * Status tri-state memakai definisi tunggakan yang SAMA dengan
- * InstallmentSchedule::scopeOverdue() (Belum Bayar + due_date < hari ini) agar
- * konsisten dengan LoanArrearsService — tidak ada definisi tunggakan kedua.
- */
 class SchedulesRelationManager extends RelationManager
 {
     protected static string $relationship = 'schedules';
@@ -46,7 +36,6 @@ class SchedulesRelationManager extends RelationManager
             return 'Terbayar';
         }
 
-        // Mirror scopeOverdue: due_date < hari ini (perbandingan tanggal saja).
         return $schedule->due_date && $schedule->due_date->lt(today())
             ? 'Nunggak'
             : 'Belum Jatuh Tempo';
@@ -61,10 +50,6 @@ class SchedulesRelationManager extends RelationManager
         };
     }
 
-    /**
-     * Pembayaran "hidup" untuk sebuah jadwal: angsuran asli terbaru (bukan reversal).
-     * Pakai relasi yang sudah di-eager-load bila ada (hindari N+1 di tabel).
-     */
     public static function actualPayment(InstallmentSchedule $schedule): ?Installment
     {
         if ($schedule->relationLoaded('installments')) {
@@ -84,7 +69,7 @@ class SchedulesRelationManager extends RelationManager
             ->heading('Progres Angsuran')
             ->description(fn (): Htmlable => static::progressHeader($this->getOwnerRecord()))
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'installments' => fn ($q) => $q->where('is_reversal', false)->latest(),
+                'installments' => fn ($query) => $query->where('is_reversal', false)->latest(),
             ]))
             ->defaultSort('installment_seq')
             ->paginated([25, 50, 'all'])
@@ -180,19 +165,20 @@ class SchedulesRelationManager extends RelationManager
         ]);
     }
 
-    /**
-     * Header progres: progress bar persentase lunas + ringkasan
-     * "X/N lunas · Sisa pokok Rp … · M nunggak".
-     */
     public static function progressHeader(Loan $loan): Htmlable
     {
         $total = (int) $loan->schedules()->count();
+
         $paid = (int) $loan->schedules()->where('status', 'Terbayar')->count();
+
         $overdue = app(LoanArrearsService::class)->overdueCount($loan);
+
         $percent = $total > 0 ? (int) round($paid / $total * 100) : 0;
+
         $remaining = number_format((float) static::remainingPrincipal($loan), 0, ',', '.');
 
         $right = "{$paid}/{$total} lunas";
+
         if ($overdue > 0) {
             $right .= " · <span class=\"text-danger-600 dark:text-danger-400 font-medium\">{$overdue} nunggak</span>";
         }
@@ -211,24 +197,17 @@ class SchedulesRelationManager extends RelationManager
         HTML);
     }
 
-    /**
-     * Sisa pokok pinjaman saat ini = count-based (ADR 2026-06-26 D2),
-     * `principal_amount − (jumlah angsuran terbayar × monthly_principal)`.
-     */
     private static function remainingPrincipal(Loan $loan): string
     {
         return $loan->remainingPrincipal();
     }
 
-    /**
-     * Sisa pokok historis setelah jadwal seq-s terbayar. FIFO → seq = jumlah
-     * angsuran terbayar s.d. jadwal ini; `principal − seq × monthly_principal`,
-     * floor 0. Tak bergantung pembayaran setelahnya (akurat per-baris).
-     */
     private static function remainingAfter(InstallmentSchedule $schedule): string
     {
         $loan = $schedule->loan;
+
         $paid = bcmul((string) $loan->monthly_principal, (string) (int) $schedule->installment_seq, 2);
+
         $remaining = bcsub((string) $loan->principal_amount, $paid, 2);
 
         return bccomp($remaining, '0', 2) < 0 ? '0.00' : $remaining;

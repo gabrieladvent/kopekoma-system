@@ -14,8 +14,6 @@ class ListInstallments extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            // Batch potong gaji angsuran per OPD (ADR pinjaman 3c) — mode kolektif,
-            // diakses lewat tombol di sini (bukan menu terpisah).
             Actions\Action::make('batchInstallmentPayment')
                 ->label('Batch Potong Gaji')
                 ->icon('heroicon-o-users')

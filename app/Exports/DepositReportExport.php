@@ -11,15 +11,8 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
-/**
- * Export Excel laporan setoran. Sumber data satu-satunya = service (rows sudah
- * eager-load + signed_amount), TIDAK ada query di sini. Kolom = whitelist
- * identitas minimum (member_number/full_name/agency_name) + kolom transaksi;
- * PII berat (nik/nip/rekening/alamat/heir) sengaja TIDAK diekspor.
- */
 class DepositReportExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithTitle
 {
-    /** Penanda baris grand total yang disisipkan di akhir collection. */
     private const TOTAL_MARKER = '__total__';
 
     /**
@@ -30,12 +23,6 @@ class DepositReportExport implements FromCollection, ShouldAutoSize, WithHeading
         private string $total,
     ) {}
 
-    /**
-     * Baris data + satu baris penanda grand total di akhir (FromCollection tak
-     * bisa menyisipkan footer, jadi total ikut sebagai baris map-able).
-     *
-     * @return Collection<int, mixed>
-     */
     public function collection(): Collection
     {
         return $this->rows->concat([[self::TOTAL_MARKER => $this->total]]);

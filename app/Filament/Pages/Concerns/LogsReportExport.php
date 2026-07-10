@@ -2,14 +2,6 @@
 
 namespace App\Filament\Pages\Concerns;
 
-/**
- * Audit log untuk export laporan (ADR item 3c). Mencatat cukup untuk melacak
- * kebocoran PII tanpa MENYIMPAN PII: aktor (model User, bukan sekadar id),
- * format (pdf/excel), SETIAP parameter filter dengan sentinel eksplisit
- * (`ALL_OPD`/`ALL_MEMBER` saat dikosongkan — export tanpa filter = kasus paling
- * sensitif, jangan tampak seperti filter sempit), date-range, dan row count.
- * Tidak ada nama/NIK di properties — hanya id + hitungan.
- */
 trait LogsReportExport
 {
     /**
@@ -22,13 +14,11 @@ trait LogsReportExport
             'format' => $format,
             'start' => $filters['start'] ?? null,
             'end' => $filters['end'] ?? null,
-            // Sentinel eksplisit: dikosongkan = seluruh koperasi, harus terlihat jelas di audit.
             'agency_id' => ($filters['agency_id'] ?? null) ?: 'ALL_OPD',
             'member_id' => ($filters['member_id'] ?? null) ?: 'ALL_MEMBER',
             'rows' => $rowCount,
         ];
 
-        // Filter khusus laporan setoran — hanya disertakan bila ada di form.
         if (array_key_exists('basis', $filters)) {
             $properties['basis'] = $filters['basis'];
         }

@@ -31,13 +31,11 @@ class GradeResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Golongan';
 
-    /**
-     * Generate a unique grade code (format: GOL-0001).
-     */
     public static function generateCode(): string
     {
         do {
             $code = 'GOL-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+
         } while (Grade::where('code', $code)->exists());
 
         return $code;

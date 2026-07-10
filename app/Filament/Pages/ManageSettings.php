@@ -276,8 +276,8 @@ class ManageSettings extends Page implements HasForms, HasTable
                     $client = StoreClient::create([
                         'name' => $data['name'],
                         'client_id' => 'store_'.Str::lower(Str::random(20)),
-                        'client_secret' => $secret, // di-hash otomatis oleh cast
-                        'client_secret_encrypted' => $secret, // di-enkripsi (reversible) untuk copy ulang
+                        'client_secret' => $secret,
+                        'client_secret_encrypted' => $secret,
                         'is_active' => true,
                         'can_refund' => (bool) ($data['can_refund'] ?? false),
                     ]);
@@ -287,10 +287,6 @@ class ManageSettings extends Page implements HasForms, HasTable
         ];
     }
 
-    /**
-     * Tabel kelola Klien Toko (API). Data tetap di tabel `store_clients` (bukan
-     * `settings`) agar token Sanctum tetap berfungsi — UI-nya saja yang di sini.
-     */
     public function table(Table $table): Table
     {
         return $table

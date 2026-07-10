@@ -5,11 +5,6 @@ namespace App\Filament\Resources\Pages;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
-/**
- * Base Edit page for all resources. After saving, redirects to the record's
- * detail (view) page when the resource has one, and emits a save notification
- * that always carries a description (body), not just a title.
- */
 abstract class BaseEditRecord extends EditRecord
 {
     protected function getRedirectUrl(): string

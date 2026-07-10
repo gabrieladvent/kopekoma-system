@@ -14,8 +14,6 @@ class ListSavingsDeposits extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            // "Input kolektif per OPD" (Dokumentasi §4.4) — mode kedua Setoran
-            // Simpanan, kini diakses lewat tombol di sini, bukan menu terpisah.
             Actions\Action::make('batchSalaryDeduction')
                 ->label('Batch Potong Gaji')
                 ->icon('heroicon-o-users')
