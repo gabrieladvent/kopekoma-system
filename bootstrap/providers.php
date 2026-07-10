@@ -1,9 +1,12 @@
 <?php
 
 use App\Providers\AppServiceProvider;
-use App\Providers\Filament\AdminPanelProvider;
 
 return [
     AppServiceProvider::class,
-    AdminPanelProvider::class,
+    // Panel admin Filament dinonaktifkan sementara — UI dilayani oleh Livewire
+    // (lihat routes/web.php). Kelas Filament TETAP ada & method statisnya (mis.
+    // LoanResource::printReceipt) masih dipakai route Livewire untuk cetak PDF.
+    // Aktifkan lagi dengan mengembalikan baris di bawah:
+    // \App\Providers\Filament\AdminPanelProvider::class,
 ];
