@@ -60,6 +60,13 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// Panel admin Filament dinonaktifkan (lihat bootstrap/providers.php). Setiap
+// akses lama ke /admin atau sub-path-nya dialihkan otomatis ke UI Livewire:
+// user login → dashboard, tamu → login (via middleware auth di dashboard).
+Route::get('/admin/{any?}', function () {
+    return redirect()->route('dashboard');
+})->where('any', '.*');
+
 Route::view('/styleguide', 'styleguide')->name('styleguide');
 
 Route::middleware('guest')->group(function () {
