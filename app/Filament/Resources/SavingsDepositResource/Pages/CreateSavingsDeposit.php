@@ -31,11 +31,6 @@ class CreateSavingsDeposit extends BaseCreateRecord
 
     protected int $duplicateCount = 0;
 
-    /**
-     * Sekali proses → banyak setoran (satu baris per jenis yang dicentang &
-     * bernominal > 0). Nominal locked di-enforce ulang di server per baris,
-     * lalu seluruh baris dipersist atomik via RecordMemberSavingsDeposits.
-     */
     protected function handleRecordCreation(array $data): Model
     {
         $shared = Arr::only($data, self::SHARED_FIELDS);

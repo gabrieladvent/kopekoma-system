@@ -29,9 +29,11 @@ class ImportMembersJob implements ShouldQueue
         $before = Member::count();
 
         $import = new MembersImport;
+
         Excel::import($import, $this->path, $this->disk);
 
         $imported = Member::count() - $before;
+
         $failed = $import->failures()->count() + $import->errors()->count();
 
         Storage::disk($this->disk)->delete($this->path);

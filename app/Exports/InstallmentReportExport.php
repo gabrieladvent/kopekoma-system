@@ -10,11 +10,6 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
-/**
- * Export Excel laporan angsuran. Sumber data satu-satunya = service (rows sudah
- * eager-load rantai loan.member.agency + signed_amount). Kolom = whitelist
- * identitas minimum + kolom transaksi; PII berat TIDAK diekspor.
- */
 class InstallmentReportExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithTitle
 {
     private const TOTAL_MARKER = '__total__';

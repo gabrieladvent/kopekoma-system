@@ -29,10 +29,8 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
     use InteractsWithForms;
     use LogsReportExport;
 
-    /** Lihat/preview on-screen — petugas + pengurus (grant di RolePermissionSeeder). */
     public const PERMISSION = 'access_laporan_angsuran';
 
-    /** Export PDF/Excel — pengurus-only. Dipakai di item 3a/3b. */
     public const EXPORT_PERMISSION = 'export_laporan_angsuran';
 
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
@@ -85,7 +83,6 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
     {
         abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
 
-        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
         $filters = $this->form->getState();
 
         $service = app(InstallmentReportService::class);
@@ -106,7 +103,6 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
     {
         abort_unless(auth()->user()?->can(self::EXPORT_PERMISSION) ?? false, 403);
 
-        // getState() memicu validasi form → cap rentang ≤ 1 tahun tetap ditegakkan.
         $filters = $this->form->getState();
 
         $grouped = app(InstallmentReportService::class)->grouped($filters);
@@ -202,7 +198,7 @@ class LaporanAngsuranPinjaman extends Page implements HasForms
                             ->placeholder('Semua anggota')
                             ->getSearchResultsUsing(fn (string $search): array => Member::query()
                                 ->withTrashed()
-                                ->where(fn ($q) => $q->where('full_name', 'like', "%{$search}%")
+                                ->where(fn ($query) => $query->where('full_name', 'like', "%{$search}%")
                                     ->orWhere('member_number', 'like', "%{$search}%"))
                                 ->orderBy('full_name')
                                 ->limit(50)

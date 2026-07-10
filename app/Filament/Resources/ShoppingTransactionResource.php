@@ -39,10 +39,6 @@ class ShoppingTransactionResource extends Resource
 
     protected static ?int $navigationSort = 30;
 
-    /**
-     * Saldo Wajib Belanja anggota (deposits − pemakaian). Null bila anggota
-     * belum dipilih/ada. Dipakai untuk hint form & validasi nominal.
-     */
     public static function shoppingBalance(mixed $memberId): ?string
     {
         if (blank($memberId)) {
@@ -60,7 +56,6 @@ class ShoppingTransactionResource extends Resource
     {
         return $form
             ->schema([
-                // Idempotency (D4/D6): satu render = satu key, anti double-submit.
                 Forms\Components\Hidden::make('idempotency_key')
                     ->default(fn (): string => (string) Str::uuid()),
                 Forms\Components\Section::make('Pemakaian Saldo Wajib Belanja')
@@ -88,7 +83,6 @@ class ShoppingTransactionResource extends Resource
                                     ? 'Pilih anggota untuk melihat saldo Wajib Belanja.'
                                     : 'Saldo Wajib Belanja: Rp '.number_format((float) $balance, 0, ',', '.');
                             })
-                            // Pemakaian tak boleh melebihi saldo Wajib Belanja (D6).
                             ->rule(fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
                                 $balance = self::shoppingBalance($get('member_id'));
 

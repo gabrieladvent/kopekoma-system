@@ -15,6 +15,7 @@ use Livewire\WithFileUploads;
 
 /**
  * Batch potong gaji ANGSURAN per OPD — versi Livewire (analog
+ *
  * {@see BatchSalaryDeduction} untuk simpanan).
  * Tiap baris = pinjaman aktif anggota dengan jadwal terlama belum bayar (FIFO);
  * eksekusi didelegasikan ke {@see BatchInstallmentPaymentService} (reuse
@@ -25,12 +26,10 @@ class BatchInstallmentPayment extends Component
 {
     use WithFileUploads;
 
-    // Reuse permission batch potong gaji Simpanan — aksi sejenis (Petugas+).
     public const PERMISSION = 'access_batch_salary_deduction';
 
     public ?string $agency_id = null;
 
-    /** Periode potong gaji (Y-m) — untuk pelabelan rekap/audit batch. */
     public ?string $period_month = null;
 
     public ?string $payment_date = null;
@@ -43,7 +42,6 @@ class BatchInstallmentPayment extends Component
      */
     public array $rows = [];
 
-    /** Bukti opsional per jadwal: schedule_id => TemporaryUploadedFile. */
     public array $bukti = [];
 
     public function mount(): void
@@ -51,6 +49,7 @@ class BatchInstallmentPayment extends Component
         abort_unless(auth()->user()?->can(self::PERMISSION) ?? false, 403);
 
         $this->period_month = now()->format('Y-m');
+
         $this->payment_date = now()->toDateString();
     }
 
@@ -59,11 +58,6 @@ class BatchInstallmentPayment extends Component
         $this->rebuildRows();
     }
 
-    /**
-     * Unggah bukti memicu round-trip Livewire (morph DOM). Ringkasan total di
-     * kanan dihitung di klien dengan men-scan input nominal; minta hitung ulang
-     * setelah morph agar tidak sempat ter-reset ke 0.
-     */
     public function updatedBukti(): void
     {
         $this->dispatch('rows-updated');
@@ -71,8 +65,8 @@ class BatchInstallmentPayment extends Component
 
     public function rebuildRows(): void
     {
-        // Bukti dikunci ke schedule_id; reset saat OPD ganti agar tak nyangkut.
         $this->bukti = [];
+
         $this->rows = $this->buildRows($this->agency_id);
 
         $this->dispatch('rows-updated');
@@ -156,7 +150,6 @@ class BatchInstallmentPayment extends Component
             return null;
         }
 
-        // Nominal bilangan bulat bersih (mask presisi 0).
         $bill = (string) (int) round((float) $schedule->total_due);
 
         return [
@@ -166,7 +159,6 @@ class BatchInstallmentPayment extends Component
             'total_due' => $bill,
             'seq' => $schedule->installment_seq,
             'due_date' => $schedule->due_date?->translatedFormat('d M Y'),
-            // Konteks total pinjaman + sisa pokok agar jelas baris ini pinjaman mana.
             'principal_amount' => (string) (int) round((float) $loan->principal_amount),
             'remaining_principal' => (string) (int) round((float) $loan->remainingPrincipal()),
             'include' => true,

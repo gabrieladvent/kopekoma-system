@@ -38,7 +38,6 @@ class Login extends Component
         /** @var User $user */
         $user = Auth::user();
 
-        // Akun dinonaktifkan → tolak login sepenuhnya (bukan sekadar batasi panel).
         if (! $user->is_active) {
             Auth::logout();
 
@@ -48,18 +47,15 @@ class Login extends Component
         }
 
         RateLimiter::clear($this->throttleKey());
+
         session()->regenerate();
 
-        // Satu akun hanya boleh aktif di SATU perangkat. Cabut remember-token
-        // lama (mematikan recaller perangkat lain), terbitkan ulang sesi untuk
-        // perangkat ini, lalu hapus semua sesi milik akun ini kecuali sesi
-        // sekarang → perangkat lain otomatis ter-logout di request berikutnya.
         $user->forceFill(['remember_token' => Str::random(60)])->save();
+
         Auth::login($user, $this->remember);
+
         $user->invalidateSessions(session()->getId());
 
-        // Email belum terverifikasi → tetap boleh masuk, tetapi diarahkan ke
-        // halaman profil untuk verifikasi lebih dulu (soft gate, bukan blokir).
         if (! $user->hasVerifiedEmail()) {
             session()->flash('toast', [
                 'type' => 'warning',
@@ -72,9 +68,6 @@ class Login extends Component
         return $this->redirectIntended(default: route('dashboard'), navigate: true);
     }
 
-    /**
-     * Pastikan request tidak melewati batas percobaan (5x per email+IP).
-     */
     protected function ensureIsNotRateLimited(): void
     {
         if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {

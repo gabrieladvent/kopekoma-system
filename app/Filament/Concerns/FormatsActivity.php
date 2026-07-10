@@ -2,11 +2,6 @@
 
 namespace App\Filament\Concerns;
 
-/**
- * Shared formatting for Spatie activity-log "event" values, used by both the
- * standalone ActivityResource and the reusable AuditTrailRelationManager so
- * labels/colors stay consistent everywhere.
- */
 trait FormatsActivity
 {
     /** @var array<string, string> */
@@ -15,7 +10,6 @@ trait FormatsActivity
         'updated' => 'Diubah',
         'deleted' => 'Dihapus',
         'restored' => 'Dipulihkan',
-        // Event domain keuangan (workflow pencairan + reversal transaksi).
         'approved' => 'Disetujui (ACC)',
         'disbursed' => 'Dicairkan',
         'rejected' => 'Ditolak',

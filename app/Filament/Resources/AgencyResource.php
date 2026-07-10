@@ -31,33 +31,27 @@ class AgencyResource extends Resource
 
     protected static ?string $pluralModelLabel = 'OPD';
 
-    /**
-     * Generate a unique OPD code (format: OPD0001).
-     */
     public static function generateCode(): string
     {
         do {
             $code = 'OPD'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+
         } while (Agency::where('agency_code', $code)->exists());
 
         return $code;
     }
 
-    /**
-     * Normalize an Indonesian phone number for storage as "+62XXXXXXXXXX".
-     */
     public static function normalizePhone(?string $state): ?string
     {
         $digits = preg_replace('/\D/', '', (string) $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
+
         $digits = ltrim((string) $digits, '0');
 
         return $digits === '' ? null : '+62'.$digits;
     }
 
-    /**
-     * Strip the "+62" prefix for display in the edit form.
-     */
     public static function localPhone(?string $state): ?string
     {
         if (blank($state)) {
@@ -65,6 +59,7 @@ class AgencyResource extends Resource
         }
 
         $digits = preg_replace('/\D/', '', $state);
+
         $digits = preg_replace('/^62/', '', (string) $digits);
 
         return ltrim((string) $digits, '0') ?: null;

@@ -8,7 +8,6 @@ use App\Models\Agency;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Services\BatchInstallmentPaymentService;
-use App\Services\LoanPaymentService;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -20,22 +19,12 @@ use Filament\Pages\Page;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 
-/**
- * Batch potong gaji ANGSURAN per OPD (ADR pinjaman 3c / D6). Mode kolektif untuk
- * mencatat pembayaran angsuran banyak anggota satu OPD sekaligus — analog
- * {@see BatchSalaryDeduction} (simpanan), tapi tiap baris = pinjaman aktif
- * anggota dengan jadwal terlama belum bayar (FIFO). Eksekusi didelegasikan ke
- * {@see BatchInstallmentPaymentService} (reuse {@see LoanPaymentService}).
- */
 class BatchInstallmentPayment extends Page implements HasForms
 {
     use InteractsWithForms;
 
-    // Reuse permission batch potong gaji Simpanan — aksi sejenis (Petugas+, D11).
     public const PERMISSION = 'access_batch_salary_deduction';
 
-    // Bukti per-baris diunggah ke disk media lebih dulu (getState menyimpannya),
-    // lalu dilampirkan ke Installment via addMediaFromDisk saat batch diproses.
     private const BUKTI_DIR = 'tmp/installment-bukti';
 
     protected static ?string $title = 'Batch Potong Gaji Angsuran per OPD';
@@ -78,16 +67,19 @@ class BatchInstallmentPayment extends Page implements HasForms
                             ->required()
                             ->live()
                             ->afterStateUpdated(fn (Get $get, Set $set) => $set('rows', $this->buildRows($get('agency_id')))),
+
                         Forms\Components\DatePicker::make('payment_date')
                             ->label('Tanggal Bayar')
                             ->default(now())
                             ->required(),
+
                         Forms\Components\DatePicker::make('period_month')
                             ->label('Periode Potong Gaji')
                             ->displayFormat('F Y')
                             ->required()
                             ->helperText('Hanya untuk pelabelan rekap/audit batch.'),
                     ]),
+
                 Forms\Components\Section::make('Anggota dengan Pinjaman Aktif')
                     ->icon('heroicon-o-user-group')
                     ->description('Aktifkan "Ikut" untuk anggota yang dipotong, lalu sesuaikan nominal tiap pinjaman bila membayar lebih dari tagihan (kelebihan dikreditkan ke Simpanan Sukarela anggota).')
@@ -100,16 +92,19 @@ class BatchInstallmentPayment extends Page implements HasForms
                             ->columns(3)
                             ->schema([
                                 Forms\Components\Hidden::make('member_id'),
+
                                 Forms\Components\TextInput::make('member_label')
                                     ->label('Anggota')
                                     ->disabled()
                                     ->dehydrated(false)
                                     ->columnSpan(2),
+
                                 Forms\Components\Toggle::make('include')
                                     ->label('Ikut')
                                     ->default(true)
                                     ->inline(false)
                                     ->live(),
+
                                 Forms\Components\Repeater::make('lines')
                                     ->hiddenLabel()
                                     ->addable(false)
@@ -178,8 +173,8 @@ class BatchInstallmentPayment extends Page implements HasForms
     public function grandTotal(array $rows): float
     {
         return collect($rows)
-            ->filter(fn (array $r): bool => (bool) ($r['include'] ?? false))
-            ->flatMap(fn (array $r): array => $r['lines'] ?? [])
+            ->filter(fn (array $row): bool => (bool) ($row['include'] ?? false))
+            ->flatMap(fn (array $row): array => $row['lines'] ?? [])
             ->filter(fn (array $line): bool => (bool) ($line['include'] ?? false))
             ->sum(fn (array $line): float => (float) ($line['amount'] ?? 0));
     }
@@ -199,7 +194,7 @@ class BatchInstallmentPayment extends Page implements HasForms
 
         return Loan::query()
             ->where('status', 'Cair')
-            ->whereHas('member', fn ($q) => $q->where('agency_id', $agencyId)->where('status', 'Aktif'))
+            ->whereHas('member', fn ($query) => $query->where('agency_id', $agencyId)->where('status', 'Aktif'))
             ->with('member')
             ->get()
             ->groupBy('member_id')
@@ -244,8 +239,6 @@ class BatchInstallmentPayment extends Page implements HasForms
             return null;
         }
 
-        // MoneyInput (mask presisi 0) → nominal harus bilangan bulat bersih,
-        // bukan "1090000.00" yang akan jadi 100x bila titiknya di-strip.
         $bill = (string) (int) round((float) $schedule->total_due);
 
         return [
@@ -259,7 +252,6 @@ class BatchInstallmentPayment extends Page implements HasForms
                 $schedule->due_date?->format('d/m/Y'),
                 number_format((float) $schedule->total_due, 0, ',', '.'),
             ),
-            // Konteks total pinjaman biar petugas yakin baris ini pinjaman mana.
             'loan_total_label' => sprintf(
                 'Total pinjaman Rp %s — sisa pokok Rp %s',
                 number_format((float) $loan->principal_amount, 0, ',', '.'),
@@ -282,14 +274,13 @@ class BatchInstallmentPayment extends Page implements HasForms
         $paymentDate = $state['payment_date'] ?? now()->toDateString();
 
         $rows = collect($state['rows'] ?? [])
-            ->filter(fn (array $r): bool => (bool) ($r['include'] ?? false))
-            ->flatMap(fn (array $r): array => collect($r['lines'] ?? [])
+            ->filter(fn (array $row): bool => (bool) ($row['include'] ?? false))
+            ->flatMap(fn (array $row): array => collect($row['lines'] ?? [])
                 ->filter(fn (array $line): bool => (bool) ($line['include'] ?? false))
                 ->map(fn (array $line): array => [
                     'schedule_id' => (string) $line['schedule_id'],
                     'amount_paid' => $line['amount'] ?? '0',
                     'payment_date' => $paymentDate,
-                    // getState() sudah menyimpan unggahan ke disk media → state = path.
                     'bukti_path' => is_string($line['bukti'] ?? null) ? $line['bukti'] : null,
                     'bukti_disk' => config('media-library.disk_name'),
                 ])

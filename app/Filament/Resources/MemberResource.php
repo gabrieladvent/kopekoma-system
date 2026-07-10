@@ -56,7 +56,6 @@ class MemberResource extends Resource
         return static::$balanceMemo[(string) $member->getKey()] ??= app(SavingsBalanceService::class)->allBalances($member);
     }
 
-    /** Total saldo Hari Raya semua tahun (string bcmath). */
     public static function holidayBalanceTotal(Member $member): string
     {
         return array_reduce(
@@ -615,9 +614,6 @@ class MemberResource extends Resource
     public static function getRelations(): array
     {
         return [
-            // Riwayat simpanan masuk+keluar ada di section "Riwayat Simpanan"
-            // (buku mutasi) pada infolist — menggantikan tab setoran-saja yang
-            // dulu menyesatkan (uang keluar tak tampil di sana).
             MemberResource\RelationManagers\LoansRelationManager::class,
             MemberResource\RelationManagers\DocumentsRelationManager::class,
             AuditTrailRelationManager::class,

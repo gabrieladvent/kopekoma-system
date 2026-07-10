@@ -36,8 +36,6 @@ class SavingsWithdrawalResource extends Resource
 
     protected static ?string $navigationGroup = 'Simpanan';
 
-    // "Pencairan Simpanan" (bukan sekadar "Pencairan") agar tak rancu dengan
-    // pencairan pinjaman yang lahir di Modul Pinjaman (Minggu 3).
     protected static ?string $navigationLabel = 'Pencairan Simpanan';
 
     protected static ?string $modelLabel = 'Pencairan Simpanan';
@@ -93,10 +91,6 @@ class SavingsWithdrawalResource extends Resource
         };
     }
 
-    /**
-     * Saldo tersedia untuk anggota + jenis (+ tahun untuk hari_raya). Null bila
-     * data belum lengkap. Dipakai untuk hint form & validasi nominal dini.
-     */
     public static function availableBalance(mixed $memberId, ?string $type, mixed $year = null): ?string
     {
         if (blank($memberId) || blank($type)) {
@@ -120,10 +114,8 @@ class SavingsWithdrawalResource extends Resource
         }
 
         if (in_array($type, ['swp', 'tabungan_berjangka'], true)) {
-            // Saldo dasar dikurangi pencairan PENDING (draft+acc) tipe sama (D3):
-            // refund auto masih draft belum mengurangi saldo, jadi tanpa ini
-            // pencairan manual bisa meng-klaim saldo yang sama → refund dobel.
             $balance = $service->balanceByType($member, $type);
+
             $pending = (string) SavingsWithdrawal::query()
                 ->where('member_id', $member->id)
                 ->where('savings_type', $type)
@@ -171,7 +163,6 @@ class SavingsWithdrawalResource extends Resource
     {
         return $form
             ->schema([
-                // Idempotency (D4): satu render = satu key.
                 Forms\Components\Hidden::make('idempotency_key')
                     ->default(fn (): string => (string) Str::uuid()),
                 Forms\Components\Section::make('Pengajuan Pencairan')
@@ -223,7 +214,6 @@ class SavingsWithdrawalResource extends Resource
                                     ? 'Pilih anggota & jenis untuk melihat saldo tersedia.'
                                     : 'Saldo tersedia: Rp '.number_format((float) $balance, 0, ',', '.');
                             })
-                            // Validasi dini: nominal tak boleh melebihi saldo tersedia.
                             ->rule(fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
                                 $balance = self::availableBalance($get('member_id'), $get('savings_type'), $get('period_year'));
 
@@ -479,12 +469,6 @@ class SavingsWithdrawalResource extends Resource
             ->action(fn (SavingsWithdrawal $record, array $data) => static::performReversal($record, $data));
     }
 
-    /**
-     * Reversal hanya untuk pencairan `cair` (D10), bukan reversal, dan ber-permission.
-     * Refund pelunasan dikecualikan: pembalikannya didorong lewat reversal angsuran
-     * (yang membalik SWP+Tab sekaligus), bukan per-baris di sini — mencegah salah
-     * satu pasangan tertinggal cair (baris sekundernya disembunyikan).
-     */
     public static function canReverse(SavingsWithdrawal $record): bool
     {
         return $record->status === 'cair'
@@ -541,11 +525,6 @@ class SavingsWithdrawalResource extends Resource
         'reject' => ['draft', 'acc'],
     ];
 
-    /**
-     * Refund pelunasan pinjaman = pencairan ber-`related_loan_id` bertipe
-     * swp/tabungan_berjangka & bukan reversal. Pasangannya (swp+tab) tampil
-     * sebagai SATU entri "Pengembalian Pelunasan".
-     */
     public static function isLoanRefund(SavingsWithdrawal $record): bool
     {
         return filled($record->related_loan_id)
@@ -553,7 +532,6 @@ class SavingsWithdrawalResource extends Resource
             && ! $record->is_reversal;
     }
 
-    /** Label entri di tabel: pasangan refund → satu nama gabungan, lainnya apa adanya. */
     public static function pairLabel(SavingsWithdrawal $record): string
     {
         return static::isLoanRefund($record)
@@ -561,14 +539,12 @@ class SavingsWithdrawalResource extends Resource
             : (self::WITHDRAWAL_TYPES[$record->savings_type] ?? (string) $record->savings_type);
     }
 
-    /** Total nominal entri: jumlah seluruh anggota pasangan (swp+tab); selain itu nominal sendiri. */
     public static function pairTotal(SavingsWithdrawal $record): string
     {
         return static::refundPair($record)
             ->reduce(fn (string $carry, SavingsWithdrawal $w): string => bcadd($carry, (string) $w->amount, 2), '0.00');
     }
 
-    /** Nominal satu komponen pasangan (mis. 'swp' / 'tabungan_berjangka'); '0.00' bila tak ada. */
     public static function pairAmount(SavingsWithdrawal $record, string $type): string
     {
         return static::refundPair($record)
@@ -576,11 +552,6 @@ class SavingsWithdrawalResource extends Resource
             ->reduce(fn (string $carry, SavingsWithdrawal $w): string => bcadd($carry, (string) $w->amount, 2), '0.00');
     }
 
-    /**
-     * Sembunyikan baris sekunder pasangan refund (D2): tampilkan `swp` sebagai
-     * wakil, sembunyikan `tabungan_berjangka` yang punya saudara swp se-pinjaman.
-     * Pencairan biasa & tab tanpa saudara swp (mis. swp=0) tetap tampil.
-     */
     public static function hideSecondaryPairRows(Builder $query): Builder
     {
         return $query->whereNot(
@@ -622,14 +593,10 @@ class SavingsWithdrawalResource extends Resource
             ->get();
     }
 
-    /**
-     * Jalankan transisi state machine via engine; domain error → notif danger.
-     * Untuk pasangan refund pelunasan, transisi diterapkan ke kedua baris secara
-     * atomik (D2).
-     */
     public static function runTransition(string $transition, SavingsWithdrawal $record): void
     {
         $workflow = app(WithdrawalWorkflow::class);
+
         $fromStates = self::TRANSITION_FROM[$transition];
 
         try {

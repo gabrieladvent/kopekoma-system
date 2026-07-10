@@ -31,7 +31,9 @@ trait WithMemberPicker
         }
 
         $this->member_id = $member->id;
+
         $this->selectedMemberLabel = static::memberLabel($member);
+
         $this->memberSearch = '';
 
         $this->afterMemberSelected();
@@ -40,7 +42,9 @@ trait WithMemberPicker
     public function clearMember(): void
     {
         $this->member_id = null;
+
         $this->selectedMemberLabel = null;
+
         $this->memberSearch = '';
 
         $this->afterMemberSelected();
@@ -72,6 +76,5 @@ trait WithMemberPicker
         return "{$member->member_number} — {$member->full_name}";
     }
 
-    /** Hook opsional: dipanggil setelah seleksi/clear anggota. */
     protected function afterMemberSelected(): void {}
 }

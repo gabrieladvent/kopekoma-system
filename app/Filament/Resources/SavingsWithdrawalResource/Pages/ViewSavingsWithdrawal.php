@@ -66,11 +66,6 @@ class ViewSavingsWithdrawal extends ViewRecord
         ];
     }
 
-    /**
-     * Jalankan transisi state machine lalu segarkan record di memori agar
-     * infolist + visibilitas tombol ter-update tanpa reload manual (Filament
-     * ViewRecord meng-cache `$this->record`; transisi mengubahnya di DB).
-     */
     protected function runTransition(string $transition): void
     {
         SavingsWithdrawalResource::runTransition($transition, $this->getRecord());

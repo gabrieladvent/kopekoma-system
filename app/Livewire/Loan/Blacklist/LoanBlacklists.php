@@ -21,16 +21,14 @@ class LoanBlacklists extends Component
     public string $search = '';
 
     #[Url]
-    public string $active = 'all'; // all | 1 | 0
+    public string $active = 'all';
 
-    // Modal tambah
     public bool $showCreate = false;
 
     public ?string $reason = null;
 
     public ?string $blacklisted_at = null;
 
-    // Modal lepas
     public bool $showRelease = false;
 
     public ?string $releaseId = null;
@@ -38,6 +36,7 @@ class LoanBlacklists extends Component
     public function mount(): void
     {
         $this->authorize('viewAny', LoanBlacklist::class);
+
         $this->blacklisted_at = now()->toDateString();
     }
 
@@ -92,8 +91,11 @@ class LoanBlacklists extends Component
         $this->authorize('create', LoanBlacklist::class);
 
         $this->reset('member_id', 'selectedMemberLabel', 'memberSearch', 'reason');
+
         $this->blacklisted_at = now()->toDateString();
+
         $this->resetErrorBag();
+
         $this->showCreate = true;
     }
 
@@ -135,28 +137,34 @@ class LoanBlacklists extends Component
         ]);
 
         $this->closeCreate();
+
         $this->resetPage();
+
         $this->dispatch('toast', type: 'success', message: 'Anggota ditandai blacklist pinjaman.');
     }
 
     public function openRelease(string $id): void
     {
         $record = LoanBlacklist::findOrFail($id);
+
         abort_unless(auth()->user()?->can('update', $record) ?? false, 403);
 
         $this->releaseId = $id;
+
         $this->showRelease = true;
     }
 
     public function closeRelease(): void
     {
         $this->showRelease = false;
+
         $this->reset('releaseId');
     }
 
     public function performRelease(): void
     {
         $record = LoanBlacklist::findOrFail($this->releaseId);
+
         abort_unless(auth()->user()?->can('update', $record) ?? false, 403);
 
         if ($record->is_active) {
@@ -167,6 +175,7 @@ class LoanBlacklists extends Component
         }
 
         $this->closeRelease();
+
         $this->dispatch('toast', type: 'success', message: 'Blacklist dilepas — anggota kembali dapat mengajukan pinjaman.');
     }
 

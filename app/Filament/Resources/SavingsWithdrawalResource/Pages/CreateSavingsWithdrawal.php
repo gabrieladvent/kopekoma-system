@@ -21,15 +21,14 @@ class CreateSavingsWithdrawal extends BaseCreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Whitelist jenis ditegakkan di server (D8), bukan hanya opsi form.
         if (! array_key_exists($data['savings_type'] ?? '', SavingsWithdrawalResource::WITHDRAWAL_TYPES)) {
             throw CannotProcessWithdrawal::unsupportedType((string) ($data['savings_type'] ?? ''));
         }
 
         $data['recorded_by'] = auth()->id();
+
         $data['status'] = 'draft';
 
-        // period_year hanya relevan untuk hari_raya.
         if (($data['savings_type'] ?? null) !== 'hari_raya') {
             $data['period_year'] = null;
         }
@@ -41,6 +40,7 @@ class CreateSavingsWithdrawal extends BaseCreateRecord
     {
         try {
             return SavingsWithdrawal::create($data);
+
         } catch (UniqueConstraintViolationException $e) {
             $existing = SavingsWithdrawal::query()
                 ->where('idempotency_key', $data['idempotency_key'] ?? '')

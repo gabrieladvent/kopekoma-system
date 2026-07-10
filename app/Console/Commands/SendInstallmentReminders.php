@@ -10,14 +10,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
-/**
- * Pengingat angsuran (ADR D10): kirim notifikasi database ke petugas/pengurus untuk
- * - angsuran yang akan jatuh tempo dalam ≤ N hari (default H-3), dan
- * - angsuran yang sudah lewat tempo & belum dibayar (nunggak).
- *
- * Idempotent: tiap jadwal hanya diingatkan sekali per jenis (penanda di kolom
- * due_reminder_sent_at / overdue_reminder_sent_at), jadi aman dijalankan harian.
- */
 class SendInstallmentReminders extends Command
 {
     protected $signature = 'loans:remind-installments {--days=3 : Berapa hari sebelum jatuh tempo mulai diingatkan}';
@@ -27,10 +19,11 @@ class SendInstallmentReminders extends Command
     public function handle(): int
     {
         $leadDays = max(0, (int) $this->option('days'));
+
         $today = Carbon::today();
+
         $windowEnd = $today->copy()->addDays($leadDays);
 
-        // Petugas/pengurus yang menangani angsuran (lewat role/izin Shield).
         $recipients = User::query()->get()
             ->filter(fn (User $user): bool => $user->can('view_any_installment'))
             ->values();
@@ -42,6 +35,7 @@ class SendInstallmentReminders extends Command
         }
 
         $upcoming = $this->sendUpcoming($recipients, $today, $windowEnd);
+
         $overdue = $this->sendOverdue($recipients, $today);
 
         $this->info("Pengingat terkirim — akan jatuh tempo: {$upcoming}, nunggak: {$overdue} (ke {$recipients->count()} petugas).");
@@ -49,7 +43,6 @@ class SendInstallmentReminders extends Command
         return self::SUCCESS;
     }
 
-    /** Angsuran Belum Bayar yang jatuh tempo dalam [hari ini .. H+lead] & belum diingatkan. */
     private function sendUpcoming(Collection $recipients, Carbon $today, Carbon $windowEnd): int
     {
         $schedules = InstallmentSchedule::query()
@@ -64,6 +57,7 @@ class SendInstallmentReminders extends Command
 
         foreach ($schedules as $schedule) {
             $daysLeft = (int) $today->diffInDays($schedule->due_date, false);
+
             $when = $daysLeft <= 0 ? 'hari ini' : "{$daysLeft} hari lagi";
 
             Notification::make()
@@ -93,12 +87,12 @@ class SendInstallmentReminders extends Command
         $schedules = InstallmentSchedule::query()
             ->with(['loan.member'])
             ->where('status', 'Belum Bayar')
-            ->where(function ($q) use ($today) {
-                $q->whereNull('overdue_reminder_sent_at')
+            ->where(function ($query) use ($today) {
+                $query->whereNull('overdue_reminder_sent_at')
                     ->orWhereDate('overdue_reminder_sent_at', '<', $today);
             })
             ->whereDate('due_date', '<', $today)
-            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->whereHas('loan', fn ($query) => $query->where('status', 'Cair'))
             ->orderBy('due_date')
             ->get();
 
@@ -119,7 +113,6 @@ class SendInstallmentReminders extends Command
         return $schedules->count();
     }
 
-    /** Tombol "Lihat pinjaman" → membuat notifikasi bisa diklik ke detail pinjaman. */
     private function viewAction(InstallmentSchedule $schedule): Action
     {
         return Action::make('lihat')
@@ -131,8 +124,11 @@ class SendInstallmentReminders extends Command
     private function body(InstallmentSchedule $schedule, string $state): string
     {
         $member = $schedule->loan?->member?->full_name ?? 'Anggota';
+
         $loanNumber = $schedule->loan?->loan_number ?? '-';
+
         $due = $schedule->due_date?->translatedFormat('d M Y');
+
         $amount = number_format((float) $schedule->total_due, 0, ',', '.');
 
         return "{$member} — angsuran ke-{$schedule->installment_seq} pinjaman {$loanNumber} {$state} ({$due}). Tagihan Rp {$amount}.";

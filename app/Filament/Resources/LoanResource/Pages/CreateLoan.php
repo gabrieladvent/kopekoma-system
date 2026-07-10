@@ -21,6 +21,7 @@ class CreateLoan extends BaseCreateRecord
         $calc = app(LoanCalculator::class);
 
         $data['recorded_by'] = auth()->id();
+
         $data['status'] = 'Cair';
 
         if (($data['loan_type'] ?? null) === 'jangka_pendek') {
@@ -29,8 +30,8 @@ class CreateLoan extends BaseCreateRecord
 
         $term = (int) ($data['term_months'] ?? 1);
 
-        // Potongan & konstanta dihitung SERVER (input client tak dipercaya, D3/D1b).
         $data = array_merge($data, $calc->disbursement($data['loan_type'], $data['principal_amount']));
+
         $data = array_merge($data, $calc->monthlyConstants($data['loan_type'], $data['principal_amount'], $term));
 
         return $data;
@@ -38,7 +39,6 @@ class CreateLoan extends BaseCreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        // Guard blacklist server-side (bukan hanya rule form).
         if (LoanResource::hasActiveBlacklist($data['member_id'] ?? null)) {
             Notification::make()
                 ->danger()
@@ -54,7 +54,6 @@ class CreateLoan extends BaseCreateRecord
             /** @var Loan $loan */
             $loan = Loan::create($data);
 
-            // Auto-generate jadwal angsuran (N baris / 1 baris Sebrakan), atomik (D4).
             $rows = app(LoanCalculator::class)->buildSchedule(
                 $loan->loan_type,
                 (string) $loan->principal_amount,

@@ -9,11 +9,6 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * Histori pinjaman satu anggota (read-only). Menampilkan SEMUA pinjaman —
- * Cair, Lunas, dan Dibatalkan — agar jejak penuh terlihat di detail anggota.
- * Nempel di halaman View Member (bukan menu navigasi baru).
- */
 class LoansRelationManager extends RelationManager
 {
     protected static string $relationship = 'loans';

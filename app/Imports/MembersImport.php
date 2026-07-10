@@ -32,6 +32,7 @@ class MembersImport implements SkipsOnError, SkipsOnFailure, ToModel, WithChunkR
     public function model(array $row): ?Member
     {
         $grade = $this->resolveGrade($row['kode_golongan']);
+
         $agencyId = $this->resolveAgencyId($row['kode_opd']);
 
         $amount = filled($row['simpanan_wajib'] ?? null)

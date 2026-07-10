@@ -20,6 +20,7 @@ class LoanBlacklistDetail extends Component
     public function mount(LoanBlacklist $blacklist): void
     {
         $this->authorize('view', $blacklist);
+
         $this->blacklistId = $blacklist->id;
     }
 
@@ -32,6 +33,7 @@ class LoanBlacklistDetail extends Component
     public function openRelease(): void
     {
         $record = LoanBlacklist::findOrFail($this->blacklistId);
+
         abort_unless($this->canRelease($record), 403);
 
         $this->showRelease = true;
@@ -45,6 +47,7 @@ class LoanBlacklistDetail extends Component
     public function performRelease(): void
     {
         $record = LoanBlacklist::findOrFail($this->blacklistId);
+
         abort_unless($this->canRelease($record), 403);
 
         $record->update([
@@ -53,6 +56,7 @@ class LoanBlacklistDetail extends Component
         ]);
 
         $this->closeRelease();
+
         $this->dispatch('toast', type: 'success', message: 'Blacklist dilepas — anggota kembali dapat mengajukan pinjaman.');
     }
 
@@ -72,6 +76,7 @@ class LoanBlacklistDetail extends Component
         $blacklist = LoanBlacklist::with(['member.agency', 'recordedBy'])->findOrFail($this->blacklistId);
 
         $activities = $blacklist->activities()->with('causer')->latest()->paginate(8);
+
         $selectedActivity = $this->auditId
             ? $blacklist->activities()->with('causer')->find($this->auditId)
             : null;

@@ -16,10 +16,6 @@ class DepositsRelationManager extends RelationManager
 
     protected static ?string $icon = 'heroicon-o-banknotes';
 
-    /**
-     * Read-only: setoran dibuat dari modul Setoran (immutable, koreksi via
-     * reversal). Di sini hanya rekap setoran untuk tahun program ini.
-     */
     public function isReadOnly(): bool
     {
         return true;
