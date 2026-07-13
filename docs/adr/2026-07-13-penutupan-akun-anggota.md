@@ -2,7 +2,8 @@
 
 Alur terminal untuk mengeluarkan anggota dari koperasi — menyelesaikan (settle) kewajiban pinjaman, mengembalikan seluruh simpanan (ke anggota atau ahli waris), lalu mengubah status anggota jadi `Keluar`/`Meninggal` tanpa menghapus data. **Fitur future — tidak mempengaruhi modul yang sudah berjalan.**
 
-**Author:** Gabriel Advent
+
+**Author:** gabrieladvent
 **Date:** 2026-07-13
 **Status:** Draft — planning only, belum dijadwalkan
 
