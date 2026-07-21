@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Loan\Installment;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Exceptions\CannotProcessPayment;
 use App\Filament\Resources\InstallmentResource as Resource;
 use App\Livewire\Concerns\WithMemberPicker;
@@ -43,7 +45,7 @@ class InstallmentForm extends Component
         $loanId = request()->query('loan');
         if (filled($loanId)) {
             $loan = Loan::with('member')->find($loanId);
-            if ($loan && $loan->status === 'Cair' && $loan->member) {
+            if ($loan && $loan->status === LoanStatus::Cair && $loan->member) {
                 $this->member_id = $loan->member_id;
                 $this->selectedMemberLabel = static::memberLabel($loan->member);
                 $this->loan_id = $loan->id;
@@ -90,7 +92,7 @@ class InstallmentForm extends Component
         $schedule = InstallmentSchedule::query()
             ->with('loan')
             ->where('loan_id', $this->loan_id)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->orderBy('installment_seq')
             ->first();
 
@@ -123,13 +125,13 @@ class InstallmentForm extends Component
 
         $schedule = InstallmentSchedule::find($this->schedule_id);
 
-        if ($schedule === null || $schedule->status !== 'Belum Bayar') {
+        if ($schedule === null || $schedule->status !== InstallmentScheduleStatus::BelumBayar) {
             return false;
         }
 
         return ! InstallmentSchedule::query()
             ->where('loan_id', $schedule->loan_id)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->whereKeyNot($schedule->getKey())
             ->exists();
     }
@@ -205,7 +207,7 @@ class InstallmentForm extends Component
             throw ValidationException::withMessages(['amount_paid' => $e->getMessage()]);
         }
 
-        $lunas = $installment->loan()->where('status', 'Lunas')->exists();
+        $lunas = $installment->loan()->where('status', LoanStatus::Lunas)->exists();
         $message = $lunas
             ? 'Angsuran tercatat & pinjaman LUNAS — SWP + Tab. Berjangka dikembalikan.'
             : 'Pembayaran angsuran '.$installment->installment_number.' tercatat.';

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
@@ -16,18 +17,6 @@ use Illuminate\Support\Facades\DB;
  */
 class WithdrawalWorkflow
 {
-    /**
-     * Transisi yang diizinkan per status. Status terminal punya daftar kosong.
-     *
-     * @var array<string, list<string>>
-     */
-    private const TRANSITIONS = [
-        'draft' => ['acc', 'ditolak'],
-        'acc' => ['cair', 'ditolak'],
-        'cair' => [],
-        'ditolak' => [],
-    ];
-
     /**
      * Jenis yang punya saldo riil & boleh dicairkan. SWP & Tabungan Berjangka
      * dibuka (revisi 2026-06-27) — saldo dititip modul Pinjaman, divalidasi via
@@ -47,16 +36,16 @@ class WithdrawalWorkflow
     {
         $causerId ??= auth()->id();
 
-        $this->assertTransition($withdrawal, 'acc');
+        $this->assertTransition($withdrawal, WithdrawalStatus::Acc);
         $this->assertSufficientBalance($withdrawal);
 
         return DB::transaction(function () use ($withdrawal, $causerId): SavingsWithdrawal {
             $locked = SavingsWithdrawal::query()->lockForUpdate()->findOrFail($withdrawal->getKey());
 
-            $this->assertTransition($locked, 'acc');
+            $this->assertTransition($locked, WithdrawalStatus::Acc);
 
             $locked->forceFill([
-                'status' => 'acc',
+                'status' => WithdrawalStatus::Acc,
                 'approved_by' => $causerId,
                 'approved_at' => now(),
             ])->save();
@@ -80,7 +69,7 @@ class WithdrawalWorkflow
     {
         $causerId ??= auth()->id();
 
-        $this->assertTransition($withdrawal, 'cair');
+        $this->assertTransition($withdrawal, WithdrawalStatus::Cair);
 
         return DB::transaction(function () use ($withdrawal, $causerId): SavingsWithdrawal {
             // Serialisasi per anggota: kunci baris member dulu agar perhitungan
@@ -89,11 +78,11 @@ class WithdrawalWorkflow
 
             $locked = SavingsWithdrawal::query()->lockForUpdate()->findOrFail($withdrawal->getKey());
 
-            $this->assertTransition($locked, 'cair');
+            $this->assertTransition($locked, WithdrawalStatus::Cair);
             $this->assertSufficientBalance($locked);
 
             $locked->forceFill([
-                'status' => 'cair',
+                'status' => WithdrawalStatus::Cair,
                 'disbursed_at' => now(),
             ])->save();
 
@@ -116,14 +105,14 @@ class WithdrawalWorkflow
     {
         $causerId ??= auth()->id();
 
-        $this->assertTransition($withdrawal, 'ditolak');
+        $this->assertTransition($withdrawal, WithdrawalStatus::Ditolak);
 
         return DB::transaction(function () use ($withdrawal, $causerId): SavingsWithdrawal {
             $locked = SavingsWithdrawal::query()->lockForUpdate()->findOrFail($withdrawal->getKey());
 
-            $this->assertTransition($locked, 'ditolak');
+            $this->assertTransition($locked, WithdrawalStatus::Ditolak);
 
-            $locked->forceFill(['status' => 'ditolak'])->save();
+            $locked->forceFill(['status' => WithdrawalStatus::Ditolak])->save();
 
             activity()
                 ->performedOn($locked)
@@ -135,12 +124,11 @@ class WithdrawalWorkflow
         });
     }
 
-    private function assertTransition(SavingsWithdrawal $withdrawal, string $to): void
+    private function assertTransition(SavingsWithdrawal $withdrawal, WithdrawalStatus $to): void
     {
-        $allowed = self::TRANSITIONS[$withdrawal->status] ?? [];
-
-        if (! in_array($to, $allowed, true)) {
-            throw CannotProcessWithdrawal::illegalTransition((string) $withdrawal->status, $to);
+        // Daftar transisi sah hidup di enum (WithdrawalStatus::transitionsTo).
+        if (! $withdrawal->status->canTransitionTo($to)) {
+            throw CannotProcessWithdrawal::illegalTransition($withdrawal->status->value, $to->value);
         }
     }
 

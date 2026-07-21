@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RelationManagers;
 
+use App\Enums\InstallmentScheduleStatus;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -32,7 +33,7 @@ class SchedulesRelationManager extends RelationManager
 
     public static function statusLabel(InstallmentSchedule $schedule): string
     {
-        if ($schedule->status === 'Terbayar') {
+        if ($schedule->status === InstallmentScheduleStatus::Terbayar) {
             return 'Terbayar';
         }
 
@@ -88,7 +89,7 @@ class SchedulesRelationManager extends RelationManager
                     ->label('Dibayar')
                     ->money('IDR')
                     ->placeholder('—')
-                    ->state(fn (InstallmentSchedule $record): ?string => $record->status === 'Terbayar'
+                    ->state(fn (InstallmentSchedule $record): ?string => $record->status === InstallmentScheduleStatus::Terbayar
                         ? static::actualPayment($record)?->amount_paid
                         : null),
                 Tables\Columns\TextColumn::make('status')
@@ -100,7 +101,7 @@ class SchedulesRelationManager extends RelationManager
                     ->label('Tgl Bayar')
                     ->date('d M Y')
                     ->placeholder('—')
-                    ->state(fn (InstallmentSchedule $record): mixed => $record->status === 'Terbayar'
+                    ->state(fn (InstallmentSchedule $record): mixed => $record->status === InstallmentScheduleStatus::Terbayar
                         ? static::actualPayment($record)?->payment_date
                         : null),
             ])
@@ -140,7 +141,7 @@ class SchedulesRelationManager extends RelationManager
                 ]),
             Infolists\Components\Section::make('Realisasi Pembayaran')
                 ->columns(2)
-                ->visible(fn (InstallmentSchedule $record): bool => $record->status === 'Terbayar')
+                ->visible(fn (InstallmentSchedule $record): bool => $record->status === InstallmentScheduleStatus::Terbayar)
                 ->schema([
                     Infolists\Components\TextEntry::make('paid_number')
                         ->label('No. Angsuran')
@@ -169,7 +170,7 @@ class SchedulesRelationManager extends RelationManager
     {
         $total = (int) $loan->schedules()->count();
 
-        $paid = (int) $loan->schedules()->where('status', 'Terbayar')->count();
+        $paid = (int) $loan->schedules()->where('status', InstallmentScheduleStatus::Terbayar)->count();
 
         $overdue = app(LoanArrearsService::class)->overdueCount($loan);
 

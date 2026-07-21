@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
@@ -46,8 +48,8 @@ it('pays one installment per row and marks the schedule terbayar', function () {
     ], $this->user->id);
 
     expect($result)->toBe(['created' => 1, 'skipped' => 0])
-        ->and($schedules[0]->fresh()->status)->toBe('Terbayar')
-        ->and($schedules[1]->fresh()->status)->toBe('Belum Bayar')
+        ->and($schedules[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
+        ->and($schedules[1]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar)
         ->and(Installment::where('loan_id', $loan->id)->count())->toBe(1)
         ->and(Installment::first()->payment_method)->toBe('potong_gaji');
 });
@@ -108,7 +110,7 @@ it('aborts the whole batch when any row is below the bill (anti-corruption)', fu
 
     // Atomic: tidak ada satu pun installment dibuat (baris valid pun ikut batal).
     expect(Installment::count())->toBe(0)
-        ->and($a[0]->fresh()->status)->toBe('Belum Bayar');
+        ->and($a[0]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar);
 });
 
 it('records overpayment as Lain-lain without inflating principal or tabungan berjangka', function () {
@@ -133,7 +135,7 @@ it('auto-settles the loan and refunds SWP + tabungan berjangka on the final inst
         ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($loan->fresh()->status)->toBe('Lunas');
+    expect($loan->fresh()->status)->toBe(LoanStatus::Lunas);
 
     $refunds = SavingsWithdrawal::where('related_loan_id', $loan->id)->get();
 
@@ -173,7 +175,7 @@ it('skips a row whose loan is no longer Cair and still commits the valid rows', 
     ], $this->user->id);
 
     expect($result)->toBe(['created' => 1, 'skipped' => 1])
-        ->and($okSch[0]->fresh()->status)->toBe('Terbayar')
+        ->and($okSch[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and(Installment::where('loan_id', $ok->id)->count())->toBe(1)
         ->and(Installment::where('loan_id', $lunas->id)->count())->toBe(0);
 });
@@ -193,7 +195,7 @@ it('fail-closed: skips a schedule belonging to a member of another OPD (per-OPD 
     expect($result)->toBe(['created' => 1, 'skipped' => 1])
         // Jadwal OPD lain TIDAK pernah dibayar lewat batch OPD ini.
         ->and(Installment::where('loan_id', $foreignLoan->id)->count())->toBe(0)
-        ->and($foreign[0]->fresh()->status)->toBe('Belum Bayar');
+        ->and($foreign[0]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar);
 });
 
 it('rejects an empty batch', function () {

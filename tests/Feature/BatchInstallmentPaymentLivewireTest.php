@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\InstallmentScheduleStatus;
 use App\Livewire\Loan\Installment\BatchInstallmentPayment;
 use App\Models\Agency;
 use App\Models\Installment;
@@ -11,7 +12,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
-/** Anggota Aktif OPD ini dengan satu pinjaman Cair + N jadwal (total_due 1.090.000). */
 function lwMemberWithLoan(string $agencyId, int $schedules = 1): array
 {
     $member = Member::factory()->create(['agency_id' => $agencyId, 'status' => 'Aktif']);
@@ -36,7 +36,7 @@ it('denies the Livewire batch page to a user without the permission', function (
 it('loads OPD members with active loans, offering the oldest unpaid schedule (FIFO) and prefilling the bill', function () {
     asSuperAdmin();
     $agency = Agency::factory()->create();
-    [, , $schedules] = lwMemberWithLoan($agency->id, schedules: 2);
+    [,, $schedules] = lwMemberWithLoan($agency->id, schedules: 2);
     Member::factory()->create(['agency_id' => $agency->id, 'status' => 'Aktif']); // tanpa pinjaman → tak dimuat
 
     $component = Livewire::test(BatchInstallmentPayment::class)->set('agency_id', $agency->id);
@@ -77,7 +77,7 @@ it('processes the batch and records installments only for included members and l
     expect(Installment::count())->toBe(1)
         ->and(Installment::where('loan_id', $loanA->id)->exists())->toBeTrue()
         ->and(Installment::where('loan_id', $loanB->id)->exists())->toBeFalse()
-        ->and($schA[0]->fresh()->status)->toBe('Terbayar');
+        ->and($schA[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar);
 });
 
 it('attaches the per-line bukti to the recorded installment', function () {

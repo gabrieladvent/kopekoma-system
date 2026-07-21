@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Loan;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource as Resource;
 use App\Filament\Resources\RelationManagers\SchedulesRelationManager;
 use App\Livewire\Concerns\InteractsWithAuditTrail;
@@ -74,7 +76,7 @@ class LoanDetail extends Component
             ['correctReason' => 'alasan koreksi'],
         );
 
-        if ($record->status !== 'Cair' || Resource::hasPayments($record)) {
+        if ($record->status !== LoanStatus::Cair || Resource::hasPayments($record)) {
             $this->closeCorrect();
             $this->dispatch('toast', type: 'error', message: 'Hanya pinjaman Cair yang belum punya angsuran terbayar yang dapat dibatalkan.');
 
@@ -97,7 +99,7 @@ class LoanDetail extends Component
                 ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
 
             InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->update(['status' => 'Dibatalkan']);
+            $record->update(['status' => LoanStatus::Dibatalkan]);
         });
 
         $this->closeCorrect();
@@ -166,14 +168,14 @@ class LoanDetail extends Component
 
         // Statistik progres dari hitungan penuh (bukan halaman saat ini).
         $total = (int) $loan->schedules()->count();
-        $paid = (int) $loan->schedules()->where('status', 'Terbayar')->count();
+        $paid = (int) $loan->schedules()->where('status', InstallmentScheduleStatus::Terbayar)->count();
         $overdue = app(LoanArrearsService::class)->overdueCount($loan);
         $percent = $total > 0 ? (int) round($paid / $total * 100) : 0;
 
         // Tabel angsuran — default hanya yang terbayar, paginate 10 (page key sendiri).
         $schedules = $loan->schedules()
             ->with(['installments' => fn ($q) => $q->where('is_reversal', false)->latest()])
-            ->when(! $this->showAllSchedules, fn ($q) => $q->where('status', 'Terbayar'))
+            ->when(! $this->showAllSchedules, fn ($q) => $q->where('status', InstallmentScheduleStatus::Terbayar))
             ->orderBy('installment_seq')
             ->paginate(10, ['*'], 'schedulePage');
 

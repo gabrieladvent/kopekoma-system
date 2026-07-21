@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SavingsWithdrawalResource\Pages;
 
+use App\Enums\WithdrawalStatus;
 use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Models\SavingsWithdrawal;
 use Filament\Actions;
@@ -15,7 +16,7 @@ class ViewSavingsWithdrawal extends ViewRecord
     {
         return [
             Actions\EditAction::make()
-                ->visible(fn (): bool => $this->getRecord()->status === 'draft'),
+                ->visible(fn (): bool => $this->getRecord()->status === WithdrawalStatus::Draft),
             Actions\Action::make('approve')
                 ->label('ACC')
                 ->icon('heroicon-o-check-circle')
@@ -23,7 +24,7 @@ class ViewSavingsWithdrawal extends ViewRecord
                 ->requiresConfirmation()
                 ->modalHeading('Setujui Pencairan')
                 ->modalDescription('Menyetujui pengajuan ini. Dana belum keluar sampai dicairkan.')
-                ->visible(fn (): bool => $this->getRecord()->status === 'draft'
+                ->visible(fn (): bool => $this->getRecord()->status === WithdrawalStatus::Draft
                     && (auth()->user()?->can('approve', $this->getRecord()) ?? false))
                 ->action(fn () => $this->runTransition('approve')),
             Actions\Action::make('disburse')
@@ -33,7 +34,7 @@ class ViewSavingsWithdrawal extends ViewRecord
                 ->requiresConfirmation()
                 ->modalHeading('Cairkan Dana')
                 ->modalDescription('Menandai pencairan sebagai cair. Saldo anggota akan berkurang.')
-                ->visible(fn (): bool => $this->getRecord()->status === 'acc'
+                ->visible(fn (): bool => $this->getRecord()->status === WithdrawalStatus::Acc
                     && (auth()->user()?->can('disburse', $this->getRecord()) ?? false))
                 ->action(fn () => $this->runTransition('disburse')),
             Actions\Action::make('reject')
@@ -43,7 +44,7 @@ class ViewSavingsWithdrawal extends ViewRecord
                 ->requiresConfirmation()
                 ->modalHeading('Tolak Pencairan')
                 ->modalDescription('Menolak pengajuan. Status ditolak bersifat final.')
-                ->visible(fn (): bool => in_array($this->getRecord()->status, ['draft', 'acc'], true)
+                ->visible(fn (): bool => in_array($this->getRecord()->status, [WithdrawalStatus::Draft, WithdrawalStatus::Acc], true)
                     && (auth()->user()?->can('approve', $this->getRecord()) ?? false))
                 ->action(fn () => $this->runTransition('reject')),
             Actions\Action::make('reverse')

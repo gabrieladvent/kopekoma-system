@@ -5,6 +5,7 @@ namespace App\Livewire\Master\Member;
 use App\Models\Agency;
 use App\Models\Grade;
 use App\Models\Member;
+use App\Support\MediaFileName;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -342,7 +343,7 @@ class MemberForm extends Component
         foreach ($this->uploads as $file) {
             try {
                 $member->addMedia($file->getRealPath())
-                    ->usingFileName($file->getClientOriginalName())
+                    ->usingFileName(MediaFileName::for($file))
                     ->usingName(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
                     ->toMediaCollection('documents');
                 $attached++;

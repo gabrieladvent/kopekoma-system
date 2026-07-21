@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Artisan;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -26,9 +25,7 @@ class RolePermissionSeeder extends Seeder
         'reverse_savings::withdrawal',
         'reverse_shopping::transaction',
         'access_batch_salary_deduction',
-        // Reversal pembayaran angsuran = uniform Petugas+ (D5/D7).
         'reverse_installment',
-        // Laporan: lihat/preview on-screen boleh Petugas+ (export terpisah, Pengurus-only).
         'access_laporan_setoran',
         'access_laporan_angsuran',
     ];
@@ -39,14 +36,11 @@ class RolePermissionSeeder extends Seeder
         'reverse_shopping::transaction',
         'access_batch_salary_deduction',
         'reverse_installment',
-        // Mata kedua sebelum uang keluar (D8-A/D10): hanya Pengurus+.
         'approve_savings::withdrawal',
         'disburse_savings::withdrawal',
         'export_savings_recap',
-        // Koreksi salah-input pinjaman = reversal seluruh record → Pengurus+ saja (D3/2d).
         'reverse_loan',
         'manage_settings',
-        // Laporan: akses view (juga di Petugas) + export PII finansial se-koperasi → Pengurus-only.
         'access_laporan_setoran',
         'access_laporan_angsuran',
         'export_laporan_setoran',
@@ -59,7 +53,7 @@ class RolePermissionSeeder extends Seeder
 
     public function run(): void
     {
-        Artisan::call('shield:generate', ['--all' => true, '--panel' => 'admin']);
+        $this->ensureResourcePermissions();
 
         $this->ensureCustomPermissions();
 
@@ -84,6 +78,26 @@ class RolePermissionSeeder extends Seeder
         ]);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * Bikin permission per-resource secara eksplisit.
+     *
+     * Dulu ini hasil `shield:generate --panel=admin`, tapi panel Filament sudah
+     * tidak didaftarkan (lihat bootstrap/providers.php) sehingga command-nya
+     * melempar NoDefaultPanelSetException dan seluruh seeder gagal. Nama
+     * permission-nya tetap sama persis dengan yang digenerate Shield
+     * ({prefix}_{resource}), jadi gate `can:` di routes/web.php tidak berubah.
+     */
+    private function ensureResourcePermissions(): void
+    {
+        $prefixes = array_merge(self::BASE_PREFIXES, self::ELEVATED_PREFIXES);
+
+        foreach (self::RESOURCES as $resource) {
+            foreach ($prefixes as $prefix) {
+                Permission::firstOrCreate(['name' => "{$prefix}_{$resource}", 'guard_name' => 'web']);
+            }
+        }
     }
 
     private function ensureCustomPermissions(): void

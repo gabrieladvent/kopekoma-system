@@ -106,9 +106,32 @@ else
 fi
 
 # --- Migrasi & seed ----------------------------------------------------------
+# Skrip ini untuk bootstrap LOKAL, bukan deploy server (gunakan deploy.sh).
+# Ia bisa menjalankan migrate:fresh (menghapus seluruh data) dan db:seed dengan
+# --force yang menekan konfirmasi Laravel — di direktori produksi itu berarti
+# catatan simpanan & pinjaman anggota lenyap tanpa satu pun prompt.
+if grep -qE '^APP_ENV=(production|prod)' .env 2>/dev/null; then
+  echo
+  err "DITOLAK: .env menunjukkan APP_ENV=production."
+  err "install.sh tidak boleh dijalankan di produksi — gunakan deploy.sh."
+  exit 1
+fi
+
 step "Menjalankan migrasi database"
 MIGRATE_CMD="migrate"
-[ "$FRESH" = true ] && MIGRATE_CMD="migrate:fresh"
+
+if [ "$FRESH" = true ]; then
+  # Konfirmasi ketik-ulang: --fresh menghapus SEMUA tabel beserta isinya.
+  echo
+  warn "--fresh akan MENGHAPUS SELURUH DATA di database '$(grep -E '^DB_DATABASE=' .env | cut -d= -f2-)'."
+  printf "Ketik 'HAPUS SEMUA DATA' untuk melanjutkan: "
+  read -r CONFIRM_FRESH
+  if [ "$CONFIRM_FRESH" != "HAPUS SEMUA DATA" ]; then
+    err "Dibatalkan."
+    exit 1
+  fi
+  MIGRATE_CMD="migrate:fresh"
+fi
 
 if [ "$DO_SEED" = true ]; then
   php artisan "$MIGRATE_CMD" --seed --force --ansi

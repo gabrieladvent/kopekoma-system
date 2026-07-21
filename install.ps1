@@ -117,6 +117,25 @@ if ($dbConn -eq 'sqlite') {
 }
 
 # --- Migrasi & seed ----------------------------------------------------------
+# Skrip ini untuk bootstrap LOKAL, bukan deploy server (gunakan deploy.sh).
+# migrate:fresh + --force menghapus seluruh data tanpa prompt — di direktori
+# produksi itu berarti catatan simpanan & pinjaman anggota lenyap.
+if ((Test-Path '.env') -and (Select-String -Path '.env' -Pattern '^APP_ENV=(production|prod)' -Quiet)) {
+    Write-Err "DITOLAK: .env menunjukkan APP_ENV=production."
+    Write-Err "install.ps1 tidak boleh dijalankan di produksi — gunakan deploy.sh."
+    exit 1
+}
+
+if ($Fresh) {
+    # Konfirmasi ketik-ulang: -Fresh menghapus SEMUA tabel beserta isinya.
+    Write-Warn "-Fresh akan MENGHAPUS SELURUH DATA di database."
+    $confirmFresh = Read-Host "Ketik 'HAPUS SEMUA DATA' untuk melanjutkan"
+    if ($confirmFresh -ne 'HAPUS SEMUA DATA') {
+        Write-Err "Dibatalkan."
+        exit 1
+    }
+}
+
 Write-Step "Menjalankan migrasi database"
 $migrateCmd = if ($Fresh) { 'migrate:fresh' } else { 'migrate' }
 

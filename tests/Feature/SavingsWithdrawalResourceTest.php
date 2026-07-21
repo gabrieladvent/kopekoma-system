@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\WithdrawalStatus;
 use App\Filament\Resources\ActivityResource;
 use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Filament\Resources\SavingsWithdrawalResource\Pages\CreateSavingsWithdrawal;
@@ -54,7 +55,7 @@ it('creates a withdrawal as draft and forces recorded_by to the actor', function
     $w = SavingsWithdrawal::where('member_id', $member->id)->first();
 
     expect($w)->not->toBeNull()
-        ->and($w->status)->toBe('draft')
+        ->and($w->status)->toBe(WithdrawalStatus::Draft)
         ->and($w->recorded_by)->toBe($actor->id)
         ->and($w->withdrawal_number)->toStartWith('TRK-');
 });
@@ -166,16 +167,16 @@ it('processes the loan-refund pair together on a single transition (D2)', functi
 
     $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
     $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
-    expect($swp->status)->toBe('draft')->and($tab->status)->toBe('draft');
+    expect($swp->status)->toBe(WithdrawalStatus::Draft)->and($tab->status)->toBe(WithdrawalStatus::Draft);
 
     // Satu aksi ACC pada salah satu record → keduanya ikut acc.
     SavingsWithdrawalResource::runTransition('approve', $swp->fresh());
-    expect($swp->fresh()->status)->toBe('acc')->and($tab->fresh()->status)->toBe('acc');
+    expect($swp->fresh()->status)->toBe(WithdrawalStatus::Acc)->and($tab->fresh()->status)->toBe(WithdrawalStatus::Acc);
 
     // Satu aksi Cairkan → keduanya cair, saldo SWP & Tab ter-net jadi 0.
     SavingsWithdrawalResource::runTransition('disburse', $swp->fresh());
-    expect($swp->fresh()->status)->toBe('cair')
-        ->and($tab->fresh()->status)->toBe('cair')
+    expect($swp->fresh()->status)->toBe(WithdrawalStatus::Cair)
+        ->and($tab->fresh()->status)->toBe(WithdrawalStatus::Cair)
         ->and(app(SavingsBalanceService::class)->balanceByType($member, 'swp'))->toBe('0.00')
         ->and(app(SavingsBalanceService::class)->balanceByType($member, 'tabungan_berjangka'))->toBe('0.00');
 });
@@ -245,7 +246,7 @@ it('approves then disburses live on one page instance without a reload', functio
         ->assertNotified('Dana dicairkan')
         ->assertActionHidden('disburse');
 
-    expect($w->refresh()->status)->toBe('cair');
+    expect($w->refresh()->status)->toBe(WithdrawalStatus::Cair);
 });
 
 it('hides the disburse action while the withdrawal is still draft', function () {

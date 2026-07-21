@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\LoanStatus;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -88,7 +89,7 @@ class LoanArrearsService
     {
         $loanLoad = Loan::query()
             ->where('member_id', $member->id)
-            ->where('status', 'Cair')
+            ->where('status', LoanStatus::Cair)
             ->get()
             ->reduce(function (string $carry, Loan $loan): string {
                 $monthly = bcadd(

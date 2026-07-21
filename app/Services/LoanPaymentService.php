@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Actions\ReverseTransaction;
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessPayment;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
@@ -14,18 +17,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/**
- * Pembayaran angsuran (ADR D5/D8 + amendment 2026-06-26). Prinsip:
- * - Petugas input SATU nominal diterima (`amount_paid`), divalidasi ≥ tagihan
- *   bulan ini (`installment_schedules.total_due` = Σ konstanta). Lebih = sah,
- *   jadi pos "Kelebihan Bayar" yang dihitung di nota (tak disimpan).
- * - Breakdown (Pokok/Jasa/Tab), sisa pokok, & saldo Tab Berjangka DIHITUNG dari
- *   konstanta `loans.monthly_*` × jumlah angsuran terbayar (net reversal).
- * - Pelunasan (angsuran terakhir → Lunas) memicu pembuatan refund SWP + Tabungan
- *   Berjangka sebagai DRAFT (D1) — saldo baru berkurang saat pengurus mencairkan.
- *   Reversal pelunasan membatalkan refund yatim: draft/acc di-reject, cair
- *   di-reverse (D4). Auto-create idempoten (D5) — satu refund aktif per tipe.
- */
 class LoanPaymentService
 {
     private const SCALE = 2;
@@ -51,23 +42,22 @@ class LoanPaymentService
         return DB::transaction(function () use ($schedule, $input, $causerId, $bukti): Installment {
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($schedule->loan_id);
+
             /** @var InstallmentSchedule $schedule */
             $schedule = InstallmentSchedule::query()->lockForUpdate()->findOrFail($schedule->getKey());
 
-            if ($loan->status !== 'Cair') {
+            if ($loan->status !== LoanStatus::Cair) {
                 throw CannotProcessPayment::loanNotActive();
             }
 
-            if ($schedule->status === 'Terbayar') {
+            if ($schedule->status === InstallmentScheduleStatus::Terbayar) {
                 throw CannotProcessPayment::scheduleAlreadyPaid();
             }
 
             $amountPaid = $this->money($input['amount_paid']);
 
-            // Validasi anti-korupsi total-level (ADR 2026-06-26 D4): nominal
-            // diterima tak boleh kurang dari tagihan bulan ini. Lebih = sah →
-            // pos "Kelebihan Bayar" yang dihitung di nota (tak disimpan).
             $bill = $this->money($schedule->total_due);
+
             if (bccomp($amountPaid, $bill, self::SCALE) < 0) {
                 throw CannotProcessPayment::belowBill();
             }
@@ -89,19 +79,17 @@ class LoanPaymentService
                 $installment->addMedia($bukti)->toMediaCollection('bukti');
             }
 
-            // Kelebihan bayar (amount_paid − tagihan) dikreditkan ke Simpanan
-            // Sukarela anggota — bisa dicairkan kapan saja. Tak menyentuh pokok
-            // (count-based) maupun konstanta breakdown.
             $excess = bcsub($amountPaid, $bill, self::SCALE);
+
             if (bccomp($excess, '0', self::SCALE) > 0) {
                 $this->creditOverpaymentToSukarela($installment, $loan, $excess, $causerId);
             }
 
-            $schedule->update(['status' => 'Terbayar']);
+            $schedule->update(['status' => InstallmentScheduleStatus::Terbayar]);
 
-            // Auto-Lunas: semua jadwal terbayar → Lunas + refund SWP/Tab (atomik).
             if (! $this->hasUnpaidSchedules($loan)) {
-                $loan->update(['status' => 'Lunas']);
+                $loan->update(['status' => LoanStatus::Lunas]);
+
                 $this->createRefunds($loan, $causerId);
             }
 
@@ -133,14 +121,14 @@ class LoanPaymentService
             if ($installment->schedule_id) {
                 InstallmentSchedule::query()
                     ->whereKey($installment->schedule_id)
-                    ->update(['status' => 'Belum Bayar']);
+                    ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
             }
 
             // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
             $this->reverseOverpaymentCredit($installment, $reason, $causerId);
 
-            if ($loan->status === 'Lunas') {
-                $loan->update(['status' => 'Cair']);
+            if ($loan->status === LoanStatus::Lunas) {
+                $loan->update(['status' => LoanStatus::Cair]);
                 $this->cleanupRefunds($loan, $reason, $causerId);
             }
 
@@ -251,7 +239,7 @@ class LoanPaymentService
             ->where('related_loan_id', $loan->id)
             ->where('savings_type', $type)
             ->where('is_reversal', false)
-            ->whereIn('status', ['draft', 'acc', 'cair'])
+            ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc, WithdrawalStatus::Cair])
             ->exists();
     }
 
@@ -267,11 +255,11 @@ class LoanPaymentService
             ->where('related_loan_id', $loan->id)
             ->where('is_reversal', false)
             ->whereIn('savings_type', ['swp', 'tabungan_berjangka'])
-            ->whereIn('status', ['draft', 'acc', 'cair'])
+            ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc, WithdrawalStatus::Cair])
             ->get();
 
         foreach ($refunds as $refund) {
-            if ($refund->status === 'cair') {
+            if ($refund->status === WithdrawalStatus::Cair) {
                 ($this->reverse)($refund, $reason, $causerId);
             } else {
                 $this->workflow->reject($refund, $causerId);
@@ -283,7 +271,7 @@ class LoanPaymentService
     {
         return InstallmentSchedule::query()
             ->where('loan_id', $loan->id)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->exists();
     }
 

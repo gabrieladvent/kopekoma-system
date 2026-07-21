@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\InstallmentResource\Pages;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
@@ -56,7 +58,7 @@ class InstallmentResource extends Resource
 
         return Loan::query()
             ->where('member_id', $memberId)
-            ->where('status', 'Cair')
+            ->where('status', LoanStatus::Cair)
             ->orderByDesc('disbursement_date')
             ->get()
             ->mapWithKeys(fn (Loan $loan): array => [
@@ -79,7 +81,7 @@ class InstallmentResource extends Resource
 
         return InstallmentSchedule::query()
             ->where('loan_id', $loanId)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->orderBy('installment_seq')
             ->limit(1)
             ->get()

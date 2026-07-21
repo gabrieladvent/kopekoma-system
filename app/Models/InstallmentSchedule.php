@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\InstallmentScheduleStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +35,7 @@ class InstallmentSchedule extends Model
         'total_due' => 'decimal:2',
         'due_reminder_sent_at' => 'datetime',
         'overdue_reminder_sent_at' => 'datetime',
+        'status' => InstallmentScheduleStatus::class,
     ];
 
     /**
@@ -41,7 +43,7 @@ class InstallmentSchedule extends Model
      */
     public function scopeOverdue(Builder $query): Builder
     {
-        return $query->where('status', 'Belum Bayar')
+        return $query->where('status', InstallmentScheduleStatus::BelumBayar)
             ->whereDate('due_date', '<', now()->toDateString());
     }
 

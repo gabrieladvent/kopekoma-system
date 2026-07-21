@@ -3,6 +3,7 @@
 namespace App\Livewire\Savings\Withdrawal;
 
 use App\Actions\ReverseTransaction;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
 use App\Exceptions\CannotReverseTransaction;
 use App\Filament\Resources\SavingsWithdrawalResource as Resource;
@@ -10,6 +11,7 @@ use App\Livewire\Concerns\InteractsWithAuditTrail;
 use App\Models\SavingsWithdrawal;
 use App\Services\WithdrawalWorkflow;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -46,22 +48,24 @@ class SavingsWithdrawalDetail extends Component
 
     public function canApprove(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'draft' && (auth()->user()?->can('approve', $record) ?? false);
+        return $record->status === WithdrawalStatus::Draft && (auth()->user()?->can('approve', $record) ?? false);
     }
 
     public function canDisburse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'acc' && (auth()->user()?->can('disburse', $record) ?? false);
+        return $record->status === WithdrawalStatus::Acc && (auth()->user()?->can('disburse', $record) ?? false);
     }
 
     public function canReject(SavingsWithdrawal $record): bool
     {
-        return in_array($record->status, ['draft', 'acc'], true) && (auth()->user()?->can('approve', $record) ?? false);
+        return in_array($record->status, [WithdrawalStatus::Draft, WithdrawalStatus::Acc], true) && (auth()->user()?->can('approve', $record) ?? false);
     }
 
     public function canReverse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'cair' && ! $record->is_reversal && ! $record->isReversed() && (auth()->user()?->can('reverse', $record) ?? false);
+        // canReverseBase: performReverse di komponen ini memproses seluruh
+        // refundPair() dalam satu transaksi (lihat catatan di Resource::canReverse).
+        return Resource::canReverseBase($record);
     }
 
     public function confirmMeta(): array
@@ -113,11 +117,21 @@ class SavingsWithdrawalDetail extends Component
         $workflow = app(WithdrawalWorkflow::class);
 
         try {
-            match ($action) {
-                'approve' => $workflow->approve($record),
-                'disburse' => $workflow->disburse($record),
-                'reject' => $workflow->reject($record),
-            };
+            // Transisi juga harus pair-aware & atomik: tanpa ini, meng-ACC satu
+            // sisi refund pelunasan dari halaman detail meninggalkan saudaranya
+            // di status lama, dan pasangan yang setengah-transisi tidak bisa lagi
+            // diproses dari halaman list. Selaras dgn SavingsWithdrawals::performConfirm.
+            $pair = Resource::refundPair($record);
+
+            DB::transaction(function () use ($pair, $action, $workflow): void {
+                foreach ($pair as $member) {
+                    match ($action) {
+                        'approve' => $workflow->approve($member),
+                        'disburse' => $workflow->disburse($member),
+                        'reject' => $workflow->reject($member),
+                    };
+                }
+            });
 
             $messages = [
                 'approve' => 'Pencairan disetujui (ACC). Saldo belum berkurang — dana keluar saat dicairkan.',
@@ -166,7 +180,20 @@ class SavingsWithdrawalDetail extends Component
         );
 
         try {
-            app(ReverseTransaction::class)($record, $this->reverseReason);
+            // Refund pelunasan pinjaman selalu berpasangan (swp + tabungan,
+            // related_loan_id sama) dan harus dibalik sebagai SATU kesatuan dalam
+            // satu transaksi — kalau tidak, satu sisi ter-reverse dan saudaranya
+            // tertinggal, sehingga saldo anggota tidak konsisten. Pencairan biasa
+            // → refundPair() hanya berisi dirinya sendiri, jadi perilakunya sama.
+            // Selaras dgn SavingsWithdrawals::performReverse.
+            $pair = Resource::refundPair($record);
+            $reverse = app(ReverseTransaction::class);
+
+            DB::transaction(function () use ($pair, $reverse): void {
+                foreach ($pair as $member) {
+                    $reverse($member, $this->reverseReason);
+                }
+            });
 
             $this->closeReverse();
             $this->dispatch('toast', type: 'success', message: 'Reversal berhasil — saldo simpanan telah tersesuaikan.');
@@ -225,7 +252,7 @@ class SavingsWithdrawalDetail extends Component
             'withdrawal' => $withdrawal,
             'typeLabel' => $isRefund ? 'Pengembalian Pelunasan' : (Resource::WITHDRAWAL_TYPES[$withdrawal->savings_type] ?? $withdrawal->savings_type),
             'typeColor' => $isRefund ? 'warning' : Resource::typeColor($withdrawal->savings_type),
-            'statusLabel' => Resource::STATUSES[$withdrawal->status] ?? $withdrawal->status,
+            'statusLabel' => $withdrawal->status->label(),
             'isRefund' => $isRefund,
             'refundSwp' => $isRefund ? Resource::pairAmount($withdrawal, 'swp') : null,
             'refundTab' => $isRefund ? Resource::pairAmount($withdrawal, 'tabungan_berjangka') : null,

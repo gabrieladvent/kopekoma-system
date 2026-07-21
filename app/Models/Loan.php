@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\LoanStatus;
 use App\Models\Concerns\GeneratesTransactionNumber;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -55,6 +56,7 @@ class Loan extends Model implements HasMedia
         'monthly_time_deposit' => 'decimal:2',
         'disbursement_date' => 'date',
         'first_due_date' => 'date',
+        'status' => LoanStatus::class,
     ];
 
     /**
@@ -110,12 +112,12 @@ class Loan extends Model implements HasMedia
      */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('status', 'Cair');
+        return $query->where('status', LoanStatus::Cair);
     }
 
     public function isLunas(): bool
     {
-        return $this->status === 'Lunas';
+        return $this->status === LoanStatus::Lunas;
     }
 
     public function member(): BelongsTo

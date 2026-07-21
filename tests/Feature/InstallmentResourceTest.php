@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Filament\Resources\InstallmentResource;
 use App\Filament\Resources\InstallmentResource\Pages\CreateInstallment;
 use App\Filament\Resources\InstallmentResource\Pages\ViewInstallment;
@@ -50,8 +52,8 @@ it('records a payment through the service, settles the loan and refunds (final i
         ->assertHasNoFormErrors();
 
     expect(Installment::where('loan_id', $this->loan->id)->where('is_reversal', false)->count())->toBe(1)
-        ->and($this->schedule->fresh()->status)->toBe('Terbayar')
-        ->and($this->loan->fresh()->status)->toBe('Lunas')
+        ->and($this->schedule->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
+        ->and($this->loan->fresh()->status)->toBe(LoanStatus::Lunas)
         ->and(SavingsWithdrawal::where('related_loan_id', $this->loan->id)->where('savings_type', 'swp')->where('amount', '120000.00')->exists())->toBeTrue();
 });
 
@@ -136,5 +138,5 @@ it('rejects a below-bill payment (no installment created)', function () {
         ->call('create');
 
     expect(Installment::where('loan_id', $this->loan->id)->exists())->toBeFalse()
-        ->and($this->loan->fresh()->status)->toBe('Cair');
+        ->and($this->loan->fresh()->status)->toBe(LoanStatus::Cair);
 });

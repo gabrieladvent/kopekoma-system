@@ -4,6 +4,7 @@ use App\Actions\ExportSalaryDeductionRecap;
 use App\Filament\Resources\InstallmentResource;
 use App\Filament\Resources\LoanResource;
 use App\Filament\Resources\SavingsDepositResource;
+use App\Http\Controllers\MediaDownloadController;
 use App\Livewire\Auth\Login;
 use App\Livewire\Dashboard;
 use App\Livewire\Loan\Blacklist\LoanBlacklistDetail;
@@ -76,12 +77,10 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', Dashboard::class)->name('dashboard');
 
-    // Profil pengguna — setiap akun mengelola profilnya sendiri (tanpa gate
-    // permission). Foto, email (verifikasi ulang saat berubah), & password.
+    Route::get('/berkas/{media}', MediaDownloadController::class)->name('media.show');
+
     Route::get('/profil', EditProfile::class)->name('profile.edit');
 
-    // Verifikasi email. Verifikasi TIDAK dipaksakan sebagai gate akses; rute ini
-    // hanya melayani link konfirmasi & "kirim ulang". Link signed dari notifikasi.
     Route::get('/email/verify', fn () => redirect()->route('profile.edit'))
         ->name('verification.notice');
 
@@ -92,9 +91,6 @@ Route::middleware('auth')->group(function () {
             ->with('toast', ['type' => 'success', 'message' => 'Email berhasil diverifikasi.']);
     })->middleware('signed')->name('verification.verify');
 
-    // Setor Simpanan (menu utama — di luar group Simpanan). Mode "Setoran Tunggal":
-    // sekali proses → banyak setoran per jenis. Immutable; koreksi via reversal.
-    // Rute statis (create) didahulukan sebelum {deposit} agar tak tertangkap UUID.
     Route::get('/setor-simpanan', SavingsDeposits::class)
         ->middleware('can:view_any_savings::deposit')
         ->name('savings.deposits');
@@ -103,12 +99,10 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:create_savings::deposit')
         ->name('savings.deposits.create');
 
-    // Mode kolektif "Input per OPD" (Dokumentasi §4.4) — gating via permission khusus.
     Route::get('/setor-simpanan/batch', BatchSalaryDeduction::class)
         ->middleware('can:access_batch_salary_deduction')
         ->name('savings.deposits.batch');
 
-    // Export rekap potong gaji (CSV). GET route agar download andal di browser.
     Route::get('/setor-simpanan/batch/export', function () {
         $data = request()->validate([
             'agency_id' => ['required', 'exists:agencies,id'],
@@ -268,7 +262,6 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:view_loan')
         ->name('loans.show');
 
-    // Angsuran — pembayaran (immutable; koreksi via reversal). Pelunasan memicu refund SWP/Tab.
     Route::get('/angsuran', Installments::class)
         ->middleware('can:view_any_installment')
         ->name('installments.index');
@@ -293,14 +286,15 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage_settings')
         ->name('settings');
 
-    // Sistem — gating ditegakkan di mount() tiap komponen.
-    Route::get('/sistem/log-aktivitas', ActivityLogs::class)->name('system.activity-logs');
+    Route::middleware('can:manage-system')->group(function (): void {
+        Route::get('/sistem/log-aktivitas', ActivityLogs::class)->name('system.activity-logs');
 
-    Route::get('/sistem/peran', Roles::class)->name('system.roles');
-    Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
-    Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
+        Route::get('/sistem/peran', Roles::class)->name('system.roles');
+        Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
+        Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
 
-    Route::get('/sistem/pengguna', Users::class)->name('system.users');
-    Route::get('/sistem/pengguna/create', UserForm::class)->name('system.users.create');
-    Route::get('/sistem/pengguna/{user}/edit', UserForm::class)->name('system.users.edit');
+        Route::get('/sistem/pengguna', Users::class)->name('system.users');
+        Route::get('/sistem/pengguna/create', UserForm::class)->name('system.users.create');
+        Route::get('/sistem/pengguna/{user}/edit', UserForm::class)->name('system.users.edit');
+    });
 });

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\InstallmentScheduleStatus;
 use App\Filament\Pages\BatchInstallmentPayment;
 use App\Models\Agency;
 use App\Models\Installment;
@@ -102,7 +103,7 @@ it('processes the batch and records installments only for included members and l
     expect(Installment::count())->toBe(1)
         ->and(Installment::where('loan_id', $loanA->id)->exists())->toBeTrue()
         ->and(Installment::where('loan_id', $loanB->id)->exists())->toBeFalse()
-        ->and($schA[0]->fresh()->status)->toBe('Terbayar');
+        ->and($schA[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar);
 });
 
 it('shows the grand total of only the included lines', function () {

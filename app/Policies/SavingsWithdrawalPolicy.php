@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\WithdrawalStatus;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
@@ -35,7 +36,7 @@ class SavingsWithdrawalPolicy
      */
     public function update(User $user, SavingsWithdrawal $savingsWithdrawal): bool
     {
-        return $savingsWithdrawal->status === 'draft'
+        return $savingsWithdrawal->status === WithdrawalStatus::Draft
             && $user->can('update_savings::withdrawal');
     }
 

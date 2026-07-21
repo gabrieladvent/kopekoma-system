@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Models\InstallmentSchedule;
 use App\Models\User;
 use Filament\Notifications\Actions\Action;
@@ -47,11 +49,11 @@ class SendInstallmentReminders extends Command
     {
         $schedules = InstallmentSchedule::query()
             ->with(['loan.member'])
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->whereNull('due_reminder_sent_at')
             ->whereDate('due_date', '>=', $today)
             ->whereDate('due_date', '<=', $windowEnd)
-            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->whereHas('loan', fn ($q) => $q->where('status', LoanStatus::Cair))
             ->orderBy('due_date')
             ->get();
 
@@ -86,13 +88,13 @@ class SendInstallmentReminders extends Command
     {
         $schedules = InstallmentSchedule::query()
             ->with(['loan.member'])
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->where(function ($query) use ($today) {
                 $query->whereNull('overdue_reminder_sent_at')
                     ->orWhereDate('overdue_reminder_sent_at', '<', $today);
             })
             ->whereDate('due_date', '<', $today)
-            ->whereHas('loan', fn ($query) => $query->where('status', 'Cair'))
+            ->whereHas('loan', fn ($query) => $query->where('status', LoanStatus::Cair))
             ->orderBy('due_date')
             ->get();
 

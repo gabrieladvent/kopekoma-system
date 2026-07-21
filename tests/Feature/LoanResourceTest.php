@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource;
 use App\Filament\Resources\LoanResource\Pages\CreateLoan;
 use App\Filament\Resources\LoanResource\Pages\ListLoans;
@@ -44,7 +45,7 @@ it('records a jangka panjang loan with server-computed deductions and generates 
         ->and($loan->monthly_principal)->toBe('1000000.00')
         ->and($loan->monthly_interest)->toBe('78000.00')
         ->and($loan->monthly_time_deposit)->toBe('12000.00')
-        ->and($loan->status)->toBe('Cair')
+        ->and($loan->status)->toBe(LoanStatus::Cair)
         ->and(InstallmentSchedule::where('loan_id', $loan->id)->count())->toBe(12);
 });
 
@@ -197,7 +198,7 @@ it('cancels a loan as Dibatalkan from its detail page, keeping it as history', f
         ->callAction('correct', ['reason' => 'salah input nominal']);
 
     $loan->refresh();
-    expect($loan->status)->toBe('Dibatalkan')
+    expect($loan->status)->toBe(LoanStatus::Dibatalkan)
         // Jadwal (proyeksi) dibuang agar tak terhitung tunggakan; record pinjaman tetap ada.
         ->and(InstallmentSchedule::where('loan_id', $loan->id)->count())->toBe(0)
         ->and(Loan::find($loan->id))->not->toBeNull();

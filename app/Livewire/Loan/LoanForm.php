@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Loan;
 
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource as Resource;
 use App\Livewire\Concerns\WithMemberPicker;
 use App\Models\InstallmentSchedule;
@@ -11,6 +12,7 @@ use App\Models\Member;
 use App\Services\LoanArrearsService;
 use App\Services\LoanCalculator;
 use App\Settings\CooperativeSettings;
+use App\Support\MediaFileName;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -223,7 +225,7 @@ class LoanForm extends Component
             'disbursement_bank' => $this->isTransfer() ? ($this->disbursement_bank ?: null) : null,
             'disbursement_account_number' => $this->isTransfer() ? ($this->disbursement_account_number ?: null) : null,
             'notes' => $this->notes ?: null,
-            'status' => 'Cair',
+            'status' => LoanStatus::Cair,
             'recorded_by' => auth()->id(),
         ];
 
@@ -266,7 +268,7 @@ class LoanForm extends Component
         foreach ($this->uploads as $file) {
             try {
                 $loan->addMedia($file->getRealPath())
-                    ->usingFileName($file->getClientOriginalName())
+                    ->usingFileName(MediaFileName::for($file))
                     ->usingName(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
                     ->toMediaCollection('dokumen');
             } catch (FileCannotBeAdded) {
