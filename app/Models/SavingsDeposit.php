@@ -2,15 +2,26 @@
 
 namespace App\Models;
 
+use App\Contracts\Reversible;
+use App\Models\Concerns\GeneratesTransactionNumber;
+use App\Models\Concerns\HasSignedAmount;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SavingsDeposit extends Model
+class SavingsDeposit extends Model implements Reversible
 {
-    use HasUuids, LogsActivity;
+    use GeneratesTransactionNumber;
+    use HasFactory;
+    use HasSignedAmount;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
         'transaction_number',
@@ -36,6 +47,40 @@ class SavingsDeposit extends Model
         'is_reversal' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::created(function (SavingsDeposit $deposit): void {
+            if ($deposit->savings_type === 'pokok' && $deposit->member_id !== null) {
+                Member::query()
+                    ->whereKey($deposit->member_id)
+                    ->update(['pokok_paid' => self::hasActivePokok($deposit->member_id)]);
+            }
+        });
+    }
+
+    public static function hasActiveDeposit(string $memberId, string $type, string $periodMonth): bool
+    {
+        $net = static::query()
+            ->where('member_id', $memberId)
+            ->where('savings_type', $type)
+            ->whereDate('period_month', Carbon::parse($periodMonth)->startOfMonth()->toDateString())
+            ->signedAmount()
+            ->value('net');
+
+        return bccomp((string) ($net ?? '0'), '0', 2) > 0;
+    }
+
+    public static function hasActivePokok(string $memberId): bool
+    {
+        $net = static::query()
+            ->where('member_id', $memberId)
+            ->where('savings_type', 'pokok')
+            ->signedAmount()
+            ->value('net');
+
+        return bccomp((string) ($net ?? '0'), '0', 2) > 0;
+    }
+
     public function member(): BelongsTo
     {
         return $this->belongsTo(Member::class);
@@ -46,6 +91,20 @@ class SavingsDeposit extends Model
         return $this->belongsTo(SavingsDeposit::class, 'reversal_of_id');
     }
 
+    /** Baris-lawan reversal yang menunjuk record ini (≤ 1, `reversal_of_id` unik). */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(SavingsDeposit::class, 'reversal_of_id');
+    }
+
+    /** Sudah pernah di-reversal? (mencegah reversal ganda + sembunyikan tombol). */
+    public function isReversed(): bool
+    {
+        return $this->relationLoaded('reversal')
+            ? $this->reversal !== null
+            : $this->reversal()->exists();
+    }
+
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
@@ -54,5 +113,32 @@ class SavingsDeposit extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
+    }
+
+    public function transactionNumberColumn(): string
+    {
+        return 'transaction_number';
+    }
+
+    public function transactionNumberPrefix(): string
+    {
+        return 'STR';
+    }
+
+    public function reverseClone(): array
+    {
+        return [
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $this->member_id,
+            'savings_type' => $this->savings_type,
+            'amount' => $this->amount,
+            'deposit_date' => $this->deposit_date,
+            'period_month' => $this->period_month,
+            'deposit_method' => $this->deposit_method,
+            'deposited_by' => $this->deposited_by,
+            // Bawa referensi (mis. no. angsuran untuk pengalihan kelebihan dana)
+            // agar baris pembatalan tetap dapat dikenali di buku mutasi.
+            'reference_number' => $this->reference_number,
+        ];
     }
 }

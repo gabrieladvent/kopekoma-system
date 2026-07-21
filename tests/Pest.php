@@ -1,5 +1,13 @@
 <?php
 
+use App\Models\Member;
+use App\Models\SavingsDeposit;
+use App\Models\StoreClient;
+use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /*
@@ -14,7 +22,7 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
- // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+    ->use(LazilyRefreshDatabase::class)
     ->in('Feature');
 
 /*
@@ -43,7 +51,98 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Create a super_admin user and authenticate as them. Shield's super_admin
+ * role bypasses all resource policies via a Gate::before hook, so this keeps
+ * Filament resource tests passing even after Shield policies are generated.
+ */
+function asSuperAdmin(): User
 {
-    // ..
+    $user = User::factory()->create();
+
+    $role = Role::firstOrCreate([
+        'name' => 'super_admin',
+        'guard_name' => 'web',
+    ]);
+
+    $user->assignRole($role);
+
+    test()->actingAs($user);
+
+    return $user;
+}
+
+/**
+ * Seed the Shield permissions + D4 roles (petugas, pengurus, super_admin),
+ * then create and authenticate a user with the given role. Used by RBAC
+ * matrix tests so the assigned role carries its real permission set.
+ */
+function asRole(string $role): User
+{
+    test()->seed(RolePermissionSeeder::class);
+
+    $user = User::factory()->create();
+    $user->assignRole($role);
+
+    test()->actingAs($user);
+
+    return $user;
+}
+
+function asPengurus(): User
+{
+    return asRole('pengurus');
+}
+
+function asPetugas(): User
+{
+    return asRole('petugas');
+}
+
+/*
+|--------------------------------------------------------------------------
+| Integrasi API Toko — helper bersama (ADR store_api)
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Anggota Aktif dengan saldo Wajib Belanja terisi sebesar $balance.
+ */
+function activeMemberWithBalance(string $nik, int $balance): Member
+{
+    $member = Member::factory()->create(['nik' => $nik, 'status' => 'Aktif']);
+    SavingsDeposit::factory()->type('wajib_belanja')->create([
+        'member_id' => $member->id,
+        'amount' => $balance,
+    ]);
+
+    return $member;
+}
+
+/**
+ * Bearer token untuk StoreClient baru (klien anonim — bila id tak dibutuhkan).
+ *
+ * @param  list<string>  $abilities
+ */
+function storeToken(array $abilities = ['shopping:charge']): string
+{
+    return StoreClient::factory()->create()->createToken('store-charge', $abilities)->plainTextToken;
+}
+
+/**
+ * @return array{0: StoreClient, 1: string} [client, bearerToken]
+ */
+function clientWithToken(): array
+{
+    $client = StoreClient::factory()->create();
+
+    return [$client, $client->createToken('store-charge', ['shopping:charge'])->plainTextToken];
+}
+
+/**
+ * @return array<string, string> header Idempotency-Key (UUID bila tak diberikan)
+ */
+function chargeHeaders(?string $key = null): array
+{
+    return ['Idempotency-Key' => $key ?? (string) Str::uuid()];
 }

@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Casts\WholeRupiah;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\MediaLibrary\HasMedia;
@@ -14,7 +17,26 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 class Member extends Model implements HasMedia
 {
-    use HasUuids, InteractsWithMedia, LogsActivity, SoftDeletes;
+    use HasFactory;
+    use HasUuids;
+    use InteractsWithMedia;
+    use LogsActivity;
+    use SoftDeletes;
+
+    /**
+     * Allowed heir relationship values. Shared by the form Select and the
+     * Excel import validation so the option set stays in one place.
+     *
+     * @var array<string, string>
+     */
+    public const HEIR_RELATIONSHIPS = [
+        'Istri' => 'Istri',
+        'Suami' => 'Suami',
+        'Anak' => 'Anak',
+        'Orang Tua' => 'Orang Tua',
+        'Saudara Kandung' => 'Saudara Kandung',
+        'Lainnya' => 'Lainnya',
+    ];
 
     protected $fillable = [
         'member_number',
@@ -27,6 +49,8 @@ class Member extends Model implements HasMedia
         'agency_id',
         'position',
         'grade_id',
+        'mandatory_savings_amount',
+        'pokok_paid',
         'employment_status',
         'payroll_account_number',
         'bank_name',
@@ -44,7 +68,55 @@ class Member extends Model implements HasMedia
         'birth_date' => 'date',
         'join_date' => 'date',
         'exit_date' => 'date',
+        'mandatory_savings_amount' => WholeRupiah::class,
+        'pokok_paid' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Member $member): void {
+            if (blank($member->member_number)) {
+                $member->member_number = static::generateMemberNumber();
+            }
+        });
+    }
+
+    public static function generateMemberNumber(?int $year = null): string
+    {
+        $year ??= (int) now()->format('Y');
+        $prefix = sprintf('KM-%d-', $year);
+
+        return DB::transaction(function () use ($prefix): string {
+            $last = static::withTrashed()
+                ->where('member_number', 'like', $prefix.'%')
+                ->lockForUpdate()
+                ->orderByDesc('member_number')
+                ->value('member_number');
+
+            $next = $last ? ((int) substr($last, -4)) + 1 : 1;
+
+            return $prefix.str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        });
+    }
+
+    public function logDocumentActivity(string $description): void
+    {
+        activity()
+            ->performedOn($this)
+            ->causedBy(auth()->user())
+            ->event('updated')
+            ->log($description);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('documents')
+            ->acceptsMimeTypes([
+                'application/pdf',
+                'image/jpeg',
+                'image/png',
+            ]);
+    }
 
     public function agency(): BelongsTo
     {

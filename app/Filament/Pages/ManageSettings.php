@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\StoreClient;
 use App\Settings\CooperativeSettings;
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
@@ -11,35 +12,50 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Tables\Actions\Action as TableAction;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
-class ManageSettings extends Page implements HasForms
+class ManageSettings extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
+    use InteractsWithTable;
 
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
 
-    protected static ?string $navigationGroup = 'Pengaturan';
+    protected static ?string $navigationGroup = 'Sistem';
 
     protected static ?string $navigationLabel = 'Pengaturan';
 
     protected static ?string $title = 'Pengaturan';
 
-    protected static ?int $navigationSort = 99;
+    protected static ?int $navigationSort = 20;
 
     protected static string $view = 'filament.pages.manage-settings';
+
+    public const COPY_SECRET_PERMISSION = 'copy_store_client_secret';
 
     public ?array $data = [];
 
     public function mount(): void
     {
         $general = app(GeneralSettings::class);
+
         $mail = app(MailSettings::class);
+
         $coop = app(CooperativeSettings::class);
 
         $this->form->fill([
@@ -63,6 +79,11 @@ class ManageSettings extends Page implements HasForms
             'loan_interest_rate' => $coop->loan_interest_rate,
             'loan_time_deposit_rate' => $coop->loan_time_deposit_rate,
             'loan_short_term_max' => $coop->loan_short_term_max,
+            'cooperative_address' => $coop->cooperative_address,
+            'cooperative_city' => $coop->cooperative_city,
+            'cooperative_phone' => $coop->cooperative_phone,
+            'signatory_name' => $coop->signatory_name,
+            'signatory_position' => $coop->signatory_position,
         ]);
     }
 
@@ -179,6 +200,38 @@ class ManageSettings extends Page implements HasForms
                                             ->label('Batas Pinjaman Jangka Pendek')
                                             ->numeric()->prefix('Rp')->required(),
                                     ])->columns(2),
+                                Section::make('Identitas Koperasi (Kop Laporan)')
+                                    ->description('Tampil di kop & blok tanda tangan pada laporan PDF (setoran & angsuran).')
+                                    ->schema([
+                                        TextInput::make('cooperative_address')
+                                            ->label('Alamat Koperasi')
+                                            ->placeholder('Jl. Contoh No. 1, Kel. Dauh Puri, Kec. Denpasar Barat')
+                                            ->helperText('Baris alamat di bawah nama koperasi pada kop.')
+                                            ->maxLength(255)
+                                            ->columnSpanFull(),
+                                        TextInput::make('cooperative_city')
+                                            ->label('Kota')
+                                            ->placeholder('Denpasar')
+                                            ->helperText('Dipakai juga di baris tanggal blok tanda tangan.')
+                                            ->maxLength(100),
+                                        TextInput::make('cooperative_phone')
+                                            ->label('Telepon')
+                                            ->tel()
+                                            ->prefix('+62')
+                                            ->placeholder('812 3456 7890')
+                                            ->helperText('Tanpa awalan 0. Ditampilkan sebagai +62 di kop laporan.')
+                                            ->maxLength(50),
+                                        TextInput::make('signatory_name')
+                                            ->label('Nama Penandatangan')
+                                            ->placeholder('mis. I Made Sudana')
+                                            ->helperText('Nama yang tercetak di blok tanda tangan laporan.')
+                                            ->maxLength(100),
+                                        TextInput::make('signatory_position')
+                                            ->label('Jabatan Penandatangan')
+                                            ->placeholder('mis. Ketua / Sekretaris / Bendahara')
+                                            ->helperText('Tampil di atas nama penandatangan.')
+                                            ->maxLength(100),
+                                    ])->columns(2),
                             ]),
                     ]),
             ])
@@ -202,7 +255,151 @@ class ManageSettings extends Page implements HasForms
                 ->action(function (array $data): void {
                     $this->sendTestEmail($data['recipient']);
                 }),
+            Action::make('createStoreClient')
+                ->label('Tambah Klien Toko')
+                ->icon('heroicon-o-building-storefront')
+                ->modalHeading('Tambah Klien Toko')
+                ->modalDescription('Sistem akan membuat Client ID & Secret otomatis. Secret hanya ditampilkan sekali.')
+                ->form([
+                    TextInput::make('name')
+                        ->label('Nama Toko')
+                        ->required()
+                        ->maxLength(100),
+                    Toggle::make('can_refund')
+                        ->label('Boleh melakukan refund')
+                        ->helperText('Token klien ini akan menyertakan ability shopping:refund.')
+                        ->default(false),
+                ])
+                ->action(function (array $data): void {
+                    $secret = Str::random(40);
+
+                    $client = StoreClient::create([
+                        'name' => $data['name'],
+                        'client_id' => 'store_'.Str::lower(Str::random(20)),
+                        'client_secret' => $secret,
+                        'client_secret_encrypted' => $secret,
+                        'is_active' => true,
+                        'can_refund' => (bool) ($data['can_refund'] ?? false),
+                    ]);
+
+                    $this->notifyCredentials($client->client_id, $secret);
+                }),
         ];
+    }
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(StoreClient::query()->latest())
+            ->heading('Klien Toko (API Integrasi)')
+            ->description('Kredensial aplikasi toko untuk mengakses API pemakaian saldo Wajib Belanja.')
+            ->emptyStateHeading('Belum ada klien toko')
+            ->emptyStateDescription('Tambah klien lewat tombol "Tambah Klien Toko" di atas.')
+            ->columns([
+                TextColumn::make('name')
+                    ->label('Nama')
+                    ->searchable(),
+                TextColumn::make('client_id')
+                    ->label('Client ID')
+                    ->badge()
+                    ->color('gray')
+                    ->copyable()
+                    ->copyMessage('Client ID disalin'),
+                ToggleColumn::make('is_active')
+                    ->label('Aktif'),
+                ToggleColumn::make('can_refund')
+                    ->label('Boleh Refund'),
+                TextColumn::make('created_at')
+                    ->label('Dibuat')
+                    ->dateTime('d M Y H:i')
+                    ->sortable(),
+            ])
+            ->actions([
+                TableAction::make('regenerateSecret')
+                    ->label('Reset Secret')
+                    ->icon('heroicon-o-key')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalDescription('Secret lama langsung tak berlaku. Token yang sudah terbit tetap valid sampai kedaluwarsa.')
+                    ->action(function (StoreClient $record): void {
+                        $secret = Str::random(40);
+                        $record->update([
+                            'client_secret' => $secret,
+                            'client_secret_encrypted' => $secret,
+                        ]);
+
+                        $this->notifyCredentials($record->client_id, $secret);
+                    }),
+                TableAction::make('copyCredential')
+                    ->label('Copy Kredensial')
+                    ->icon('heroicon-o-clipboard-document')
+                    ->color('gray')
+                    ->visible(fn (StoreClient $record): bool => (auth()->user()?->can(self::COPY_SECRET_PERMISSION) ?? false)
+                        && filled($record->client_secret_encrypted))
+                    ->modalHeading('Copy Kredensial Klien')
+                    ->modalDescription('Masukkan password akun Anda untuk menampilkan & menyalin kredensial.')
+                    ->modalSubmitActionLabel('Verifikasi & Salin')
+                    ->form([
+                        TextInput::make('password')
+                            ->label('Password Anda')
+                            ->password()
+                            ->required()
+                            ->currentPassword()
+                            ->validationMessages(['current_password' => 'Password Anda salah.']),
+                    ])
+                    ->action(function (StoreClient $record): void {
+                        $this->revealCredentials($record);
+                    }),
+                DeleteAction::make(),
+            ]);
+    }
+
+    private function notifyCredentials(string $clientId, string $secret): void
+    {
+        Notification::make()
+            ->title('Kredensial klien — simpan sekarang')
+            ->body(new HtmlString(
+                'Secret hanya ditampilkan sekali ini.<br><br>'
+                .'<strong>Client ID:</strong><br><code>'.e($clientId).'</code><br><br>'
+                .'<strong>Client Secret:</strong><br><code>'.e($secret).'</code>'
+            ))
+            ->success()
+            ->persistent()
+            ->send();
+    }
+
+    private function revealCredentials(StoreClient $record): void
+    {
+        $secret = $record->client_secret_encrypted;
+
+        if (blank($secret)) {
+            Notification::make()
+                ->warning()
+                ->title('Secret belum tersedia')
+                ->body('Lakukan "Reset Secret" lebih dulu agar kredensial bisa disalin.')
+                ->send();
+
+            return;
+        }
+
+        $this->dispatch('copy-credential', text: "Client ID: {$record->client_id}\nClient Secret: {$secret}");
+
+        activity()
+            ->causedBy(auth()->user())
+            ->performedOn($record)
+            ->event('reveal_secret')
+            ->log("Copy kredensial klien toko {$record->name}");
+
+        Notification::make()
+            ->title('Kredensial disalin')
+            ->body(new HtmlString(
+                'Sudah disalin ke clipboard. Simpan di tempat aman.<br><br>'
+                .'<strong>Client ID:</strong><br><code>'.e($record->client_id).'</code><br><br>'
+                .'<strong>Client Secret:</strong><br><code>'.e($secret).'</code>'
+            ))
+            ->success()
+            ->persistent()
+            ->send();
     }
 
     public function save(): void
@@ -234,6 +431,11 @@ class ManageSettings extends Page implements HasForms
         $coop->loan_interest_rate = (float) $data['loan_interest_rate'];
         $coop->loan_time_deposit_rate = (float) $data['loan_time_deposit_rate'];
         $coop->loan_short_term_max = (float) $data['loan_short_term_max'];
+        $coop->cooperative_address = $data['cooperative_address'] ?: null;
+        $coop->cooperative_city = $data['cooperative_city'] ?: null;
+        $coop->cooperative_phone = $data['cooperative_phone'] ?: null;
+        $coop->signatory_name = $data['signatory_name'] ?: null;
+        $coop->signatory_position = $data['signatory_position'] ?: null;
         $coop->save();
 
         Notification::make()
@@ -243,10 +445,6 @@ class ManageSettings extends Page implements HasForms
             ->send();
     }
 
-    /**
-     * Apply the SMTP values currently in the form (even if unsaved) and send a
-     * test email so the admin can verify the configuration immediately.
-     */
     private function sendTestEmail(string $recipient): void
     {
         $data = $this->form->getState();

@@ -9,10 +9,6 @@ use Illuminate\Support\Facades\Storage;
 
 class Login extends BaseLogin
 {
-    /**
-     * Use a custom split-screen layout while keeping Filament's auth engine
-     * (form schema, validation, CSRF, throttling) intact.
-     */
     protected static string $layout = 'filament.auth.split-layout';
 
     protected function getLayoutData(): array

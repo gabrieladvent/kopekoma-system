@@ -1,0 +1,43 @@
+meta {
+  name: 01 - Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/token
+  body: json
+  auth: none
+}
+
+headers {
+  Accept: application/json
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "client_id": "{{client_id}}",
+    "client_secret": "{{client_secret}}"
+  }
+}
+
+script:post-response {
+  const token = res.body?.response_data?.access_token;
+  if (token) {
+    bru.setEnvVar("access_token", token);
+  }
+}
+
+tests {
+  test("200 + envelope", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.response_code).to.equal(200);
+    expect(res.body.response_data).to.have.property("access_token");
+  });
+}
+
+docs {
+  Tukar client_id + client_secret dengan bearer token. access_token otomatis
+  disimpan ke environment untuk request berikutnya.
+}

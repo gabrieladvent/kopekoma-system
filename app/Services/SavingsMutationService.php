@@ -1,0 +1,129 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\WithdrawalStatus;
+use App\Models\Member;
+use Illuminate\Support\Carbon;
+
+/**
+ * Buku mutasi simpanan: menggabungkan setoran (masuk), pencairan yang sudah
+ * `cair` (keluar), dan pemakaian Wajib Belanja (keluar) jadi satu daftar
+ * kronologis dengan saldo berjalan — seperti rekening koran.
+ *
+ * Tanda efek saldo identik dengan SavingsBalanceService (D1): non-reversal
+ * setoran = +, reversal-nya = −; pencairan/pemakaian = −, reversal-nya = +.
+ * Total akhir = SavingsBalanceService::totalBalance().
+ */
+class SavingsMutationService
+{
+    private const SCALE = 2;
+
+    private const TYPE_LABELS = [
+        'pokok' => 'Pokok',
+        'wajib' => 'Wajib',
+        'sukarela' => 'Sukarela',
+        'hari_raya' => 'Hari Raya',
+        'wajib_belanja' => 'Wajib Belanja',
+    ];
+
+    /**
+     * Mutasi anggota, default urut terbaru di atas; saldo berjalan tetap
+     * dihitung kronologis (lama → baru).
+     *
+     * @return list<array{date:Carbon, recorded_at:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool}>
+     */
+    public function ledgerFor(Member $member, bool $newestFirst = true): array
+    {
+        $rows = collect();
+
+        foreach ($member->savingsDeposits()->get() as $d) {
+            $isOverpaymentTransfer = $d->savings_type === 'sukarela'
+                && str_starts_with((string) $d->reference_number, 'ANG-');
+
+            $description = match (true) {
+                $isOverpaymentTransfer && $d->is_reversal => 'Pembatalan pengalihan kelebihan dana',
+                $isOverpaymentTransfer => 'Pengalihan kelebihan dana',
+                $d->is_reversal => 'Pembatalan setoran',
+                default => 'Setoran',
+            };
+
+            $rows->push($this->normalize(
+                $d->deposit_date, $d->created_at, $d->transaction_number, 'deposit',
+                $d->savings_type, $d->amount, $d->is_reversal,
+                $description,
+            ));
+        }
+
+        foreach ($member->savingsWithdrawals()->where('status', WithdrawalStatus::Cair)->get() as $w) {
+            $rows->push($this->normalize(
+                $w->withdrawal_date, $w->created_at, $w->withdrawal_number, 'withdrawal',
+                $w->savings_type, $w->amount, $w->is_reversal,
+                $w->is_reversal ? 'Pembatalan pencairan' : 'Pencairan',
+                outflow: true,
+            ));
+        }
+
+        foreach ($member->shoppingTransactions()->get() as $s) {
+            $rows->push($this->normalize(
+                $s->transaction_date, $s->created_at, $s->transaction_number ?? '—', 'shopping',
+                'wajib_belanja', $s->amount, $s->is_reversal,
+                $s->is_reversal ? 'Pembatalan belanja toko' : 'Belanja Toko',
+                outflow: true,
+            ));
+        }
+
+        $ordered = $rows
+            ->sortBy(fn (array $r) => $r['_created'])
+            ->sortBy(fn (array $r) => $r['date']->timestamp)
+            ->values();
+
+        $running = '0';
+        $ordered = $ordered->map(function (array $r) use (&$running): array {
+            $running = bcadd($running, $r['_signed'], self::SCALE);
+            $r['saldo'] = $running;
+
+            unset($r['_signed']);
+
+            return $r;
+        });
+
+        return ($newestFirst ? $ordered->reverse()->values() : $ordered)->all();
+    }
+
+    /**
+     * @return array{date:Carbon, recorded_at:Carbon, number:string, source:string, type:string, type_label:string, description:string, masuk:string, keluar:string, saldo:string, is_reversal:bool, _signed:string, _created:int}
+     */
+    private function normalize(
+        mixed $date,
+        mixed $createdAt,
+        string $number,
+        string $source,
+        string $type,
+        mixed $amount,
+        bool $isReversal,
+        string $description,
+        bool $outflow = false,
+    ): array {
+        $amount = bcadd((string) $amount, '0', self::SCALE);
+
+        $isInflow = $outflow ? $isReversal : ! $isReversal;
+
+        $signed = $isInflow ? $amount : '-'.$amount;
+
+        return [
+            'date' => Carbon::parse($date),
+            'recorded_at' => Carbon::parse($createdAt),
+            'number' => $number,
+            'source' => $source,
+            'type' => $type,
+            'type_label' => self::TYPE_LABELS[$type] ?? $type,
+            'description' => $description,
+            'masuk' => $isInflow ? $amount : '0',
+            'keluar' => $isInflow ? '0' : $amount,
+            'is_reversal' => $isReversal,
+            '_signed' => $signed,
+            '_created' => Carbon::parse($createdAt)->getTimestamp(),
+        ];
+    }
+}

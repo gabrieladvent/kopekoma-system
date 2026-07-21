@@ -1,0 +1,38 @@
+meta {
+  name: 04 - Refund
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/purchases/{{transaction_number}}/refund
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+headers {
+  Accept: application/json
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "reason": "barang dikembalikan pembeli"
+  }
+}
+
+tests {
+  test("201/200 + refunded", function () {
+    expect([200, 201]).to.include(res.status);
+    expect(res.body.response_data.refunded).to.equal(true);
+  });
+}
+
+docs {
+  Refund transaksi store_api. Butuh token ber-ability shopping:refund (klien
+  dengan can_refund). transaction_number diambil dari hasil Charge.
+}

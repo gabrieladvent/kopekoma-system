@@ -2,21 +2,35 @@
 
 namespace App\Models;
 
+use App\Contracts\Reversible;
+use App\Models\Concerns\GeneratesTransactionNumber;
+use App\Models\Concerns\HasSignedAmount;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class ShoppingTransaction extends Model
+class ShoppingTransaction extends Model implements Reversible
 {
-    use HasUuids, LogsActivity;
+    use GeneratesTransactionNumber;
+    use HasFactory;
+    use HasSignedAmount;
+    use HasUuids;
+    use LogsActivity;
 
     protected $fillable = [
+        'idempotency_key',
+        'idempotency_hash',
+        'transaction_number',
         'member_id',
         'amount',
         'transaction_date',
         'source',
+        'store_client_id',
         'reference_number',
         'notes',
         'is_reversal',
@@ -40,6 +54,24 @@ class ShoppingTransaction extends Model
         return $this->belongsTo(ShoppingTransaction::class, 'reversal_of_id');
     }
 
+    /**
+     * Baris reversal yang menargetkan transaksi ini (paling banyak satu —
+     * `reversal_of_id` unik). Dipakai untuk menyembunyikan tombol Reversal
+     * pada transaksi yang sudah pernah di-reversal.
+     */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(ShoppingTransaction::class, 'reversal_of_id');
+    }
+
+    /** Apakah transaksi ini sudah pernah di-reversal. */
+    public function isReversed(): bool
+    {
+        return $this->relationLoaded('reversal')
+            ? $this->reversal !== null
+            : $this->reversal()->exists();
+    }
+
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
@@ -48,5 +80,27 @@ class ShoppingTransaction extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
+    }
+
+    public function transactionNumberColumn(): string
+    {
+        return 'transaction_number';
+    }
+
+    public function transactionNumberPrefix(): string
+    {
+        return 'BLJ';
+    }
+
+    public function reverseClone(): array
+    {
+        return [
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $this->member_id,
+            'amount' => $this->amount,
+            'transaction_date' => $this->transaction_date,
+            'source' => $this->source,
+            'store_client_id' => $this->store_client_id,
+        ];
     }
 }
