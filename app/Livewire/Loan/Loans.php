@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Loan;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource as Resource;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -124,14 +126,25 @@ class Loans extends Component
                     'member_id' => $record->member_id,
                     'principal_amount' => $record->principal_amount,
                 ])
-                ->log('Koreksi salah-input pinjaman: '.$this->correctReason);
+                ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
 
+            // Record DIPERTAHANKAN sebagai histori (status → Dibatalkan); hanya
+            // jadwal proyeksi yang dibuang agar tak terhitung tunggakan.
+            //
+            // Sebelumnya di sini `$record->delete()` — dan Loan TIDAK memakai
+            // SoftDeletes, jadi itu hard-delete. Karena koreksi hanya boleh atas
+            // pinjaman berstatus "Cair", SWP anggota sudah terpotong dan saldo
+            // SWP diturunkan dari SUM(loans.swp_amount) — menghapus baris ini
+            // melenyapkan simpanan yang benar-benar sudah dibayar anggota, tanpa
+            // reversal entry. Nomor pinjaman (dari MAX()) juga jadi terpakai ulang.
+            //
+            // Selaras dgn LoanDetail::performCorrect & LoanResource::performCorrection.
             InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->delete();
+            $record->update(['status' => LoanStatus::Dibatalkan]);
         });
 
         $this->closeCorrect();
-        $this->dispatch('toast', type: 'success', message: 'Pinjaman salah-input dikoreksi (record & jadwal dihapus, tercatat di audit).');
+        $this->dispatch('toast', type: 'success', message: 'Pinjaman dibatalkan — tetap tersimpan sebagai histori, jadwal dibersihkan, tercatat di audit.');
     }
 
     public function render(): View
@@ -141,7 +154,7 @@ class Loans extends Component
             ->withCount([
                 'schedules as overdue_count' => fn ($q) => $q->overdue(),
                 'schedules as schedules_total',
-                'schedules as schedules_paid' => fn ($q) => $q->where('status', 'Terbayar'),
+                'schedules as schedules_paid' => fn ($q) => $q->where('status', InstallmentScheduleStatus::Terbayar),
             ])
             ->when($this->search !== '', function ($q) {
                 $term = '%'.$this->search.'%';
@@ -169,15 +182,15 @@ class Loans extends Component
      */
     private function stats(): array
     {
-        $active = Loan::query()->where('status', 'Cair')->count();
-        $settled = Loan::query()->where('status', 'Lunas')->count();
+        $active = Loan::query()->where('status', LoanStatus::Cair)->count();
+        $settled = Loan::query()->where('status', LoanStatus::Lunas)->count();
         $overdue = InstallmentSchedule::query()->overdue()->count();
 
         // Sisa pokok kasar = Σ principal pinjaman aktif − Σ pokok terbayar (net reversal).
-        $principalActive = (string) (Loan::query()->where('status', 'Cair')->sum('principal_amount') ?? '0');
+        $principalActive = (string) (Loan::query()->where('status', LoanStatus::Cair)->sum('principal_amount') ?? '0');
         $paidNet = (string) (DB::table('installments')
             ->join('loans', 'loans.id', '=', 'installments.loan_id')
-            ->where('loans.status', 'Cair')
+            ->where('loans.status', LoanStatus::Cair)
             ->selectRaw('COALESCE(SUM((CASE WHEN installments.is_reversal = 0 THEN 1 ELSE -1 END) * loans.monthly_principal), 0) as net')
             ->value('net') ?? '0');
 

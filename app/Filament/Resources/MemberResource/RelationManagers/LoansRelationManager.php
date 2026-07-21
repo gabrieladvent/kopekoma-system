@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MemberResource\RelationManagers;
 
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource;
 use App\Models\Loan;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -22,15 +23,6 @@ class LoansRelationManager extends RelationManager
         return true;
     }
 
-    public static function statusColor(string $state): string
-    {
-        return match ($state) {
-            'Lunas' => 'success',
-            'Dibatalkan' => 'gray',
-            default => 'info',
-        };
-    }
-
     public function table(Table $table): Table
     {
         return $table
@@ -42,13 +34,13 @@ class LoansRelationManager extends RelationManager
                     ->formatStateUsing(fn (string $state): string => LoanResource::LOAN_TYPES[$state] ?? $state),
                 Tables\Columns\TextColumn::make('principal_amount')->label('Jumlah')->money('IDR')->sortable(),
                 Tables\Columns\TextColumn::make('disbursement_date')->label('Tgl Pencairan')->date('d M Y')->sortable(),
-                Tables\Columns\TextColumn::make('status')->label('Status')->badge()
-                    ->color(fn (string $state): string => static::statusColor($state)),
+                // Label & warna badge di-drive enum LoanStatus (HasLabel/HasColor).
+                Tables\Columns\TextColumn::make('status')->label('Status')->badge(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
-                    ->options(['Cair' => 'Cair', 'Lunas' => 'Lunas', 'Dibatalkan' => 'Dibatalkan']),
+                    ->options(LoanStatus::options()),
             ])
             ->headerActions([])
             ->actions([

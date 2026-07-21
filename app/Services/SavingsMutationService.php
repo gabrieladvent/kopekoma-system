@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\WithdrawalStatus;
 use App\Models\Member;
 use Illuminate\Support\Carbon;
 
@@ -37,8 +38,6 @@ class SavingsMutationService
         $rows = collect();
 
         foreach ($member->savingsDeposits()->get() as $d) {
-            // Kelebihan bayar angsuran yang dialihkan ke Sukarela ditandai khusus di
-            // buku mutasi (ref = no. angsuran, prefix ANG-) — bukan setoran biasa.
             $isOverpaymentTransfer = $d->savings_type === 'sukarela'
                 && str_starts_with((string) $d->reference_number, 'ANG-');
 
@@ -56,12 +55,11 @@ class SavingsMutationService
             ));
         }
 
-        foreach ($member->savingsWithdrawals()->where('status', 'cair')->get() as $w) {
+        foreach ($member->savingsWithdrawals()->where('status', WithdrawalStatus::Cair)->get() as $w) {
             $rows->push($this->normalize(
                 $w->withdrawal_date, $w->created_at, $w->withdrawal_number, 'withdrawal',
                 $w->savings_type, $w->amount, $w->is_reversal,
                 $w->is_reversal ? 'Pembatalan pencairan' : 'Pencairan',
-                // pencairan/pemakaian membalik tanda dasar (default keluar).
                 outflow: true,
             ));
         }
@@ -75,8 +73,6 @@ class SavingsMutationService
             ));
         }
 
-        // Kronologis untuk saldo berjalan: tanggal, lalu created_at sebagai tiebreak.
-        // Dua sortBy berurutan + stable sort (PHP 8) = multi-key yang andal.
         $ordered = $rows
             ->sortBy(fn (array $r) => $r['_created'])
             ->sortBy(fn (array $r) => $r['date']->timestamp)
@@ -111,8 +107,8 @@ class SavingsMutationService
     ): array {
         $amount = bcadd((string) $amount, '0', self::SCALE);
 
-        // Arah dasar: setoran = masuk; pencairan/belanja = keluar. Reversal membalik.
         $isInflow = $outflow ? $isReversal : ! $isReversal;
+
         $signed = $isInflow ? $amount : '-'.$amount;
 
         return [

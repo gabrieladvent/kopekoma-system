@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\UnsupportedSavingsType;
 use App\Models\Installment;
 use App\Models\Loan;
@@ -19,7 +20,7 @@ class SavingsBalanceService
 
     public function balanceByType(Member $member, string $type): string
     {
-        // SWP & Tabungan Berjangka: dititipkan modul Pinjaman (ADR D7).
+        // SWP & Tabungan Berjangka: dititipkan modul Pinjaman
         // Sumber akumulasi = tabel pinjaman; pengurang = refund withdrawal.
         if ($type === 'swp') {
             return $this->loanSwpBalance($member);
@@ -48,12 +49,6 @@ class SavingsBalanceService
         );
     }
 
-    /**
-     * Saldo SWP anggota (ADR D7): SWP dipotong sekali saat pencairan
-     * (akumulasi dari `loans.swp_amount`), dikurangi refund yang sudah cair.
-     * SATU pengurangan saja (lihat C3) — pinjaman lunas yang sudah di-refund
-     * otomatis ter-net (akumulasi − refund = 0 untuk pinjaman itu).
-     */
     public function loanSwpBalance(Member $member): string
     {
         $accrued = Loan::query()
@@ -101,7 +96,7 @@ class SavingsBalanceService
         $withdrawals = SavingsWithdrawal::query()
             ->where('member_id', $member->id)
             ->where('savings_type', 'hari_raya')
-            ->where('status', 'cair')
+            ->where('status', WithdrawalStatus::Cair)
             ->where('period_year', $year)
             ->signedAmount()
             ->value('net');
@@ -138,7 +133,7 @@ class SavingsBalanceService
 
         $withdrawalNet = SavingsWithdrawal::query()
             ->where('member_id', $member->id)
-            ->where('status', 'cair')
+            ->where('status', WithdrawalStatus::Cair)
             ->whereIn('savings_type', ['pokok', 'wajib', 'sukarela'])
             ->groupBy('savings_type')
             ->selectRaw('savings_type, COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount ELSE -amount END), 0) as net')
@@ -171,8 +166,21 @@ class SavingsBalanceService
 
     public function totalBalance(Member $member): string
     {
-        $all = $this->allBalances($member);
+        return $this->sumBalances($this->allBalances($member));
+    }
 
+    /**
+     * Menjumlahkan hasil allBalances() TANPA query ulang.
+     *
+     * Pemanggil yang sudah memegang hasil allBalances() harus memakai ini, bukan
+     * totalBalance() — totalBalance() mengambil ulang semuanya dari database.
+     * Di layar daftar saldo, memanggil keduanya per baris berarti dua kali kerja
+     * query untuk angka yang sama.
+     *
+     * @param  array{pokok: string, wajib: string, sukarela: string, wajib_belanja: string, hari_raya: array<int, string>}  $all
+     */
+    public function sumBalances(array $all): string
+    {
         $total = bcadd(bcadd($all['pokok'], $all['wajib'], self::SCALE), $all['sukarela'], self::SCALE);
         $total = bcadd($total, $all['wajib_belanja'], self::SCALE);
 
@@ -199,7 +207,7 @@ class SavingsBalanceService
         $withdrawals = SavingsWithdrawal::query()
             ->where('member_id', $member->id)
             ->where('savings_type', 'hari_raya')
-            ->where('status', 'cair')
+            ->where('status', WithdrawalStatus::Cair)
             ->whereNotNull('period_year')
             ->get(['period_year', 'amount', 'is_reversal'])
             ->groupBy('period_year')
@@ -256,7 +264,7 @@ class SavingsBalanceService
         $net = SavingsWithdrawal::query()
             ->where('member_id', $member->id)
             ->where('savings_type', $type)
-            ->where('status', 'cair')
+            ->where('status', WithdrawalStatus::Cair)
             ->signedAmount()
             ->value('net');
 

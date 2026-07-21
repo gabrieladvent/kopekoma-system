@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Actions\ReverseTransaction;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
 use App\Exceptions\CannotReverseTransaction;
 use App\Filament\Forms\Components\MoneyInput;
@@ -71,17 +72,6 @@ class SavingsWithdrawalResource extends Resource
         'transfer' => 'Transfer',
     ];
 
-    public static function statusColor(string $state): string
-    {
-        return match ($state) {
-            'draft' => 'gray',
-            'acc' => 'info',
-            'cair' => 'success',
-            'ditolak' => 'danger',
-            default => 'gray',
-        };
-    }
-
     public static function typeColor(string $state): string
     {
         return match ($state) {
@@ -120,7 +110,7 @@ class SavingsWithdrawalResource extends Resource
                 ->where('member_id', $member->id)
                 ->where('savings_type', $type)
                 ->where('is_reversal', false)
-                ->whereIn('status', ['draft', 'acc'])
+                ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc])
                 ->sum('amount');
 
             $available = bcsub($balance, $pending, 2);
@@ -264,11 +254,10 @@ class SavingsWithdrawalResource extends Resource
                                     ->weight('bold')
                                     ->color('danger')
                                     ->state(fn (SavingsWithdrawal $record): string => static::pairTotal($record)),
+                                // Label & warna badge di-drive enum WithdrawalStatus.
                                 Infolists\Components\TextEntry::make('status')
                                     ->label('Status')
-                                    ->badge()
-                                    ->color(fn (string $state): string => static::statusColor($state))
-                                    ->formatStateUsing(fn (string $state): string => self::STATUSES[$state] ?? $state),
+                                    ->badge(),
                                 Infolists\Components\TextEntry::make('disbursement_method')
                                     ->label('Jenis Pencairan')
                                     ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
@@ -363,9 +352,7 @@ class SavingsWithdrawalResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => static::statusColor($state))
-                    ->formatStateUsing(fn (string $state): string => self::STATUSES[$state] ?? $state),
+                    ->badge(),
                 Tables\Columns\TextColumn::make('disbursement_method')
                     ->label('Jenis Pencairan')
                     ->badge()
@@ -422,7 +409,7 @@ class SavingsWithdrawalResource extends Resource
             ->requiresConfirmation()
             ->modalHeading('Setujui Pencairan')
             ->modalDescription('Menyetujui pengajuan ini. Dana belum keluar sampai dicairkan.')
-            ->visible(fn (SavingsWithdrawal $record): bool => $record->status === 'draft'
+            ->visible(fn (SavingsWithdrawal $record): bool => $record->status === WithdrawalStatus::Draft
                 && (auth()->user()?->can('approve', $record) ?? false))
             ->action(fn (SavingsWithdrawal $record) => static::runTransition('approve', $record));
     }
@@ -436,7 +423,7 @@ class SavingsWithdrawalResource extends Resource
             ->requiresConfirmation()
             ->modalHeading('Cairkan Dana')
             ->modalDescription('Menandai pencairan sebagai cair. Saldo anggota akan berkurang.')
-            ->visible(fn (SavingsWithdrawal $record): bool => $record->status === 'acc'
+            ->visible(fn (SavingsWithdrawal $record): bool => $record->status === WithdrawalStatus::Acc
                 && (auth()->user()?->can('disburse', $record) ?? false))
             ->action(fn (SavingsWithdrawal $record) => static::runTransition('disburse', $record));
     }
@@ -450,7 +437,7 @@ class SavingsWithdrawalResource extends Resource
             ->requiresConfirmation()
             ->modalHeading('Tolak Pencairan')
             ->modalDescription('Menolak pengajuan. Status ditolak bersifat final.')
-            ->visible(fn (SavingsWithdrawal $record): bool => in_array($record->status, ['draft', 'acc'], true)
+            ->visible(fn (SavingsWithdrawal $record): bool => in_array($record->status, [WithdrawalStatus::Draft, WithdrawalStatus::Acc], true)
                 && (auth()->user()?->can('approve', $record) ?? false))
             ->action(fn (SavingsWithdrawal $record) => static::runTransition('reject', $record));
     }
@@ -469,12 +456,33 @@ class SavingsWithdrawalResource extends Resource
             ->action(fn (SavingsWithdrawal $record, array $data) => static::performReversal($record, $data));
     }
 
+    /**
+     * Syarat dasar reversal yang berlaku di SEMUA UI. Dipakai bersama oleh panel
+     * Filament dan komponen Livewire supaya tidak ada lagi salinan yang menyimpang
+     * (Filament sempat kehilangan `! isReversed()` → reversal ganda lolos).
+     */
+    public static function canReverseBase(SavingsWithdrawal $record): bool
+    {
+        return $record->status === WithdrawalStatus::Cair
+            && ! $record->is_reversal
+            && ! $record->isReversed()
+            && (auth()->user()?->can('reverse', $record) ?? false);
+    }
+
+    /**
+     * Varian Filament: TAMBAH larangan refund pelunasan pinjaman.
+     *
+     * Ini bukan guard yang "kelupaan" di Livewire — perbedaannya disengaja.
+     * Refund pelunasan selalu berpasangan (swp + tabungan, related_loan_id sama)
+     * dan hanya boleh dibalik sebagai satu kesatuan. Panel Filament me-reverse
+     * satu baris saja, jadi di sini refund harus ditolak. SavingsWithdrawals
+     * (Livewire) me-reverse lewat refundPair() dalam satu transaksi, sehingga
+     * boleh memakai canReverseBase() langsung.
+     */
     public static function canReverse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'cair'
-            && ! $record->is_reversal
-            && ! static::isLoanRefund($record)
-            && (auth()->user()?->can('reverse', $record) ?? false);
+        return static::canReverseBase($record)
+            && ! static::isLoanRefund($record);
     }
 
     /**
@@ -520,9 +528,9 @@ class SavingsWithdrawalResource extends Resource
      * @var array<string, list<string>>
      */
     private const TRANSITION_FROM = [
-        'approve' => ['draft'],
-        'disburse' => ['acc'],
-        'reject' => ['draft', 'acc'],
+        'approve' => [WithdrawalStatus::Draft],
+        'disburse' => [WithdrawalStatus::Acc],
+        'reject' => [WithdrawalStatus::Draft, WithdrawalStatus::Acc],
     ];
 
     public static function isLoanRefund(SavingsWithdrawal $record): bool

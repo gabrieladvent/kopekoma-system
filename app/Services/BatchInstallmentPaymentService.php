@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Exceptions\CannotProcessPayment;
 use App\Models\Agency;
 use App\Models\Installment;
@@ -70,7 +72,7 @@ class BatchInstallmentPaymentService
                 // dari anggota OPD terpilih; ini penegakan server-side-nya). pay()
                 // tetap penjaga akhir (lock loan + status + idempotency).
                 if ($schedule === null
-                    || $schedule->status === 'Terbayar'
+                    || $schedule->status === InstallmentScheduleStatus::Terbayar
                     || ! $this->belongsToAgency($schedule, $agency)) {
                     $skipped++;
 
@@ -147,8 +149,8 @@ class BatchInstallmentPaymentService
             // Jadwal yang akan dilewati saat eksekusi (tak ada / terbayar / pinjaman
             // tak aktif / bukan OPD ini) tak perlu divalidasi nominalnya.
             if ($schedule === null
-                || $schedule->status === 'Terbayar'
-                || $schedule->loan?->status !== 'Cair'
+                || $schedule->status === InstallmentScheduleStatus::Terbayar
+                || $schedule->loan?->status !== LoanStatus::Cair
                 || ! $this->belongsToAgency($schedule, $agency)) {
                 continue;
             }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\ReverseTransaction;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
@@ -39,7 +40,7 @@ it('approves a draft withdrawal (draft → acc) and records the approver', funct
 
     $result = $this->workflow->approve($w, $actor->id);
 
-    expect($result->status)->toBe('acc')
+    expect($result->status)->toBe(WithdrawalStatus::Acc)
         ->and($result->approved_by)->toBe($actor->id)
         ->and($result->approved_at)->not->toBeNull();
 });
@@ -55,7 +56,7 @@ it('disburses an approved withdrawal (acc → cair) and reduces the balance', fu
 
     $result = $this->workflow->disburse($w);
 
-    expect($result->status)->toBe('cair')
+    expect($result->status)->toBe(WithdrawalStatus::Cair)
         ->and($result->disbursed_at)->not->toBeNull()
         ->and($this->balances->balanceByType($member, 'sukarela'))->toBe('60000.00');
 });
@@ -80,7 +81,7 @@ it('rejects a withdrawal (draft → ditolak) without touching the balance', func
 
     $result = $this->workflow->reject($w);
 
-    expect($result->status)->toBe('ditolak')
+    expect($result->status)->toBe(WithdrawalStatus::Ditolak)
         ->and($this->balances->balanceByType($member, 'sukarela'))->toBe('100000.00');
 });
 
@@ -125,7 +126,7 @@ it('refuses to disburse when the balance is insufficient', function () {
     expect(fn () => $this->workflow->disburse($w))
         ->toThrow(CannotProcessWithdrawal::class);
 
-    expect($w->refresh()->status)->toBe('acc'); // tidak berubah
+    expect($w->refresh()->status)->toBe(WithdrawalStatus::Acc); // tidak berubah
 });
 
 it('prevents over-draw across two sequential disbursements (serialize guard logic)', function () {

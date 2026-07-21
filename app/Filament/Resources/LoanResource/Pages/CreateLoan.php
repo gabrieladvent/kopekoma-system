@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\LoanResource\Pages;
 
+use App\Enums\LoanStatus;
 use App\Filament\Resources\LoanResource;
 use App\Filament\Resources\Pages\BaseCreateRecord;
 use App\Models\InstallmentSchedule;
@@ -22,7 +23,7 @@ class CreateLoan extends BaseCreateRecord
 
         $data['recorded_by'] = auth()->id();
 
-        $data['status'] = 'Cair';
+        $data['status'] = LoanStatus::Cair;
 
         if (($data['loan_type'] ?? null) === 'jangka_pendek') {
             $data['term_months'] = 1;

@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\InstallmentResource;
 use App\Models\Agency;
@@ -193,7 +195,7 @@ class BatchInstallmentPayment extends Page implements HasForms
         }
 
         return Loan::query()
-            ->where('status', 'Cair')
+            ->where('status', LoanStatus::Cair)
             ->whereHas('member', fn ($query) => $query->where('agency_id', $agencyId)->where('status', 'Aktif'))
             ->with('member')
             ->get()
@@ -231,7 +233,7 @@ class BatchInstallmentPayment extends Page implements HasForms
     {
         $schedule = InstallmentSchedule::query()
             ->where('loan_id', $loan->id)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->orderBy('installment_seq')
             ->first();
 

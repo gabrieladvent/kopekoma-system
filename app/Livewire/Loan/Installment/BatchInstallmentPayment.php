@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Loan\Installment;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
 use App\Models\Agency;
 use App\Models\InstallmentSchedule;
@@ -105,7 +107,7 @@ class BatchInstallmentPayment extends Component
         }
 
         return Loan::query()
-            ->where('status', 'Cair')
+            ->where('status', LoanStatus::Cair)
             ->whereHas('member', fn ($q) => $q->where('agency_id', $agencyId)->where('status', 'Aktif'))
             ->with('member')
             ->get()
@@ -142,7 +144,7 @@ class BatchInstallmentPayment extends Component
     {
         $schedule = InstallmentSchedule::query()
             ->where('loan_id', $loan->id)
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->orderBy('installment_seq')
             ->first();
 

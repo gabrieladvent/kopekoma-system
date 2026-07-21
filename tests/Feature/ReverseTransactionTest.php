@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\ReverseTransaction;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotReverseTransaction;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
@@ -78,7 +79,7 @@ it('reverses a cair Hari Raya withdrawal back to the correct period_year', funct
     $reversal = ($this->reverse)($withdrawal, 'Batal pencairan Hari Raya');
 
     expect($reversal->period_year)->toBe(2026)
-        ->and($reversal->status)->toBe('cair')
+        ->and($reversal->status)->toBe(WithdrawalStatus::Cair)
         // outflow dikembalikan ke tahun yang benar
         ->and($service->holidayBalance($this->member, 2026))->toBe('100000.00');
 });

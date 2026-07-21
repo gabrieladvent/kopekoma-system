@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Contracts\Reversible;
+use App\Enums\WithdrawalStatus;
 use App\Models\Concerns\GeneratesTransactionNumber;
 use App\Models\Concerns\HasSignedAmount;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -49,6 +50,7 @@ class SavingsWithdrawal extends Model implements Reversible
         'disbursed_at' => 'datetime',
         'period_year' => 'integer',
         'is_reversal' => 'boolean',
+        'status' => WithdrawalStatus::class,
     ];
 
     public function member(): BelongsTo

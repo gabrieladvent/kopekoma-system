@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MemberResource\RelationManagers;
 
+use App\Support\MediaFileName;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -48,7 +49,7 @@ class DocumentsRelationManager extends RelationManager
                     ->label('Pratinjau')
                     ->height(48)
                     ->getStateUsing(fn (Media $record): string => str_starts_with((string) $record->mime_type, 'image/')
-                        ? $record->getUrl()
+                        ? route('media.show', $record)
                         : static::fileIconUri()),
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nama')
@@ -86,7 +87,8 @@ class DocumentsRelationManager extends RelationManager
 
                         foreach ($data['files'] as $file) {
                             $owner->addMedia($file->getRealPath())
-                                ->usingFileName($file->getClientOriginalName())
+                                ->usingFileName(MediaFileName::for($file))
+                                ->usingName(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
                                 ->toMediaCollection('documents');
                             $names[] = $file->getClientOriginalName();
                         }
@@ -106,13 +108,13 @@ class DocumentsRelationManager extends RelationManager
                 Tables\Actions\Action::make('preview')
                     ->label('Lihat')
                     ->icon('heroicon-o-eye')
-                    ->url(fn (Media $record): string => $record->getUrl())
+                    ->url(fn (Media $record): string => route('media.show', $record))
                     ->openUrlInNewTab(),
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('download')
                         ->label('Unduh')
                         ->icon('heroicon-o-arrow-down-tray')
-                        ->url(fn (Media $record): string => $record->getUrl())
+                        ->url(fn (Media $record): string => route('media.show', $record))
                         ->openUrlInNewTab(),
                     Tables\Actions\DeleteAction::make()
                         ->label('Hapus')

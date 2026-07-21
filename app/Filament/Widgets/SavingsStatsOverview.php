@@ -2,6 +2,8 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\LoanStatus;
+use App\Enums\WithdrawalStatus;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
@@ -29,7 +31,7 @@ class SavingsStatsOverview extends StatsOverviewWidget
             ->value('net');
 
         $withdrawalNet = (float) SavingsWithdrawal::query()
-            ->where('status', 'cair')
+            ->where('status', WithdrawalStatus::Cair)
             ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount ELSE -amount END), 0) as net')
             ->value('net');
 
@@ -53,7 +55,7 @@ class SavingsStatsOverview extends StatsOverviewWidget
         // (monthly_principal × jumlah angsuran net) per pinjaman, floor 0.
         $activeLoans = Loan::query()->active()->count();
         $outstandingPrincipal = (float) Loan::query()
-            ->where('loans.status', 'Cair')
+            ->where('loans.status', LoanStatus::Cair)
             ->leftJoinSub(
                 'SELECT loan_id, SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END) AS net'
                 .' FROM installments GROUP BY loan_id',
@@ -62,9 +64,14 @@ class SavingsStatsOverview extends StatsOverviewWidget
                 '=',
                 'loans.id'
             )
+            // CASE WHEN, bukan GREATEST(): GREATEST tidak ada di SQLite yang
+            // dipakai suite tes, sementara produksi MySQL. Semantiknya identik.
             ->selectRaw(
-                'COALESCE(SUM(GREATEST(loans.principal_amount'
-                .' - loans.monthly_principal * COALESCE(ic.net, 0), 0)), 0) AS outstanding'
+                'COALESCE(SUM(CASE WHEN loans.principal_amount'
+                .' - loans.monthly_principal * COALESCE(ic.net, 0) > 0'
+                .' THEN loans.principal_amount'
+                .' - loans.monthly_principal * COALESCE(ic.net, 0)'
+                .' ELSE 0 END), 0) AS outstanding'
             )
             ->value('outstanding');
 

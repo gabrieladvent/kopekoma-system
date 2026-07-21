@@ -33,7 +33,16 @@ return [
      * The disk on which to store added files and derived images by default. Choose
      * one or more of the disks you've configured in config/filesystems.php.
      */
-    'disk_name' => env('MEDIA_DISK', 'public'),
+    /*
+     * Disk PRIVAT secara default. Media di sini berisi dokumen anggota (KTP/SK),
+     * kuitansi, dan bukti bayar — semuanya PII finansial. Disk `public` membuat
+     * file dapat diunduh siapa pun lewat /storage/... tanpa autentikasi, melewati
+     * seluruh gate permission. Akses harus lewat route('media.show') yang
+     * mengecek policy pemiliknya.
+     *
+     * JANGAN kembalikan ke 'public' tanpa memindahkan dokumen anggota keluar.
+     */
+    'disk_name' => env('MEDIA_DISK', 'local'),
 
     /*
      * The disk on which to store conversions (thumbnails, etc.) and responsive images

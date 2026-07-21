@@ -30,6 +30,8 @@ LOCK_FILE="/tmp/kopekoma-deploy.lock"
 LOG_FILE="/var/log/kopekoma-deploy.log"
 PHP_FPM_SERVICE="php8.4-fpm"
 GIT_BRANCH="development"
+BACKUP_DIR="/var/backups/kopekoma"
+BACKUP_KEEP=10
 
 # Flags
 SKIP_MIGRATION=false
@@ -61,7 +63,24 @@ error() {
 }
 
 cleanup() {
+    STATUS=$?
+
     [ -f "$LOCK_FILE" ] && rm -f "$LOCK_FILE"
+
+    # Kalau deploy mati di tengah (set -e, Ctrl-C, atau error), situs jangan
+    # ditinggal di maintenance mode tanpa siapa pun yang tahu. Naikkan lagi dan
+    # beri tahu operator apa yang harus diperiksa.
+    if [ "$STATUS" -ne 0 ] && [ "${MAINTENANCE_ON:-false}" = true ]; then
+        log "  ⚠ Deploy GAGAL (exit $STATUS) — menaikkan kembali aplikasi"
+        php artisan up 2>/dev/null || log "  ✗ 'artisan up' gagal — situs MASIH di maintenance mode!"
+
+        if [ -f "$APP_DIR/.last-backup" ]; then
+            log "  ⓘ Backup pra-deploy: $(cat "$APP_DIR/.last-backup")"
+            log "  ⓘ Commit sebelumnya:  $(cat "$APP_DIR/.last-commit" 2>/dev/null || echo 'tidak tercatat')"
+            log "  ⓘ Rollback manual: git reset --hard <commit>, lalu"
+            log "    gunzip < <backup> | mysql <database>"
+        fi
+    fi
 }
 
 trap cleanup EXIT INT TERM
@@ -110,6 +129,7 @@ log "═════════════════════════
 # ─── 1. Maintenance mode ─────────────────────────────────────────
 step "1/9 Activating maintenance mode"
 php artisan down --retry=60 --secret="kopekoma-deploy" 2>/dev/null || true
+MAINTENANCE_ON=true
 success "Maintenance mode aktif (bypass via /kopekoma-deploy)"
 
 # ─── 2. Pull latest code ─────────────────────────────────────────
@@ -151,9 +171,47 @@ fi
 
 # ─── 5. Run database migrations ──────────────────────────────────
 if [ "$SKIP_MIGRATION" = false ]; then
-    step "5/9 Running database migrations"
+    # Backup WAJIB sebelum migrate. Migrasi destruktif (dropColumn, ubah tipe
+    # kolom) tidak dapat dipulihkan, dan isi database ini adalah catatan simpanan
+    # & pinjaman anggota. `set -e` menghentikan deploy kalau dump gagal — itu
+    # memang yang diinginkan: lebih baik deploy batal daripada jalan tanpa jaring.
+    step "5/9 Backing up database before migration"
+    mkdir -p "$BACKUP_DIR"
+
+    DB_NAME=$(php artisan tinker --execute='echo config("database.connections.mysql.database");' 2>/dev/null | tail -1)
+    DB_USER=$(php artisan tinker --execute='echo config("database.connections.mysql.username");' 2>/dev/null | tail -1)
+    DB_PASS=$(php artisan tinker --execute='echo config("database.connections.mysql.password");' 2>/dev/null | tail -1)
+    DB_HOST=$(php artisan tinker --execute='echo config("database.connections.mysql.host");' 2>/dev/null | tail -1)
+
+    if [ -z "$DB_NAME" ]; then
+        error "Tidak bisa membaca nama database dari config. Batal — menolak migrate tanpa backup."
+    fi
+
+    BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date +%F-%H%M%S)-${NEW_COMMIT:0:8}.sql.gz"
+
+    MYSQL_PWD="$DB_PASS" mysqldump \
+        --single-transaction \
+        --routines \
+        --triggers \
+        --host="$DB_HOST" \
+        --user="$DB_USER" \
+        "$DB_NAME" | gzip > "$BACKUP_FILE"
+
+    if [ ! -s "$BACKUP_FILE" ]; then
+        error "Backup kosong atau gagal dibuat. Batal — menolak migrate tanpa backup."
+    fi
+
+    success "Backup DB: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+
+    step "5b/9 Running database migrations"
     php artisan migrate --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
     success "Migration selesai"
+
+    # Simpan lokasi backup supaya rollback tahu harus memulihkan dari mana.
+    echo "$BACKUP_FILE" > "$APP_DIR/.last-backup"
+
+    # Buang backup lama, sisakan yang terbaru.
+    ls -1t "$BACKUP_DIR"/pre-deploy-*.sql.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f
 else
     log "  ⚠ Skip migration (--skip-migration)"
 fi

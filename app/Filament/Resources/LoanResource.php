@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\LoanStatus;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\LoanResource\Pages;
 use App\Filament\Resources\RelationManagers\AuditTrailRelationManager;
@@ -75,7 +76,7 @@ class LoanResource extends Resource
 
     public static function canCorrect(Loan $record): bool
     {
-        return $record->status === 'Cair'
+        return $record->status === LoanStatus::Cair
             && ! self::hasPayments($record)
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
@@ -129,7 +130,7 @@ class LoanResource extends Resource
      */
     public static function performCorrection(Loan $record, array $data): bool
     {
-        if ($record->status !== 'Cair' || self::hasPayments($record)) {
+        if ($record->status !== LoanStatus::Cair || self::hasPayments($record)) {
             Notification::make()
                 ->danger()
                 ->title('Pembatalan ditolak')
@@ -153,7 +154,7 @@ class LoanResource extends Resource
 
             InstallmentSchedule::where('loan_id', $record->id)->delete();
 
-            $record->update(['status' => 'Dibatalkan']);
+            $record->update(['status' => LoanStatus::Dibatalkan]);
         });
 
         Notification::make()
@@ -417,13 +418,9 @@ class LoanResource extends Resource
                             ->label('Jenis')->badge()
                             ->color(fn (string $state): string => self::typeColor($state))
                             ->formatStateUsing(fn (string $state): string => self::LOAN_TYPES[$state] ?? $state),
+                        // Label & warna badge di-drive enum LoanStatus (HasLabel/HasColor).
                         Infolists\Components\TextEntry::make('status')
-                            ->label('Status')->badge()
-                            ->color(fn (string $state): string => match ($state) {
-                                'Lunas' => 'success',
-                                'Dibatalkan' => 'gray',
-                                default => 'info',
-                            }),
+                            ->label('Status')->badge(),
                         Infolists\Components\TextEntry::make('disbursed_amount')
                             ->label('Dana Diterima')->money('IDR')->weight('bold')->color('success'),
                     ]),
@@ -472,12 +469,8 @@ class LoanResource extends Resource
                 Tables\Columns\TextColumn::make('disbursement_method')->label('Jenis Pencairan')->badge()
                     ->formatStateUsing(fn (?string $state): string => self::DISBURSEMENT_METHODS[$state] ?? $state)
                     ->placeholder('—')->toggleable(),
-                Tables\Columns\TextColumn::make('status')->label('Status')->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Lunas' => 'success',
-                        'Dibatalkan' => 'gray',
-                        default => 'info',
-                    }),
+                // Label & warna badge di-drive enum LoanStatus (HasLabel/HasColor).
+                Tables\Columns\TextColumn::make('status')->label('Status')->badge(),
                 Tables\Columns\TextColumn::make('overdue')
                     ->label('Tunggakan')
                     ->state(fn (Loan $record): int => app(LoanArrearsService::class)->overdueCount($record))
@@ -488,7 +481,7 @@ class LoanResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('loan_type')->label('Jenis')->options(self::LOAN_TYPES),
-                Tables\Filters\SelectFilter::make('status')->label('Status')->options(['Cair' => 'Cair', 'Lunas' => 'Lunas', 'Dibatalkan' => 'Dibatalkan']),
+                Tables\Filters\SelectFilter::make('status')->label('Status')->options(LoanStatus::options()),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

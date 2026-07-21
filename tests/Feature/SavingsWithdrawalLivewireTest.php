@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\WithdrawalStatus;
 use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Livewire\Savings\Withdrawal\SavingsWithdrawalForm;
 use App\Livewire\Savings\Withdrawal\SavingsWithdrawals;
@@ -168,13 +169,13 @@ it('runs the approve → disburse workflow from the list', function () {
         ->call('openConfirm', 'approve', $withdrawal->id)
         ->call('performConfirm');
 
-    expect($withdrawal->fresh()->status)->toBe('acc');
+    expect($withdrawal->fresh()->status)->toBe(WithdrawalStatus::Acc);
 
     Livewire::test(SavingsWithdrawals::class)
         ->call('openConfirm', 'disburse', $withdrawal->id)
         ->call('performConfirm');
 
-    expect($withdrawal->fresh()->status)->toBe('cair')
+    expect($withdrawal->fresh()->status)->toBe(WithdrawalStatus::Cair)
         ->and($withdrawal->fresh()->disbursed_at)->not->toBeNull();
 });
 
@@ -189,7 +190,7 @@ it('rejects a draft withdrawal as final', function () {
         ->call('openConfirm', 'reject', $withdrawal->id)
         ->call('performConfirm');
 
-    expect($withdrawal->fresh()->status)->toBe('ditolak');
+    expect($withdrawal->fresh()->status)->toBe(WithdrawalStatus::Ditolak);
 });
 
 it('allows reversing a disbursed withdrawal from the list', function () {
@@ -341,8 +342,8 @@ it('approves both records of a refund pair in one list action (D2)', function ()
         ->call('openConfirm', 'approve', $swpW->id)
         ->call('performConfirm');
 
-    expect($swpW->fresh()->status)->toBe('acc')
-        ->and($tabW->fresh()->status)->toBe('acc');
+    expect($swpW->fresh()->status)->toBe(WithdrawalStatus::Acc)
+        ->and($tabW->fresh()->status)->toBe(WithdrawalStatus::Acc);
 });
 
 it('disburses both records of a refund pair and reduces both balances (D2)', function () {
@@ -354,8 +355,8 @@ it('disburses both records of a refund pair and reduces both balances (D2)', fun
     Livewire::test(SavingsWithdrawals::class)->call('openConfirm', 'approve', $swpW->id)->call('performConfirm');
     Livewire::test(SavingsWithdrawals::class)->call('openConfirm', 'disburse', $swpW->id)->call('performConfirm');
 
-    expect($swpW->fresh()->status)->toBe('cair')
-        ->and($tabW->fresh()->status)->toBe('cair')
+    expect($swpW->fresh()->status)->toBe(WithdrawalStatus::Cair)
+        ->and($tabW->fresh()->status)->toBe(WithdrawalStatus::Cair)
         ->and($balances->balanceByType($member, 'swp'))->toBe('0.00')
         ->and($balances->balanceByType($member, 'tabungan_berjangka'))->toBe('0.00');
 });
@@ -369,8 +370,8 @@ it('rejects both records of a refund pair in one list action (D2)', function () 
         ->call('openConfirm', 'reject', $swpW->id)
         ->call('performConfirm');
 
-    expect($swpW->fresh()->status)->toBe('ditolak')
-        ->and($tabW->fresh()->status)->toBe('ditolak');
+    expect($swpW->fresh()->status)->toBe(WithdrawalStatus::Ditolak)
+        ->and($tabW->fresh()->status)->toBe(WithdrawalStatus::Ditolak);
 });
 
 it('reverses both records of a cair refund pair in one action (D2/D4)', function () {

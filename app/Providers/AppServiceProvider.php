@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Logging\RedactSensitiveLogContext;
+use App\Providers\Filament\AdminPanelProvider;
 use App\Settings\GeneralSettings;
 use App\Settings\MailSettings;
 use Filament\Actions\DeleteAction as PageDeleteAction;
@@ -11,6 +12,7 @@ use Filament\Tables\Actions\DeleteAction as TableDeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
@@ -23,7 +25,27 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->registerFilamentPanelForTesting();
+    }
+
+    /**
+     * Panel admin Filament tidak didaftarkan di bootstrap/providers.php — UI
+     * produksi dilayani Livewire. Tapi ~172 tes masih me-render halaman panel,
+     * dan tanpa panel terdaftar Filament::auth() melempar "call to a member
+     * function auth() on null".
+     *
+     * Panel hanya dihidupkan saat testing supaya tes itu tetap menjaga kelas
+     * Filament yang method statisnya MASIH dipakai produksi (mis.
+     * LoanResource::printReceipt, SavingsWithdrawalResource::isLoanRefund).
+     *
+     * Catatan: ini TIDAK menguji UI Livewire yang sebenarnya dipakai user.
+     * Lihat docs/adr/2026-07-20-audit-remediasi.md.
+     */
+    private function registerFilamentPanelForTesting(): void
+    {
+        if ($this->app->environment('testing')) {
+            $this->app->register(AdminPanelProvider::class);
+        }
     }
 
     /**
@@ -35,6 +57,25 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDeleteNotifications();
         $this->configureRateLimiters();
         $this->configureLogRedaction();
+        $this->configureGates();
+    }
+
+    /**
+     * Gate untuk modul Sistem (pengguna, peran, log aktivitas).
+     *
+     * Sengaja Gate, bukan middleware `role:` milik Spatie: hanya
+     * Illuminate\Auth\Middleware\Authorize yang ada di daftar persistent
+     * middleware Livewire, sehingga hanya `can:` yang ikut berlaku ulang pada
+     * tiap POST /livewire/update. Middleware role Spatie hanya akan menjaga
+     * render awal dan membiarkan action berikutnya lolos.
+     *
+     * Sebelumnya route /sistem/* sama sekali tanpa middleware dan hanya
+     * mengandalkan abort_unless di mount() — padahal mount() TIDAK jalan ulang
+     * saat update, jadi setiap public method baru lahir tanpa proteksi.
+     */
+    private function configureGates(): void
+    {
+        Gate::define('manage-system', fn ($user): bool => $user->hasRole('super_admin'));
     }
 
     private function configureLogRedaction(): void

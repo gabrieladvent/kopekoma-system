@@ -2,6 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Enums\InstallmentScheduleStatus;
+use App\Enums\LoanStatus;
+use App\Enums\WithdrawalStatus;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
@@ -58,7 +61,7 @@ class Dashboard extends Component
         $lastMonthStart = $now->copy()->subMonthNoOverflow()->startOfMonth();
 
         $depositNet = (string) (SavingsDeposit::query()->signedAmount()->value('net') ?? '0');
-        $withdrawnNet = (string) (SavingsWithdrawal::query()->where('status', 'cair')->signedAmount()->value('net') ?? '0');
+        $withdrawnNet = (string) (SavingsWithdrawal::query()->where('status', WithdrawalStatus::Cair)->signedAmount()->value('net') ?? '0');
         $totalBalance = bcsub($depositNet, $withdrawnNet, 2);
 
         $thisMonth = (string) (SavingsDeposit::query()
@@ -69,7 +72,7 @@ class Dashboard extends Component
             ->whereBetween('deposit_date', [$lastMonthStart->toDateString(), $lastMonthStart->copy()->endOfMonth()->toDateString()])
             ->signedAmount()->value('net') ?? '0');
 
-        $pendingWithdrawals = SavingsWithdrawal::query()->whereIn('status', ['draft', 'acc'])->count();
+        $pendingWithdrawals = SavingsWithdrawal::query()->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc])->count();
 
         $depositsCount = SavingsDeposit::query()->where('is_reversal', false)->count();
         $saversCount = SavingsDeposit::query()->where('is_reversal', false)->distinct()->count('member_id');
@@ -111,14 +114,14 @@ class Dashboard extends Component
     {
         $today = Carbon::today();
 
-        $active = Loan::query()->where('status', 'Cair')->count();
-        $settled = Loan::query()->where('status', 'Lunas')->count();
+        $active = Loan::query()->where('status', LoanStatus::Cair)->count();
+        $settled = Loan::query()->where('status', LoanStatus::Lunas)->count();
 
         // Sisa pokok berjalan = Σ principal pinjaman aktif − Σ pokok terbayar (net reversal).
-        $principalActive = (string) (Loan::query()->where('status', 'Cair')->sum('principal_amount') ?? '0');
+        $principalActive = (string) (Loan::query()->where('status', LoanStatus::Cair)->sum('principal_amount') ?? '0');
         $paidNet = (string) (DB::table('installments')
             ->join('loans', 'loans.id', '=', 'installments.loan_id')
-            ->where('loans.status', 'Cair')
+            ->where('loans.status', LoanStatus::Cair)
             ->selectRaw('COALESCE(SUM((CASE WHEN installments.is_reversal = 0 THEN 1 ELSE -1 END) * loans.monthly_principal), 0) as net')
             ->value('net') ?? '0');
 
@@ -128,14 +131,14 @@ class Dashboard extends Component
         }
 
         $overdue = InstallmentSchedule::query()->overdue()
-            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->whereHas('loan', fn ($q) => $q->where('status', LoanStatus::Cair))
             ->count();
 
         $dueSoon = InstallmentSchedule::query()
-            ->where('status', 'Belum Bayar')
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
             ->whereDate('due_date', '>=', $today->toDateString())
             ->whereDate('due_date', '<=', $today->copy()->addDays(7)->toDateString())
-            ->whereHas('loan', fn ($q) => $q->where('status', 'Cair'))
+            ->whereHas('loan', fn ($q) => $q->where('status', LoanStatus::Cair))
             ->count();
 
         $disbursedThisMonth = (string) (Loan::query()

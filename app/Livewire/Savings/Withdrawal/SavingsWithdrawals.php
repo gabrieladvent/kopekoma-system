@@ -3,6 +3,7 @@
 namespace App\Livewire\Savings\Withdrawal;
 
 use App\Actions\ReverseTransaction;
+use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
 use App\Exceptions\CannotReverseTransaction;
 use App\Filament\Resources\SavingsWithdrawalResource as Resource;
@@ -84,25 +85,25 @@ class SavingsWithdrawals extends Component
 
     public function canApprove(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'draft' && (auth()->user()?->can('approve', $record) ?? false);
+        return $record->status === WithdrawalStatus::Draft && (auth()->user()?->can('approve', $record) ?? false);
     }
 
     public function canDisburse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'acc' && (auth()->user()?->can('disburse', $record) ?? false);
+        return $record->status === WithdrawalStatus::Acc && (auth()->user()?->can('disburse', $record) ?? false);
     }
 
     public function canReject(SavingsWithdrawal $record): bool
     {
-        return in_array($record->status, ['draft', 'acc'], true) && (auth()->user()?->can('approve', $record) ?? false);
+        return in_array($record->status, [WithdrawalStatus::Draft, WithdrawalStatus::Acc], true) && (auth()->user()?->can('approve', $record) ?? false);
     }
 
     public function canReverse(SavingsWithdrawal $record): bool
     {
-        return $record->status === 'cair'
-            && ! $record->is_reversal
-            && ! $record->isReversed()
-            && (auth()->user()?->can('reverse', $record) ?? false);
+        // canReverseBase, bukan canReverse: komponen ini me-reverse seluruh
+        // refundPair() dalam satu transaksi, jadi refund pelunasan boleh dibalik
+        // di sini (lihat catatan di Resource::canReverse).
+        return Resource::canReverseBase($record);
     }
 
     public function hasAnyAction(SavingsWithdrawal $record): bool

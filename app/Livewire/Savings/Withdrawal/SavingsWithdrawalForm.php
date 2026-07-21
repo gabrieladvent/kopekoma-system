@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Savings\Withdrawal;
 
+use App\Enums\WithdrawalStatus;
 use App\Filament\Resources\SavingsWithdrawalResource as Resource;
 use App\Livewire\Concerns\WithMemberPicker;
 use App\Models\Member;
@@ -9,6 +10,7 @@ use App\Models\SavingsWithdrawal;
 use App\Services\SavingsBalanceService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -125,7 +127,7 @@ class SavingsWithdrawalForm extends Component
             ->where('member_id', $member->id)
             ->where('savings_type', $type)
             ->where('is_reversal', false)
-            ->whereIn('status', ['draft', 'acc'])
+            ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc])
             ->sum('amount');
 
         $available = bcsub($balance, $pending, 2);
@@ -237,21 +239,43 @@ class SavingsWithdrawalForm extends Component
         // Tiap baris = sumber berbeda (sukarela / hari_raya per tahun) → tak ada
         // tumpang-tindih saldo antar baris. Idempotency_key per baris cegah dobel.
         foreach ($included as $line) {
+            $key = $line['idempotency_key'] ?? (string) Str::uuid();
+
+            $attributes = [
+                'idempotency_key' => $key,
+                'member_id' => $this->member_id,
+                'savings_type' => $line['savings_type'],
+                'amount' => (int) round((float) $line['amount']),
+                'withdrawal_date' => $this->withdrawal_date,
+                'status' => 'draft',
+                'period_year' => $line['savings_type'] === 'hari_raya' ? (int) $line['period_year'] : null,
+                'disbursement_method' => $this->disbursement_method ?: null,
+                'notes' => $this->notes ?: null,
+                'recorded_by' => auth()->id(),
+            ];
+
             try {
-                SavingsWithdrawal::create([
-                    'idempotency_key' => $line['idempotency_key'] ?? (string) Str::uuid(),
-                    'member_id' => $this->member_id,
-                    'savings_type' => $line['savings_type'],
-                    'amount' => (int) round((float) $line['amount']),
-                    'withdrawal_date' => $this->withdrawal_date,
-                    'status' => 'draft',
-                    'period_year' => $line['savings_type'] === 'hari_raya' ? (int) $line['period_year'] : null,
-                    'disbursement_method' => $this->disbursement_method ?: null,
-                    'notes' => $this->notes ?: null,
-                    'recorded_by' => auth()->id(),
-                ]);
+                // Transaksi eksplisit: GeneratesTransactionNumber membuka
+                // transaksinya sendiri saat dipanggil tanpa transaksi induk,
+                // sehingga lock nomor urut dilepas SEBELUM INSERT terjadi. Dengan
+                // transaksi induk di sini, generator itu bersarang jadi savepoint
+                // dan lock-nya bertahan sampai commit sungguhan.
+                DB::transaction(fn () => SavingsWithdrawal::create($attributes));
                 $created++;
-            } catch (UniqueConstraintViolationException) {
+            } catch (UniqueConstraintViolationException $e) {
+                // HANYA hitung sebagai duplikat kalau baris dengan idempotency_key
+                // yang sama memang sudah ada. Tanpa pemeriksaan ini, tabrakan
+                // withdrawal_number dari dua pengajuan bersamaan ikut tertelan
+                // sebagai "sudah tercatat" — pengajuan sah anggota lenyap diam-diam
+                // dengan pesan sukses. Selaras dgn CreateSavingsWithdrawal.
+                $existing = SavingsWithdrawal::query()
+                    ->where('idempotency_key', $key)
+                    ->first();
+
+                if ($existing === null) {
+                    throw $e;
+                }
+
                 $duplicates++;
             }
         }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\LoanStatus;
 use App\Livewire\Loan\LoanDetail;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
@@ -45,7 +46,7 @@ it('cancels a clean loan to Dibatalkan, keeping the record but clearing schedule
 
     // Record DIPERTAHANKAN (bukan dihapus), status jadi Dibatalkan, jadwal dibersihkan.
     expect(Loan::find($loan->id))->not->toBeNull()
-        ->and($loan->status)->toBe('Dibatalkan')
+        ->and($loan->status)->toBe(LoanStatus::Dibatalkan)
         ->and($loan->schedules()->count())->toBe(0)
         ->and(Activity::where('event', 'koreksi')->where('subject_id', $loan->id)->exists())->toBeTrue();
 });
@@ -60,7 +61,7 @@ it('requires a cancellation reason (min 5 chars)', function () {
         ->call('performCorrect')
         ->assertHasErrors('correctReason');
 
-    expect($loan->fresh()->status)->toBe('Cair'); // tidak berubah
+    expect($loan->fresh()->status)->toBe(LoanStatus::Cair); // tidak berubah
 });
 
 it('refuses to cancel a loan that already has a recorded installment', function () {
@@ -77,5 +78,5 @@ it('refuses to cancel a loan that already has a recorded installment', function 
         ->call('openCorrect')
         ->assertStatus(403);
 
-    expect($loan->fresh()->status)->toBe('Cair');
+    expect($loan->fresh()->status)->toBe(LoanStatus::Cair);
 });
