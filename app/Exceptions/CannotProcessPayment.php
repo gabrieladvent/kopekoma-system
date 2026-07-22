@@ -20,4 +20,14 @@ class CannotProcessPayment extends RuntimeException
     {
         return new self('Nominal yang dibayar tidak boleh kurang dari tagihan angsuran bulan ini.');
     }
+
+    public static function belowSettlement(string $payoff): self
+    {
+        return new self('Nominal yang dibayar kurang untuk pelunasan. Jumlah pelunasan (sisa pokok + 1× jasa) = Rp '.number_format((float) $payoff, 0, ',', '.').'.');
+    }
+
+    public static function notSettleable(): self
+    {
+        return new self('Pinjaman ini tidak dapat dilunasi dipercepat (harus jangka panjang berstatus Cair).');
+    }
 }

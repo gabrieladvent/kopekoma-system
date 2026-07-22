@@ -105,6 +105,104 @@ class LoanPaymentService
     }
 
     /**
+     * Pelunasan Dipercepat (ADR 2026-07-22): tutup SELURUH sisa pinjaman sekaligus.
+     * Jumlah pelunasan = sisa pokok + 1× jasa; jasa bulan sisa DIBEBASKAN, tabungan
+     * berjangka masa depan tidak dipaksa. Satu baris `is_settlement=true` mewakili
+     * penutupan (schedule_id & installment_seq null). Atomic.
+     *
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string}  $input
+     */
+    public function settleEarly(
+        Loan $loan,
+        array $input,
+        ?int $causerId = null,
+        ?UploadedFile $bukti = null,
+    ): Installment {
+        $causerId ??= auth()->id();
+
+        return DB::transaction(function () use ($loan, $input, $causerId, $bukti): Installment {
+            /** @var Loan $loan */
+            $loan = Loan::query()->lockForUpdate()->findOrFail($loan->getKey());
+
+            if ($loan->status !== LoanStatus::Cair || $loan->loan_type !== 'jangka_panjang') {
+                throw CannotProcessPayment::notSettleable();
+            }
+
+            /** @var Collection<int, InstallmentSchedule> $unpaid */
+            $unpaid = InstallmentSchedule::query()
+                ->where('loan_id', $loan->id)
+                ->where('status', InstallmentScheduleStatus::BelumBayar)
+                ->lockForUpdate()
+                ->get();
+
+            if ($unpaid->isEmpty()) {
+                throw CannotProcessPayment::notSettleable();
+            }
+
+            $settledPrincipal = $loan->settledPrincipal();
+            $interestCharged = $this->money($loan->monthly_interest);
+            $payoff = bcadd($settledPrincipal, $interestCharged, self::SCALE);
+
+            $amountPaid = $this->money($input['amount_paid']);
+
+            if (bccomp($amountPaid, $payoff, self::SCALE) < 0) {
+                throw CannotProcessPayment::belowSettlement($payoff);
+            }
+
+            $installment = Installment::create([
+                'idempotency_key' => $input['idempotency_key'] ?? (string) Str::uuid(),
+                'loan_id' => $loan->id,
+                'schedule_id' => null,
+                'installment_seq' => null,
+                'payment_date' => $input['payment_date'] ?? now()->toDateString(),
+                'due_date' => $input['payment_date'] ?? now()->toDateString(),
+                'amount_paid' => $amountPaid,
+                'payment_method' => $input['payment_method'] ?? 'manual',
+                'is_reversal' => false,
+                'is_settlement' => true,
+                'recorded_by' => $causerId,
+            ]);
+
+            if ($bukti instanceof UploadedFile) {
+                $installment->addMedia($bukti)->toMediaCollection('bukti');
+            }
+
+            $excess = bcsub($amountPaid, $payoff, self::SCALE);
+
+            if (bccomp($excess, '0', self::SCALE) > 0) {
+                $this->creditOverpaymentToSukarela($installment, $loan, $excess, $causerId);
+            }
+
+            InstallmentSchedule::query()
+                ->whereIn('id', $unpaid->modelKeys())
+                ->update(['status' => InstallmentScheduleStatus::Terbayar]);
+
+            $loan->update(['status' => LoanStatus::Lunas]);
+            $this->createRefunds($loan, $causerId);
+
+            $waivedMonths = max(0, $unpaid->count() - 1);
+            $interestWaived = bcmul($interestCharged, (string) $waivedMonths, self::SCALE);
+
+            activity()
+                ->performedOn($installment)
+                ->causedBy($causerId)
+                ->event('pelunasan_dipercepat')
+                ->withProperties([
+                    'loan_id' => $loan->id,
+                    'amount_paid' => $amountPaid,
+                    'settled_principal' => $settledPrincipal,
+                    'interest_charged' => $interestCharged,
+                    'interest_waived' => $interestWaived,
+                    'excess_to_sukarela' => bccomp($excess, '0', self::SCALE) > 0 ? $excess : '0.00',
+                    'schedules_closed' => $unpaid->count(),
+                ])
+                ->log("Pelunasan dipercepat pinjaman {$loan->loan_number}");
+
+            return $installment;
+        });
+    }
+
+    /**
      * Reversal pembayaran angsuran. Membalik jadwal ke Belum Bayar; bila pinjaman
      * sudah Lunas, kembalikan ke Cair dan batalkan refund SWP/Tab terkait (D8/M2).
      */
@@ -118,7 +216,21 @@ class LoanPaymentService
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($installment->loan_id);
 
-            if ($installment->schedule_id) {
+            if ($installment->is_settlement) {
+                $normallyPaidScheduleIds = Installment::query()
+                    ->where('loan_id', $loan->id)
+                    ->where('is_settlement', false)
+                    ->whereNotNull('schedule_id')
+                    ->groupBy('schedule_id')
+                    ->havingRaw('SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END) > 0')
+                    ->pluck('schedule_id');
+
+                InstallmentSchedule::query()
+                    ->where('loan_id', $loan->id)
+                    ->where('status', InstallmentScheduleStatus::Terbayar)
+                    ->whereNotIn('id', $normallyPaidScheduleIds)
+                    ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
+            } elseif ($installment->schedule_id) {
                 InstallmentSchedule::query()
                     ->whereKey($installment->schedule_id)
                     ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
