@@ -207,8 +207,8 @@ Step 9 `event('pelunasan_dipercepat')` saja tidak cukup (`logFillable()->logOnly
 | 2b | `reverse()`: reopening jadwal **net-aware** multi-schedule + cabang `is_settlement` | M | setelah 2a | **Done** |
 | 3a | Permission `settle_early_installment` + seeder + `InstallmentPolicy` (settleEarly + reverse settlement → `reverse_loan`) | M | setelah 2a | **Done** |
 | 4a | 5 permukaan display: `InstallmentDetail::remainingAfter`, `SchedulesRelationManager::remainingAfter`, `InstallmentResource` infolist (sudah benar — 0 = lunas), blade receipt + detail (label "Pelunasan Dipercepat") | M | setelah 1b, 1c | **Done** |
-| 5a | UI form tunggal `InstallmentForm`: checkbox + preview payoff/refund + validasi uang + authorize dua lapis | L | setelah 2a, 3a | Pending |
-| 5b | UI **Batch Potong Gaji**: checkbox per baris + route `settleEarly()` + gate per baris + konfirmasi eksplisit **(kandidat fase-2 — putuskan saat sampai sini)** | L | setelah 5a | Pending |
+| 5a | UI form tunggal `InstallmentForm`: checkbox + preview payoff/refund + validasi uang + authorize dua lapis | L | setelah 2a, 3a | **Done** |
+| 5b | UI **Batch Potong Gaji**: checkbox per baris + route `settleEarly()` + gate per baris + konfirmasi eksplisit | L | setelah 5a | **Done** (diputuskan dikerjakan sekarang, bukan fase-2) |
 
 **Effort:** S = < 1 jam, M = 1–3 jam, L = > 3 jam.
 **Test-first wajib (silent-money-bug):** 1c (`reverseClone` → 3 konsumen pulih), 2b (bayar→reverse→settle→reverse), 1b (`settledPrincipal` vs `remainingPrincipal`, kuitansi ≠ 0).

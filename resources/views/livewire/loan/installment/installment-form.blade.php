@@ -125,6 +125,40 @@
                 </div>
             </x-ui.card>
 
+            {{-- Pelunasan Dipercepat (ADR 2026-07-22) --}}
+            @if ($canSettleEarly)
+                <x-ui.card @class(['ring-1 ring-inset ring-warning/25' => $settle_early])>
+                    <label for="settle_early" class="flex cursor-pointer items-start gap-3">
+                        <input id="settle_early" type="checkbox" wire:model.live="settle_early"
+                               class="mt-0.5 h-4.5 w-4.5 rounded border-border text-warning focus:ring-warning">
+                        <span>
+                            <span class="block text-sm font-semibold text-text">Pelunasan Dipercepat</span>
+                            <span class="mt-0.5 block text-xs text-muted">Lunasi <span class="font-medium text-text">seluruh sisa</span> pinjaman sekarang. Nasabah bayar sisa pokok + 1× jasa; jasa bulan berikutnya <span class="font-medium text-text">dibebaskan</span>. SWP &amp; Tab. Berjangka dikembalikan.</span>
+                        </span>
+                    </label>
+
+                    @if ($settle_early && $settlementPreview)
+                        <div class="mt-4 space-y-3 rounded-2xl border border-warning/20 bg-warning/5 p-4 text-sm">
+                            <p class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warning">
+                                <x-ui.icon name="sparkles" class="h-3.5 w-3.5" /> Rincian Pelunasan
+                            </p>
+                            <div class="space-y-1.5 tabular-nums">
+                                <div class="flex justify-between"><span class="text-muted">Sisa pokok</span><span class="font-medium text-text">Rp {{ number_format((float) $settlementPreview['settled_principal'], 0, ',', '.') }}</span></div>
+                                <div class="flex justify-between"><span class="text-muted">Jasa (1×)</span><span class="font-medium text-text">Rp {{ number_format((float) $settlementPreview['interest'], 0, ',', '.') }}</span></div>
+                                <div class="flex justify-between border-t border-warning/15 pt-1.5"><span class="font-semibold text-warning">Jumlah Pelunasan</span><span class="font-bold text-text">Rp {{ number_format((float) $settlementPreview['payoff'], 0, ',', '.') }}</span></div>
+                            </div>
+                            <div class="space-y-1.5 border-t border-warning/15 pt-2 tabular-nums">
+                                <p class="text-xs text-muted">Dikembalikan ke anggota (draft):</p>
+                                <div class="flex justify-between"><span class="text-muted">SWP</span><span class="font-medium text-text">Rp {{ number_format((float) $settlementPreview['refund_swp'], 0, ',', '.') }}</span></div>
+                                <div class="flex justify-between"><span class="text-muted">Tab. Berjangka</span><span class="font-medium text-text">Rp {{ number_format((float) $settlementPreview['refund_tab'], 0, ',', '.') }}</span></div>
+                                <div class="flex justify-between"><span class="font-semibold text-success">Total Refund</span><span class="font-bold text-success">Rp {{ number_format((float) $settlementPreview['refund_total'], 0, ',', '.') }}</span></div>
+                            </div>
+                            <p class="text-[11px] leading-relaxed text-muted">Isi nominal ≥ jumlah pelunasan. Kelebihan di atasnya masuk Simpanan Sukarela.</p>
+                        </div>
+                    @endif
+                </x-ui.card>
+            @endif
+
             {{-- Nominal pembayaran --}}
             @if ($schedule)
                 <x-ui.card>
@@ -229,7 +263,7 @@
                     <p class="relative text-xs font-medium uppercase tracking-wide text-white/80">Total Dibayar</p>
                     <p class="relative mt-1 text-3xl font-bold tabular-nums">Rp <span x-text="rupiah(total)">0</span></p>
                     <p class="relative mt-1 text-xs text-white/80" x-show="bill > 0">
-                        Tagihan Rp <span x-text="rupiah(bill)"></span>
+                        {{ $settle_early ? 'Pelunasan' : 'Tagihan' }} Rp <span x-text="rupiah(bill)"></span>
                         <span x-show="total > bill" class="font-semibold"> · lebih Rp <span x-text="rupiah(total - bill)"></span></span>
                     </p>
                 </div>
@@ -274,7 +308,7 @@
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                             </svg>
                             <x-ui.icon wire:loading.remove wire:target="pay" name="check" class="h-4.5 w-4.5" />
-                            Catat Pembayaran
+                            {{ $settle_early ? 'Lunaskan Sekarang' : 'Catat Pembayaran' }}
                         </button>
                     @else
                         <div class="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted">

@@ -32,6 +32,83 @@ beforeEach(function () {
     ]);
 });
 
+/** Pinjaman 5 bulan siap dilunasi (pokok 5jt, monthly 1jt, jasa 6500). */
+function settleableLoan(string $memberId): Loan
+{
+    $loan = Loan::factory()->create([
+        'member_id' => $memberId,
+        'loan_type' => 'jangka_panjang',
+        'status' => 'Cair',
+        'principal_amount' => 5000000,
+        'swp_amount' => 10000,
+        'term_months' => 5,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 6500,
+        'monthly_time_deposit' => 1000,
+    ]);
+
+    collect(range(1, 5))->each(fn ($seq) => InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => $seq,
+        'principal_due' => 1000000,
+        'interest_due' => 6500,
+        'time_deposit_due' => 1000,
+        'total_due' => 1007500,
+    ]));
+
+    return $loan;
+}
+
+it('lets an authorized pengurus settle a loan early from the form', function () {
+    $member = Member::factory()->create();
+    $loan = settleableLoan($member->id);
+    asPengurus();
+
+    Livewire::test(InstallmentForm::class)
+        ->set('member_id', $member->id)
+        ->set('loan_id', $loan->id)
+        ->set('settle_early', true)
+        ->assertSet('amount_paid', 5006500)   // payoff = sisa pokok 5jt + 1× jasa 6500
+        ->call('pay')
+        ->assertHasNoErrors();
+
+    expect($loan->fresh()->status->value)->toBe('Lunas');
+});
+
+it('rejects settlement below the payoff amount', function () {
+    $member = Member::factory()->create();
+    $loan = settleableLoan($member->id);
+    asPengurus();
+
+    Livewire::test(InstallmentForm::class)
+        ->set('member_id', $member->id)
+        ->set('loan_id', $loan->id)
+        ->set('settle_early', true)
+        ->set('amount_paid', 5006499)
+        ->call('pay')
+        ->assertHasErrors('amount_paid');
+
+    expect($loan->fresh()->status->value)->toBe('Cair');
+});
+
+it('hides the early-settlement toggle from petugas and forbids the action', function () {
+    $member = Member::factory()->create();
+    $loan = settleableLoan($member->id);
+    asPetugas();
+
+    Livewire::test(InstallmentForm::class)
+        ->set('member_id', $member->id)
+        ->set('loan_id', $loan->id)
+        ->assertDontSee('Pelunasan Dipercepat')
+        // Walau flag di-POST paksa, gate server-side menolak.
+        ->set('settle_early', true)
+        ->set('amount_paid', 5006500)
+        ->call('pay')
+        ->assertForbidden();
+
+    expect($loan->fresh()->status->value)->toBe('Cair');
+});
+
 it('renders a settlement installment with the Pelunasan Dipercepat badge', function () {
     $settlement = Installment::factory()->create([
         'loan_id' => $this->loan->id,
