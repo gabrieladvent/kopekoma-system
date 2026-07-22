@@ -38,7 +38,7 @@
         <table>
             <tr><td class="label">Nama Anggota</td><td class="sep">:</td><td>{{ $installment->loan?->member?->full_name ?? '-' }}</td></tr>
             <tr><td class="label">No. Pinjaman</td><td class="sep">:</td><td>{{ $installment->loan?->loan_number ?? '-' }}</td></tr>
-            <tr><td class="label">Angsuran Ke</td><td class="sep">:</td><td>{{ $installment->installment_seq }}</td></tr>
+            <tr><td class="label">Angsuran Ke</td><td class="sep">:</td><td>{{ $installment->is_settlement ? 'Pelunasan Dipercepat' : $installment->installment_seq }}</td></tr>
             <tr><td class="label">Tanggal Bayar</td><td class="sep">:</td><td>{{ optional($installment->payment_date)->format('d M Y') ?? '-' }}</td></tr>
             <tr><td class="label">Metode</td><td class="sep">:</td><td>{{ $paymentMethodLabel }}</td></tr>
             @php($bd = $installment->breakdown())

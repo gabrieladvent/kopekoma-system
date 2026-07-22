@@ -150,9 +150,9 @@ Money-model sudah benar, tapi pelunasan adalah **aksi finansial yang membebaskan
 
 ### 1. Permission khusus, bukan numpang `create_installment`
 Saat ini `InstallmentForm` hanya `authorize('create', Installment::class)`, dan `create_installment` dipegang **petugas & pengurus** (`RolePermissionSeeder.php:14,70-78`). Artinya **petugas mana pun bisa membebaskan jasa tanpa batas pada loan siapa saja.**
-- Buat permission baru **`settle_early_installment`**, hanya untuk **Pengurus/Bendahara**.
-- Gate **server-side di dua lapis**: di setiap entry point (form tunggal **dan Batch Potong Gaji**) **dan** di dalam `settleEarly()` (defense in depth). Menyembunyikan checkbox saja **tidak cukup** — flag `is_settlement` masih bisa di-POST.
-- Karena `settleEarly()` menjadi satu-satunya jalur eksekusi (form & batch sama-sama memanggilnya), gate lapis-dalam di sana **menutup semua** entry point sekaligus.
+- Buat permission baru **`settle_early_installment`**, hanya untuk **Pengurus/Bendahara**. ✅ **Done (3a):** permission + `InstallmentPolicy::settleEarly()` + reverse settlement → `reverse_loan`.
+- **Penegakan (server-side):** `authorize('settleEarly', Installment::class)` dipanggil di **setiap entry point** Livewire/Filament (form tunggal 5a **dan** Batch 5b) — server-side, bukan sekadar sembunyikan checkbox.
+- **Keputusan desain:** `settleEarly()` (service) dibiarkan **murni domain**, konsisten dengan `pay()` yang juga tak meng-authorize di dalam service. Kekhawatiran "POST flag `is_settlement`" sudah gugur secara struktural — pelunasan adalah **method terpisah** (`settleEarly`), bukan flag pada `pay()`; tak ada cara mencapainya selain lewat entry point yang sudah di-gate. Jadi defense-in-depth = gate di semua entry point, bukan menyuntik Gate ke service.
 
 ### 2. Maker-checker = Level A (keputusan final — bukan workflow 2-langkah)
 Refund uang-keluar **sudah** two-eyed (draft withdrawal → `approve`+`disburse` Pengurus-only, `SavingsWithdrawalPolicy.php:83-94`). Pembebasan jasa itu sendiri **bukan uang keluar** (pendapatan tak ditagih), jadi kontrolnya cukup **pemisahan peran + audit**, bukan persetujuan pra-eksekusi.
@@ -205,8 +205,8 @@ Step 9 `event('pelunasan_dipercepat')` saja tidak cukup (`logFillable()->logOnly
 | 1c | `Installment`: filter `is_settlement=0` di `scopeSignedTimeDeposit`, cabang `breakdown()`, `reverseClone()` bawa `is_settlement`+seq/schedule null, `$fillable`+cast | M | setelah 1a | **Done** |
 | 2a | `LoanPaymentService::settleEarly()` (payoff, guard-after-lock, idempotency per-attempt, `due_date=payment_date`, tutup jadwal, excess→sukarela, `Lunas`, `createRefunds`, audit `interest_waived`) + exception `belowSettlement()` | L | setelah 1b, 1c | **Done** |
 | 2b | `reverse()`: reopening jadwal **net-aware** multi-schedule + cabang `is_settlement` | M | setelah 2a | **Done** |
-| 3a | Permission `settle_early_installment` + seeder + `InstallmentPolicy` (settleEarly + reverse settlement → `reverse_loan`) | M | setelah 2a | Pending |
-| 4a | 5 permukaan display: `InstallmentDetail::remainingAfter`, `SchedulesRelationManager::remainingAfter`, `InstallmentResource` infolist, blade receipt + detail (label "Pelunasan Dipercepat") | M | setelah 1b, 1c | Pending |
+| 3a | Permission `settle_early_installment` + seeder + `InstallmentPolicy` (settleEarly + reverse settlement → `reverse_loan`) | M | setelah 2a | **Done** |
+| 4a | 5 permukaan display: `InstallmentDetail::remainingAfter`, `SchedulesRelationManager::remainingAfter`, `InstallmentResource` infolist (sudah benar — 0 = lunas), blade receipt + detail (label "Pelunasan Dipercepat") | M | setelah 1b, 1c | **Done** |
 | 5a | UI form tunggal `InstallmentForm`: checkbox + preview payoff/refund + validasi uang + authorize dua lapis | L | setelah 2a, 3a | Pending |
 | 5b | UI **Batch Potong Gaji**: checkbox per baris + route `settleEarly()` + gate per baris + konfirmasi eksplisit **(kandidat fase-2 — putuskan saat sampai sini)** | L | setelah 5a | Pending |
 

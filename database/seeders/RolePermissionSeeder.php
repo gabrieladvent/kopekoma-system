@@ -40,6 +40,7 @@ class RolePermissionSeeder extends Seeder
         'disburse_savings::withdrawal',
         'export_savings_recap',
         'reverse_loan',
+        'settle_early_installment',
         'manage_settings',
         'access_laporan_setoran',
         'access_laporan_angsuran',

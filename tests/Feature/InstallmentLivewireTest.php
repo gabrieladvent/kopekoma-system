@@ -32,6 +32,20 @@ beforeEach(function () {
     ]);
 });
 
+it('renders a settlement installment with the Pelunasan Dipercepat badge', function () {
+    $settlement = Installment::factory()->create([
+        'loan_id' => $this->loan->id,
+        'is_settlement' => true,
+        'installment_seq' => null,
+        'schedule_id' => null,
+        'amount_paid' => 12078000,
+    ]);
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $settlement])
+        ->assertSee('Pelunasan Dipercepat')
+        ->assertDontSee('Angsuran ke-');
+});
+
 it('shows the readonly bill detail including Total Tagihan once a loan/schedule is picked', function () {
     Livewire::test(InstallmentForm::class)
         ->set('member_id', $this->member->id)

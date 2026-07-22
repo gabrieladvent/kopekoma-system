@@ -65,11 +65,17 @@ class InstallmentPolicy
         return false;
     }
 
-    /**
-     * Ability custom (D7): reversal pembayaran = Petugas + Pengurus.
-     */
     public function reverse(User $user, Installment $installment): bool
     {
+        if ($installment->is_settlement) {
+            return $user->can('reverse_loan');
+        }
+
         return $user->can('reverse_installment');
+    }
+
+    public function settleEarly(User $user): bool
+    {
+        return $user->can('settle_early_installment');
     }
 }
