@@ -108,7 +108,10 @@ it('excludes settlement rows from time-deposit accrual', function () {
         ->signedTimeDeposit()
         ->value('net');
 
-    expect((string) $net)->toBe('2000');
+    // Normalize seperti loanTimeDepositAccrued() — hindari beda format SUM
+    // antar driver ('2000' SQLite vs '2000.00' MySQL). Nilai benar = 2000 (2×),
+    // baris settlement tidak menambah.
+    expect(bcadd((string) $net, '0', 2))->toBe('2000.00');
 });
 
 it('recovers remaining principal after a settlement is reversed (reverseClone carries is_settlement)', function () {
