@@ -80,14 +80,32 @@ class Loan extends Model implements HasMedia
     }
 
     /**
-     * Sisa pokok = `principal_amount − (jumlah angsuran terbayar × monthly_principal)`,
-     * floor 0 (ADR 2026-06-26 D2). Count-based net reversal — satu sumber sisa pokok
-     * untuk progres, kuitansi, & laporan; menggantikan kolom `remaining_principal`.
+     * Sisa pokok LOAN saat ini — "berapa yang masih ditanggung". Count-based net
+     * reversal (ADR 2026-06-26 D2), TAPI di-gate untuk Pelunasan Dipercepat
+     * (ADR 2026-07-22): begitu ada pelunasan aktif, loan lunas → sisa 0. Dipakai
+     * progres, badge, laporan. Untuk breakdown/kuitansi baris pelunasan, pakai
+     * settledPrincipal() (non-gated) — bukan ini.
      */
     public function remainingPrincipal(): string
     {
+        if ($this->hasActiveSettlement()) {
+            return '0.00';
+        }
+
+        return $this->settledPrincipal();
+    }
+
+    /**
+     * Pokok yang DITUTUP oleh pelunasan = `principal_amount − (jumlah angsuran
+     * NORMAL terbayar-net × monthly_principal)`, floor 0. NON-GATED: tetap benar
+     * walau loan sudah Lunas (baris settlement `is_settlement=1` dikecualikan dari
+     * count). Sumber angka "Pokok" pada breakdown() baris pelunasan (ADR 2026-07-22).
+     */
+    public function settledPrincipal(): string
+    {
         $netCount = Installment::query()
             ->where('loan_id', $this->id)
+            ->where('is_settlement', false)
             ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END), 0) as net')
             ->value('net');
 
@@ -95,6 +113,23 @@ class Loan extends Model implements HasMedia
         $remaining = bcsub((string) $this->principal_amount, $paid, 2);
 
         return bccomp($remaining, '0', 2) < 0 ? '0.00' : $remaining;
+    }
+
+    /**
+     * Ada pelunasan dipercepat aktif? NET-AWARE (ADR 2026-07-22): baris settlement
+     * asli TIDAK dihapus saat di-reverse (ReverseTransaction hanya menyisipkan
+     * baris-lawan `is_reversal=1`), jadi keberadaan baris non-reversal saja tak
+     * cukup — hitung net (settlement terpasang − settlement dibalik) > 0.
+     */
+    public function hasActiveSettlement(): bool
+    {
+        $net = Installment::query()
+            ->where('loan_id', $this->id)
+            ->where('is_settlement', true)
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END), 0) as net')
+            ->value('net');
+
+        return (int) $net > 0;
     }
 
     public function transactionNumberColumn(): string
