@@ -284,6 +284,10 @@ class LoanPaymentService
             // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
             $this->reverseOverpaymentCredit($installment, $reason, $causerId);
 
+            // Balik debit berpasangan (bila sumber dana = saldo simpanan) — saldo
+            // sukarela anggota pulih. ADR 2026-07-22 item 1d.
+            $this->reverseSavingsDebit($installment, $reason, $causerId);
+
             if ($loan->status === LoanStatus::Lunas) {
                 $loan->update(['status' => LoanStatus::Cair]);
                 $this->cleanupRefunds($loan, $reason, $causerId);
@@ -399,6 +403,30 @@ class LoanPaymentService
             ->whereNotIn('id', $reversedIds)
             ->get()
             ->each(fn (SavingsDeposit $deposit) => ($this->reverse)($deposit, $reason, $causerId));
+    }
+
+    /**
+     * Balik debit simpanan berpasangan saat angsuran di-reverse (ADR 2026-07-22 item 1d).
+     * Cari SavingsWithdrawal non-reversal `Cair` ber-`installment_id` yang BELUM dibalik
+     * (pola `whereNotIn(reversed_ids)`), lalu reverse dengan `allowInactiveMember: true` —
+     * membalik debit MENGEMBALIKAN saldo ke anggota, harus selalu boleh walau anggota
+     * sudah Keluar/Meninggal (kalau tidak, angsuran-dari-simpanan jadi permanen tak
+     * bisa dibatalkan begitu anggota keluar — melanggar Goal).
+     */
+    private function reverseSavingsDebit(Installment $installment, string $reason, ?int $causerId): void
+    {
+        $reversedIds = SavingsWithdrawal::query()
+            ->whereNotNull('reversal_of_id')
+            ->pluck('reversal_of_id');
+
+        SavingsWithdrawal::query()
+            ->where('installment_id', $installment->id)
+            ->where('savings_type', self::DEBIT_SAVINGS_TYPE)
+            ->where('is_reversal', false)
+            ->where('status', WithdrawalStatus::Cair)
+            ->whereNotIn('id', $reversedIds)
+            ->get()
+            ->each(fn (SavingsWithdrawal $debit) => ($this->reverse)($debit, $reason, $causerId, allowInactiveMember: true, allowPairedInstallmentDebit: true));
     }
 
     private function createRefunds(Loan $loan, ?int $causerId): void

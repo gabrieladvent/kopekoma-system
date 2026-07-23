@@ -42,6 +42,23 @@ it('grants pengurus everything including loan correction and early settlement', 
         ->and($user->can('reverse', $settlement))->toBeTrue();
 });
 
+it('gates savings-source debit + its reversal to pengurus only (ADR 2026-07-22 1e)', function () {
+    $savingsInst = Installment::factory()->create(['payment_method' => 'saldo_simpanan']);
+
+    // Petugas: TIDAK boleh debit dari simpanan, TIDAK boleh reverse angsuran saldo_simpanan
+    // (reverse menaikkan saldo withdrawable → butuh reverse_loan/Pengurus, cegah privilege inversion).
+    $petugas = asPetugas();
+    expect($petugas->can('pay_installment_from_savings'))->toBeFalse()
+        ->and($petugas->can('payFromSavings', Installment::class))->toBeFalse()
+        ->and($petugas->can('reverse', $savingsInst))->toBeFalse();
+
+    // Pengurus: boleh keduanya.
+    $pengurus = asPengurus();
+    expect($pengurus->can('pay_installment_from_savings'))->toBeTrue()
+        ->and($pengurus->can('payFromSavings', Installment::class))->toBeTrue()
+        ->and($pengurus->can('reverse', $savingsInst))->toBeTrue();
+});
+
 it('lets petugas manage blacklist records', function () {
     $user = asPetugas();
     $bl = LoanBlacklist::factory()->create();

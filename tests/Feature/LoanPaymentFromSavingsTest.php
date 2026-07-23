@@ -1,9 +1,12 @@
 <?php
 
+use App\Actions\ReverseTransaction;
 use App\Enums\InstallmentScheduleStatus;
 use App\Enums\LoanStatus;
 use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessPayment;
+use App\Exceptions\CannotReverseTransaction;
+use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -182,6 +185,95 @@ it('logs the debit_simpanan_angsuran event with attribution', function () {
         ->and($log->properties['loan_id'])->toBe($loan->id)
         ->and($log->properties['savings_type'])->toBe('sukarela')
         ->and((int) $log->properties['approved_by'])->toBe($this->pengurus->id);
+});
+
+// ── item 1f: debit berpasangan non-reversible terpisah ──────────────────────
+
+it('blocks reversing the paired debit directly via ReverseTransaction (mutation-layer guard)', function () {
+    [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 2);
+    fundSukarela($this->member->id, 2_000_000);
+    $inst = $this->service->pay($rows[0], savingsPayment(), $this->pengurus->id, consentFile());
+    $debit = SavingsWithdrawal::where('installment_id', $inst->id)->firstOrFail();
+
+    // Caller baru (command/API/bulk) yang coba balik debit langsung → ditolak keras.
+    expect(fn () => app(ReverseTransaction::class)($debit, 'coba balik langsung', $this->pengurus->id))
+        ->toThrow(CannotReverseTransaction::class);
+
+    // Saldo tak berubah, tak ada baris reversal — cegah "angsuran gratis".
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('992500.00')
+        ->and(SavingsWithdrawal::where('installment_id', $inst->id)->where('is_reversal', true)->exists())->toBeFalse();
+});
+
+it('hides the reverse action for paired debit rows (policy denies + canReverseBase false)', function () {
+    [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 2);
+    fundSukarela($this->member->id, 2_000_000);
+    $inst = $this->service->pay($rows[0], savingsPayment(), $this->pengurus->id, consentFile());
+    $debit = SavingsWithdrawal::where('installment_id', $inst->id)->firstOrFail();
+
+    // User yang PUNYA izin reverse pencairan biasa — tetap ditolak untuk baris debit.
+    Permission::firstOrCreate(['name' => 'reverse_savings::withdrawal', 'guard_name' => 'web']);
+    $reverser = User::factory()->create();
+    $reverser->givePermissionTo('reverse_savings::withdrawal');
+    $this->actingAs($reverser);
+
+    // Kontrol: pencairan biasa (tanpa installment_id) boleh dibalik.
+    $normal = SavingsWithdrawal::factory()->create([
+        'member_id' => $this->member->id,
+        'savings_type' => 'sukarela',
+        'status' => WithdrawalStatus::Cair,
+    ]);
+
+    expect($reverser->can('reverse', $normal))->toBeTrue()          // kontrol
+        ->and($reverser->can('reverse', $debit))->toBeFalse()       // policy tolak installment_id
+        ->and(SavingsWithdrawalResource::canReverseBase($debit))->toBeFalse(); // UI hide di 3 komponen
+});
+
+// ── item 1d: reverse debit berpasangan ──────────────────────────────────────
+
+it('reverses the paired savings debit when the installment is reversed (balance restored, schedule reopened)', function () {
+    [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 2);
+    fundSukarela($this->member->id, 2_000_000);
+
+    $inst = $this->service->pay($rows[0], savingsPayment(), $this->pengurus->id, consentFile());
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('992500.00');
+
+    $this->service->reverse($inst, 'salah input sumber dana', $this->pengurus->id);
+
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('2000000.00')
+        ->and($rows[0]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar)
+        // debit asli (Cair) + baris reversal-nya (Cair, is_reversal)
+        ->and(SavingsWithdrawal::where('installment_id', $inst->id)->where('is_reversal', true)->count())->toBe(1);
+});
+
+it('reverses the paired debit even when the member is inactive (Keluar/Meninggal)', function () {
+    [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 2);
+    fundSukarela($this->member->id, 2_000_000);
+
+    $inst = $this->service->pay($rows[0], savingsPayment(), $this->pengurus->id, consentFile());
+
+    // Anggota keluar SETELAH bayar — reverse debit (mengembalikan saldo) harus tetap boleh.
+    $this->member->update(['status' => 'Keluar']);
+
+    $this->service->reverse($inst, 'koreksi setelah anggota keluar', $this->pengurus->id);
+
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('2000000.00')
+        ->and(SavingsWithdrawal::where('installment_id', $inst->id)->where('is_reversal', true)->count())->toBe(1);
+});
+
+it('does not double-refund the debit when reversal is attempted twice (exclude already-reversed)', function () {
+    [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 2);
+    fundSukarela($this->member->id, 2_000_000);
+
+    $inst = $this->service->pay($rows[0], savingsPayment(), $this->pengurus->id, consentFile());
+    $this->service->reverse($inst, 'koreksi pertama', $this->pengurus->id);
+
+    // Reverse installment yang sama kedua kali ditolak (unik reversal_of_id) →
+    // tak ada pengembalian debit ganda, saldo tetap pulih sekali.
+    expect(fn () => $this->service->reverse($inst, 'koreksi kedua', $this->pengurus->id))
+        ->toThrow(Exception::class);
+
+    expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('2000000.00')
+        ->and(SavingsWithdrawal::where('installment_id', $inst->id)->where('is_reversal', true)->count())->toBe(1);
 });
 
 it('does NOT treat the paired debit as a pelunasan refund: final payment still creates SWP + Tab refunds', function () {

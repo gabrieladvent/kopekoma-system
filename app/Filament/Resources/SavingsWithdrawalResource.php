@@ -467,6 +467,10 @@ class SavingsWithdrawalResource extends Resource
         return $record->status === WithdrawalStatus::Cair
             && ! $record->is_reversal
             && ! $record->isReversed()
+            // Debit angsuran-dari-simpanan (ADR 2026-07-22): non-reversible dari
+            // menu Pencairan — hanya via Installment::reverse. Policy juga menolaknya
+            // (defense-in-depth), guard di sini menyembunyikan aksi di 3 UI.
+            && $record->installment_id === null
             && (auth()->user()?->can('reverse', $record) ?? false);
     }
 
