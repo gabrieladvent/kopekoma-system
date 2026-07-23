@@ -23,7 +23,7 @@ return new class extends Migration
     {
         Schema::table('savings_withdrawals', function (Blueprint $table) {
             $table->dropConstrainedForeignId('installment_id');
-            
+
             $table->enum('disbursement_method', ['tunai', 'transfer'])->nullable()->change();
         });
 
