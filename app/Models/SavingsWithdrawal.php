@@ -36,6 +36,7 @@ class SavingsWithdrawal extends Model implements Reversible
         'disbursed_at',
         'period_year',
         'related_loan_id',
+        'installment_id',
         'disbursement_method',
         'notes',
         'is_reversal',
@@ -61,6 +62,11 @@ class SavingsWithdrawal extends Model implements Reversible
     public function relatedLoan(): BelongsTo
     {
         return $this->belongsTo(Loan::class, 'related_loan_id');
+    }
+
+    public function installment(): BelongsTo
+    {
+        return $this->belongsTo(Installment::class, 'installment_id');
     }
 
     public function reversalOf(): BelongsTo
@@ -118,6 +124,7 @@ class SavingsWithdrawal extends Model implements Reversible
             'status' => $this->status,
             'period_year' => $this->period_year,
             'related_loan_id' => $this->related_loan_id,
+            'installment_id' => $this->installment_id,
             'disbursement_method' => $this->disbursement_method,
         ];
     }
