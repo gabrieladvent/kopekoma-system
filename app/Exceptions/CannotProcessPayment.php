@@ -30,4 +30,19 @@ class CannotProcessPayment extends RuntimeException
     {
         return new self('Pinjaman ini tidak dapat dilunasi dipercepat (harus jangka panjang berstatus Cair).');
     }
+
+    public static function insufficientSavings(): self
+    {
+        return new self('Saldo Simpanan Sukarela anggota tidak mencukupi untuk membayar angsuran ini.');
+    }
+
+    public static function consentRequired(): self
+    {
+        return new self('Bukti persetujuan anggota wajib diunggah untuk pembayaran dari saldo simpanan.');
+    }
+
+    public static function savingsMustEqualBill(): self
+    {
+        return new self('Pembayaran dari saldo simpanan harus tepat sebesar tagihan — kelebihan tidak diperbolehkan.');
+    }
 }

@@ -10,20 +10,31 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
+use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
+use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class LoanPaymentService
 {
     private const SCALE = 2;
 
+    /** Sumber dana angsuran = debit saldo simpanan (ADR 2026-07-22). */
+    private const SOURCE_SAVINGS = 'saldo_simpanan';
+
+    /** Hanya Sukarela yang boleh didebit (hard — bukan mirror WITHDRAWABLE_TYPES). */
+    private const DEBIT_SAVINGS_TYPE = 'sukarela';
+
     public function __construct(
         private readonly ReverseTransaction $reverse,
         private readonly WithdrawalWorkflow $workflow,
+        private readonly SavingsBalanceService $balances,
     ) {}
 
     /**
@@ -39,7 +50,16 @@ class LoanPaymentService
     ): Installment {
         $causerId ??= auth()->id();
 
-        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti): Installment {
+        $fromSavings = ($input['payment_method'] ?? null) === self::SOURCE_SAVINGS;
+
+        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti, $fromSavings): Installment {
+            // Debit simpanan: lock member DULU (urutan global member→loan→schedule),
+            // konsisten dengan WithdrawalWorkflow::disburse agar tak deadlock.
+            if ($fromSavings) {
+                $memberId = Loan::query()->whereKey($schedule->loan_id)->value('member_id');
+                Member::query()->lockForUpdate()->findOrFail($memberId);
+            }
+
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($schedule->loan_id);
 
@@ -62,6 +82,27 @@ class LoanPaymentService
                 throw CannotProcessPayment::belowBill();
             }
 
+            if ($fromSavings) {
+                // Otoritas Pengurus + atribusi (ADR §Design) — enforce di service
+                // (defense-in-depth), bukan hanya di entry point Livewire.
+                Gate::forUser($this->actingUser($causerId))->authorize('pay_installment_from_savings');
+
+                // Consent WAJIB (server-side) — satu-satunya pengganti mata-kedua.
+                if (! $bukti instanceof UploadedFile) {
+                    throw CannotProcessPayment::consentRequired();
+                }
+
+                // Dikunci tepat-tagihan: cegah lingkaran debit sukarela → kelebihan
+                // balik ke sukarela.
+                if (bccomp($amountPaid, $bill, self::SCALE) > 0) {
+                    throw CannotProcessPayment::savingsMustEqualBill();
+                }
+
+                if (! $this->balances->canWithdraw($loan->member, self::DEBIT_SAVINGS_TYPE, $amountPaid)) {
+                    throw CannotProcessPayment::insufficientSavings();
+                }
+            }
+
             $installment = Installment::create([
                 'idempotency_key' => $input['idempotency_key'] ?? (string) Str::uuid(),
                 'loan_id' => $loan->id,
@@ -77,6 +118,10 @@ class LoanPaymentService
 
             if ($bukti instanceof UploadedFile) {
                 $installment->addMedia($bukti)->toMediaCollection('bukti');
+            }
+
+            if ($fromSavings) {
+                $this->debitSavingsForInstallment($installment, $loan, $amountPaid, $causerId);
             }
 
             $excess = bcsub($amountPaid, $bill, self::SCALE);
@@ -279,6 +324,61 @@ class LoanPaymentService
                 'amount' => $excess,
             ])
             ->log("Pengalihan kelebihan dana angsuran {$installment->installment_number} ke Simpanan Sukarela");
+    }
+
+    /**
+     * Resolusi User pelaku untuk otorisasi debit simpanan. Debit sukarela =
+     * uang withdrawable anggota → wajib ada pelaku terautentikasi.
+     */
+    private function actingUser(?int $causerId): User
+    {
+        $user = $causerId !== null ? User::find($causerId) : auth()->user();
+
+        if (! $user instanceof User) {
+            throw new AuthorizationException('Aksi debit simpanan memerlukan pengguna terautentikasi.');
+        }
+
+        return $user;
+    }
+
+    /**
+     * Buat SavingsWithdrawal berpasangan (status Cair) sebagai debit sumber-dana
+     * angsuran (ADR 2026-07-22). Atribusi Pengurus (`approved_by`/`approved_at`)
+     * mengganti mata-kedua; `installment_id` menautkan pasangan tanpa mencemari
+     * query refund pelunasan (`related_loan_id`). Saldo turun langsung — `withdrawalNet`
+     * hanya menghitung baris Cair.
+     */
+    private function debitSavingsForInstallment(Installment $installment, Loan $loan, string $amount, ?int $causerId): void
+    {
+        $withdrawal = SavingsWithdrawal::create([
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $loan->member_id,
+            'savings_type' => self::DEBIT_SAVINGS_TYPE,
+            'amount' => $amount,
+            'withdrawal_date' => now()->toDateString(),
+            'status' => WithdrawalStatus::Cair,
+            'approved_by' => $causerId,
+            'approved_at' => now(),
+            'disbursed_at' => now(),
+            'installment_id' => $installment->id,
+            'disbursement_method' => 'internal',
+            'recorded_by' => $causerId,
+            'notes' => "Debit angsuran {$installment->installment_number}",
+        ]);
+
+        activity()
+            ->performedOn($withdrawal)
+            ->causedBy($causerId)
+            ->event('debit_simpanan_angsuran')
+            ->withProperties([
+                'member_id' => $loan->member_id,
+                'savings_type' => self::DEBIT_SAVINGS_TYPE,
+                'amount' => $amount,
+                'installment_number' => $installment->installment_number,
+                'loan_id' => $loan->id,
+                'approved_by' => $causerId,
+            ])
+            ->log("Debit Simpanan Sukarela untuk angsuran {$installment->installment_number}");
     }
 
     /**

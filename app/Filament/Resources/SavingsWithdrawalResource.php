@@ -70,6 +70,7 @@ class SavingsWithdrawalResource extends Resource
     public const DISBURSEMENT_METHODS = [
         'tunai' => 'Tunai',
         'transfer' => 'Transfer',
+        'internal' => 'Debit Angsuran',
     ];
 
     public static function typeColor(string $state): string
