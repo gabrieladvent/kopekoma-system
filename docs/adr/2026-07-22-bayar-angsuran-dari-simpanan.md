@@ -4,7 +4,7 @@ Menambah **sumber pembayaran** angsuran: selain tunai/potong-gaji, anggota bisa 
 
 **Author:** gabrieladvent
 **Date:** 2026-07-22
-**Status:** Draft (rev. 3 — pasca critic APPROVE-with-changes + security BLOCK ronde-2)
+**Status:** Implemented (2026-07-23 — Key Items 1a-1f + 2a Done; 3a Won't-do). Deploy-review produksi menyusul.
 
 > **Changelog rev.3:** menutup temuan ronde-2 (fix inti `installment_id` sudah dinyatakan bersih).
 > - **🔴 Reverse anggota non-aktif:** reverse debit berpasangan **tidak boleh** kena guard `memberInactive` (membalik debit = mengembalikan saldo anggota, selalu boleh). Jalur khusus, tidak lewat `ReverseTransaction` apa adanya.
@@ -109,9 +109,9 @@ Reuse: `SavingsBalanceService::canWithdraw`, model `SavingsWithdrawal`, `Reversi
 | Phase | Behavior | Status |
 |-------|----------|--------|
 | 0 | Baseline — hanya tunai/potong-gaji | — |
-| 1 | Backend jalur debit + test (fitur di-flag off / tak ada UI) | Pending |
-| 2 | UI form tunggal: pilih sumber "Saldo Simpanan" | Pending |
-| 3 | (opsional) dukung di Batch Potong Gaji | Pending |
+| 1 | Backend jalur debit + test (fitur di-flag off / tak ada UI) | Done (1a-1f) |
+| 2 | UI form tunggal: pilih sumber "Saldo Simpanan" | Done (2a) |
+| 3 | ~~(opsional) dukung di Batch Potong Gaji~~ | **Won't-do** (2026-07-23) |
 
 ### Phase Transition Checklist
 
@@ -122,9 +122,11 @@ Reuse: `SavingsBalanceService::canWithdraw`, model `SavingsWithdrawal`, `Reversi
   <!-- source: code -->
 
 **Phase 1 → 2:**
+- [x] UI form pilih sumber (2a) + test hijau — opsi Pengurus-only, nominal terkunci, consent wajib, saldo divalidasi
+  <!-- source: code -->
 - [ ] Tak ada error terkait debit simpanan di produksi
   <!-- source: flare | query: search_errors saldo_simpanan | threshold: count = 0 -->
-- [ ] Review keamanan (siapa boleh debit, audit) selesai
+- [ ] Review keamanan (siapa boleh debit, audit) selesai — desain sudah lewat critic + security (rev.3); verifikasi produksi menyusul
   <!-- source: manual -->
 
 ---
@@ -139,8 +141,8 @@ Reuse: `SavingsBalanceService::canWithdraw`, model `SavingsWithdrawal`, `Reversi
 | 1d | `reverse()`: balik debit berpasangan via `installment_id`, **exclude yang sudah dibalik**, **bypass guard `memberInactive`** (reverse debit selalu boleh) | M | setelah 1c | Done |
 | 1e | Permission `pay_installment_from_savings` (Pengurus) + seeder + `InstallmentPolicy::payFromSavings`; **`InstallmentPolicy::reverse` gate `reverse_loan` untuk `saldo_simpanan`** (cegah privilege inversion) | M | setelah 1c | Done |
 | 1f | Guard non-reversible terpisah: `SavingsWithdrawalPolicy::reverse` tolak baris ber-`installment_id` + sembunyikan aksi di ketiga UI (`SavingsWithdrawalResource`/`SavingsWithdrawals`/`SavingsWithdrawalDetail`) + **guard layer mutasi** (defense-in-depth) | M | setelah 1a | Done |
-| 2a | UI `InstallmentForm`: pilih sumber (tunai/potong-gaji/**saldo sukarela**, opsi Pengurus-only) + saldo tersedia + validasi ≤ saldo + **upload bukti consent wajib** | L | setelah 1c, 1e | Pending |
-| 3a | (fase lanjut) Batch — **GATE KERAS**: dual-control approver-berbeda + consent per-anggota (tak bisa di-borong) + idempotency per-batch teruji, sebelum aktif | M | setelah 2a | Pending |
+| 2a | UI `InstallmentForm`: pilih sumber (tunai/potong-gaji/**saldo sukarela**, opsi Pengurus-only) + saldo tersedia + validasi ≤ saldo + **upload bukti consent wajib** | L | setelah 1c, 1e | Done |
+| 3a | ~~(fase lanjut) Batch — GATE KERAS: dual-control approver-berbeda + consent per-anggota (tak bisa di-borong) + idempotency per-batch teruji~~ | — | setelah 2a | **Won't-do** (2026-07-23) — lihat Open Questions |
 
 **Effort:** S = < 1 jam, M = 1–3 jam, L = > 3 jam.
 **Test-first (silent-money-bug):** 1d (reverse atomik + saldo pulih + anggota non-aktif tetap bisa), 1f (reverse-terpisah ditolak di 3 UI path), 1c (saldo turun tepat, tak double-count vs refund), 1e (Petugas 403 debit & reverse).
@@ -194,7 +196,7 @@ Reuse: `SavingsBalanceService::canWithdraw`, model `SavingsWithdrawal`, `Reversi
 - ~~Reverse Petugas butuh `reverse_loan`?~~ **RESOLVED → ya, `reverse_loan` (Pengurus)** untuk `saldo_simpanan` (cegah privilege inversion).
 - ~~Consent wajib/opsional?~~ **RESOLVED → WAJIB** (server-side), tersimpan sebagai media angsuran.
 - **Consent — bentuk artefak:** cukup bukti media generik, atau formulir "kuasa pendebitan simpanan" khusus (lebih kuat untuk sengketa)? (default: bukti media wajib; formulir khusus = peningkatan opsional.)
-- **Batch (3a):** apakah benar perlu? Potong-gaji sumbernya gaji, bukan simpanan — mungkin tak relevan. Jika dikerjakan, prasyarat keras di Key Items 3a wajib dipenuhi dulu.
+- ~~**Batch (3a):** apakah benar perlu?~~ **RESOLVED → TIDAK (Won't-do, 2026-07-23).** Tiga alasan: (1) **Category error** — Batch Potong Gaji premisnya mendebit *gaji* (`BatchInstallmentPaymentService::METHOD = 'potong_gaji'` hardcoded); menyisipkan sumber simpanan mencampur dua domain arus dana. (2) **Consent tak bisa di-borong** — 1c mewajibkan bukti consent per angsuran; batch memproses N anggota sekaligus sehingga consent massal = persis "borong" yang dilarang. (3) **Dual-control belum ada** — batch single-actor; debit simpanan butuh approver-berbeda + idempotency khusus = fitur besar sensitif-keamanan yang nilainya diragukan. Bila suatu saat benar dibutuhkan, buka ADR baru dengan desain approval-ganda tersendiri — jangan tempel ke batch potong-gaji.
 - **Invariant lintas-fitur:** "operasi yang menaikkan saldo withdrawable ≥ privilege operasi yang menurunkannya" — layak ditulis di `.claude/memory` agar tak hilang antar fitur.
 
 ---
@@ -222,6 +224,8 @@ Reuse: `SavingsBalanceService::canWithdraw`, model `SavingsWithdrawal`, `Reversi
 
 - **2026-07-22 v1**: Initial draft. Keputusan bisnis "pilih sumber pembayaran" (bukan bucket khusus). Desain: debit atomik berpasangan via SavingsWithdrawal Cair, preseden ShoppingTransaction.
 - **2026-07-22 v2**: Pasca critic REJECT + security BLOCK. Governance Pengurus-only + atribusi (argumen "transfer internal" dicabut); `sukarela`-only; penanda `installment_id` (bukan `related_loan_id`); debit non-reversible terpisah; enum `internal`; overpay dikunci; lock member. Preseden ShoppingTransaction diakui tak transferable.
+- **2026-07-23 close-3a**: Item 3a (Batch) ditutup **Won't-do** — category error (batch = potong gaji), consent tak bisa di-borong, dual-control belum ada & nilainya diragukan. Open Question di-resolve. **ADR ini selesai: 1a-1f + 2a Done, 3a Won't-do.** Status → Implemented.
+- **2026-07-23 impl-2a**: UI `InstallmentForm` — opsi metode bayar sadar-izin (`paymentMethodOptions()` unset `saldo_simpanan` bila tak punya `payFromSavings` / saat pelunasan); `updatedPaymentMethod()` kunci nominal = tagihan; consent bukti wajib (`Rule::requiredIf(fromSavings)`); validasi tepat-tagihan + ≤ saldo sukarela; `settle()` tolak `saldo_simpanan` (settleEarly tak punya jalur debit); toggle pelunasan reset sumber ke potong_gaji. Blade: dropdown `.live`, info saldo, nominal readonly, label bukti "wajib". 8 test UI hijau; **full suite 606 passed**. **Semua Key Items non-Batch SELESAI (1a-1f + 2a) — fitur siap dipakai end-to-end.** Sisa hanya 3a (Batch, opsional + gated keras).
 - **2026-07-23 impl-1f**: Debit berpasangan non-reversible terpisah — 3 layer: (1) `SavingsWithdrawalPolicy::reverse` tolak baris ber-`installment_id` (nutup 3 UI otomatis via `can('reverse')`); (2) `SavingsWithdrawalResource::canReverseBase` tambah `installment_id === null` (UI hide defense); (3) guard layer-mutasi `ReverseTransaction` — tolak `SavingsWithdrawal` ber-`installment_id` kecuali flag `allowPairedInstallmentDebit` (hanya dari `LoanPaymentService::reverse`). Exception `pairedInstallmentDebit()`. Test: 2 baru (mutation guard + policy/UI, dengan kontrol pencairan biasa tetap reversible); **full suite 598 passed**. **Backend ADR ini SELESAI (1a-1f).** Sisa: **2a** (UI form) + **3a** (Batch, opsional). Fitur aman diaktifkan end-to-end begitu 2a jadi.
 - **2026-07-23 impl-1d/1e**: **1d** — `LoanPaymentService::reverse()` membalik debit berpasangan via `installment_id` (exclude sudah-dibalik `whereNotIn(reversed_ids)`); param baru `ReverseTransaction($…, allowInactiveMember: true)` mem-bypass guard `memberInactive` khusus reverse-debit (mengembalikan saldo → selalu boleh walau anggota Keluar/Meninggal). **1e** — permission `pay_installment_from_savings` → role Pengurus (seeder); `InstallmentPolicy::payFromSavings`; `InstallmentPolicy::reverse` gate `reverse_loan` untuk `payment_method='saldo_simpanan'` (cegah privilege inversion). Test: 1d (3) + 1e RBAC (1) hijau; **full suite 596 passed**. Sisa: **1f** (guard non-reversible dari UI Penarikan) + **2a** (UI) sebelum fitur aman diaktifkan end-to-end.
 - **2026-07-23 impl-1b/1c**: Model `SavingsWithdrawal` (`installment_id` fillable + relasi `installment()` + `reverseClone()`), konstanta label (`PAYMENT_METHODS`+`saldo_simpanan`, `DISBURSEMENT_METHODS`+`internal`, fallback blade listing penarikan). `LoanPaymentService::pay()` jalur debit `sukarela`: gate `pay_installment_from_savings` (service-level, defense-in-depth), consent WAJIB, tepat-tagihan, `canWithdraw`, lock member→loan→schedule, `SavingsWithdrawal` Cair ber-atribusi (`approved_by`/`approved_at`/`disbursed_at`, `disbursement_method='internal'`, `installment_id`), audit `debit_simpanan_angsuran`. Exception `insufficientSavings`/`consentRequired`/`savingsMustEqualBill`. 9 test hijau + 229 suite terkait hijau. **Catatan:** wiring permission→role Pengurus + `InstallmentPolicy::payFromSavings` + reverse-gate = item 1e (belum). Reverse debit berpasangan = item 1d (belum) — **jangan ship sebelum 1d+1e** (reverse angsuran `saldo_simpanan` sekarang belum membalik debit).

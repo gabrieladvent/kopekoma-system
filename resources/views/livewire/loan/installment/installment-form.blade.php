@@ -168,7 +168,11 @@
                         </span>
                         <h3 class="text-sm font-semibold text-text">Nominal Diterima</h3>
                     </div>
-                    <p class="mt-3 text-xs text-muted">Total uang yang benar-benar diterima. Sudah diisi sesuai tagihan; boleh dinaikkan, tidak boleh kurang dari tagihan. Kelebihan jadi <span class="font-medium text-text">Kelebihan Bayar</span> (dikreditkan ke Simpanan Sukarela).</p>
+                    @if ($fromSavings)
+                        <p class="mt-3 text-xs text-muted">Dibayar dengan mendebit <span class="font-medium text-text">Simpanan Sukarela</span> anggota. Nominal dikunci tepat sebesar tagihan — tidak boleh lebih.</p>
+                    @else
+                        <p class="mt-3 text-xs text-muted">Total uang yang benar-benar diterima. Sudah diisi sesuai tagihan; boleh dinaikkan, tidak boleh kurang dari tagihan. Kelebihan jadi <span class="font-medium text-text">Kelebihan Bayar</span> (dikreditkan ke Simpanan Sukarela).</p>
+                    @endif
 
                     <div class="mt-4">
                         <div class="space-y-1"
@@ -187,7 +191,11 @@
                                  ])>
                                 <span class="pl-3 text-sm text-muted">Rp</span>
                                 <input id="amount_paid" type="text" inputmode="numeric" data-amt :value="display" @input="onInput($event)"
-                                       class="h-10 w-full rounded-lg bg-transparent px-2 text-base font-semibold tabular-nums text-text focus-visible:outline-none">
+                                       @readonly($fromSavings)
+                                       @class([
+                                           'h-10 w-full rounded-lg bg-transparent px-2 text-base font-semibold tabular-nums text-text focus-visible:outline-none',
+                                           'cursor-not-allowed text-muted' => $fromSavings,
+                                       ])>
                             </div>
                             @error('amount_paid')<p class="text-xs text-danger">{{ $message }}</p>
                             @elseif ($schedule)<p class="text-xs text-muted">Tagihan bulan ini: Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}.</p>@enderror
@@ -197,13 +205,19 @@
                     <div class="mt-5 grid gap-4 sm:grid-cols-2">
                         <div class="space-y-1">
                             <label for="payment_method" class="block text-sm font-medium text-text">Metode Bayar</label>
-                            <select id="payment_method" wire:model="payment_method"
+                            <select id="payment_method" wire:model.live="payment_method"
                                     class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
                                 @foreach ($paymentMethods as $value => $label)
                                     <option value="{{ $value }}">{{ $label }}</option>
                                 @endforeach
                             </select>
                             @error('payment_method')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                            @if ($fromSavings)
+                                <p class="text-xs text-secondary">
+                                    Saldo Sukarela: <span class="font-semibold tabular-nums">Rp {{ number_format((float) ($availableSukarela ?? 0), 0, ',', '.') }}</span>
+                                    · nominal dikunci = tagihan, bukti persetujuan wajib.
+                                </p>
+                            @endif
                         </div>
 
                         <div class="space-y-1">
@@ -225,7 +239,14 @@
 
                         {{-- Bukti --}}
                         <div class="space-y-1 sm:col-span-2">
-                            <label for="bukti" class="block text-sm font-medium text-text">Bukti Pembayaran <span class="text-muted">(opsional)</span></label>
+                            <label for="bukti" class="block text-sm font-medium text-text">
+                                {{ $fromSavings ? 'Bukti Persetujuan Anggota' : 'Bukti Pembayaran' }}
+                                @if ($fromSavings)
+                                    <span class="text-danger">(wajib)</span>
+                                @else
+                                    <span class="text-muted">(opsional)</span>
+                                @endif
+                            </label>
                             <label for="bukti"
                                    class="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border px-4 py-3 transition hover:border-secondary/40 hover:bg-secondary/5">
                                 <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-secondary/10 text-secondary">

@@ -10,8 +10,11 @@ use App\Livewire\Concerns\WithMemberPicker;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
+use App\Models\Member;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -73,6 +76,12 @@ class InstallmentForm extends Component
     /** Prefill nominal = jumlah pelunasan saat toggle dinyalakan; balik ke tagihan saat dimatikan. */
     public function updatedSettleEarly(): void
     {
+        // Debit simpanan tak berlaku untuk pelunasan dipercepat (satu angsuran =
+        // satu sumber; jalur savings hanya di pay(), bukan settleEarly()).
+        if ($this->settle_early && $this->fromSavings()) {
+            $this->payment_method = 'potong_gaji';
+        }
+
         if ($this->settle_early) {
             $preview = $this->settlementPreview();
             $this->amount_paid = $preview ? (int) round((float) $preview['payoff']) : $this->amount_paid;
@@ -82,6 +91,55 @@ class InstallmentForm extends Component
         }
 
         $this->dispatchAmounts();
+    }
+
+    /**
+     * Sumber = Saldo Simpanan Sukarela (ADR 2026-07-22). Saat dipilih: nominal
+     * dikunci = tagihan (tak boleh lebih), bukti consent wajib, saldo divalidasi.
+     */
+    public function updatedPaymentMethod(): void
+    {
+        if ($this->fromSavings()) {
+            $schedule = $this->selectedSchedule();
+            $this->amount_paid = $schedule ? (int) round((float) $schedule->total_due) : $this->amount_paid;
+        }
+
+        $this->dispatchAmounts();
+    }
+
+    public function fromSavings(): bool
+    {
+        return $this->payment_method === 'saldo_simpanan';
+    }
+
+    /**
+     * Opsi metode bayar sadar-izin: `saldo_simpanan` hanya untuk pemegang
+     * `pay_installment_from_savings` (Pengurus) dan hanya di jalur angsuran biasa
+     * (bukan pelunasan dipercepat).
+     *
+     * @return array<string, string>
+     */
+    public function paymentMethodOptions(): array
+    {
+        $methods = Resource::PAYMENT_METHODS;
+
+        if ($this->settle_early || ! (auth()->user()?->can('payFromSavings', Installment::class) ?? false)) {
+            unset($methods['saldo_simpanan']);
+        }
+
+        return $methods;
+    }
+
+    /** Saldo Simpanan Sukarela anggota terpilih — untuk info & validasi ≤ saldo. */
+    public function availableSukarela(): ?string
+    {
+        if (blank($this->member_id)) {
+            return null;
+        }
+
+        $member = Member::find($this->member_id);
+
+        return $member ? app(SavingsBalanceService::class)->balanceByType($member, 'sukarela') : null;
     }
 
     /**
@@ -233,9 +291,11 @@ class InstallmentForm extends Component
             'loan_id' => ['required', 'exists:loans,id'],
             'schedule_id' => ['required', 'exists:installment_schedules,id'],
             'amount_paid' => ['required', 'integer', 'min:1'],
-            'payment_method' => ['required', 'in:'.implode(',', array_keys(Resource::PAYMENT_METHODS))],
+            // Whitelist sadar-izin: Petugas tak bisa submit `saldo_simpanan`.
+            'payment_method' => ['required', 'in:'.implode(',', array_keys($this->paymentMethodOptions()))],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
-            'bukti' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            // Consent WAJIB saat sumber = saldo simpanan (defense-in-depth; service juga menolak).
+            'bukti' => [Rule::requiredIf($this->fromSavings()), 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ];
     }
 
@@ -279,6 +339,23 @@ class InstallmentForm extends Component
             ]);
         }
 
+        // Sumber = saldo simpanan (ADR 2026-07-22): dikunci tepat-tagihan (tak boleh
+        // lebih — cegah lingkaran debit→kelebihan→sukarela) & tak boleh melebihi saldo.
+        if ($this->fromSavings()) {
+            if ((int) $this->amount_paid > $bill) {
+                throw ValidationException::withMessages([
+                    'amount_paid' => 'Pembayaran dari saldo simpanan harus tepat sebesar tagihan Rp '.number_format($bill, 0, ',', '.').'.',
+                ]);
+            }
+
+            $available = $this->availableSukarela() ?? '0';
+            if (bccomp((string) (int) $this->amount_paid, $available, 2) > 0) {
+                throw ValidationException::withMessages([
+                    'amount_paid' => 'Melebihi saldo Simpanan Sukarela (Rp '.number_format((float) $available, 0, ',', '.').').',
+                ]);
+            }
+        }
+
         $input = [
             'amount_paid' => (string) (int) $this->amount_paid,
             'payment_method' => $this->payment_method,
@@ -314,11 +391,15 @@ class InstallmentForm extends Component
     {
         $this->authorize('settleEarly', Installment::class);
 
+        // Pelunasan dipercepat TIDAK mendukung sumber saldo simpanan (settleEarly
+        // tak punya jalur debit berpasangan) — kunci ke metode kas.
+        $settleMethods = array_diff(array_keys(Resource::PAYMENT_METHODS), ['saldo_simpanan']);
+
         $this->validate([
             'member_id' => ['required', 'exists:members,id'],
             'loan_id' => ['required', 'exists:loans,id'],
             'amount_paid' => ['required', 'integer', 'min:1'],
-            'payment_method' => ['required', 'in:'.implode(',', array_keys(Resource::PAYMENT_METHODS))],
+            'payment_method' => ['required', 'in:'.implode(',', $settleMethods)],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
             'bukti' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ]);
@@ -362,12 +443,14 @@ class InstallmentForm extends Component
 
         return view('livewire.loan.installment.installment-form', [
             'loanOptions' => $this->activeLoanOptions(),
-            'paymentMethods' => Resource::PAYMENT_METHODS,
+            'paymentMethods' => $this->paymentMethodOptions(),
             'schedule' => $schedule,
             'isFinal' => $this->isFinal(),
             'totalPaid' => (int) $this->amount_paid,
             'canSettleEarly' => $this->canSettleEarly(),
             'settlementPreview' => $this->settle_early ? $this->settlementPreview() : null,
+            'fromSavings' => $this->fromSavings(),
+            'availableSukarela' => $this->fromSavings() ? $this->availableSukarela() : null,
         ])->layout('components.layouts.app', ['title' => 'Bayar Angsuran']);
     }
 }
