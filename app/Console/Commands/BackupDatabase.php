@@ -52,8 +52,8 @@ class BackupDatabase extends Command
         // terlihat di `ps` oleh user lain di server yang sama.
         $process = Process::fromShellCommandline(
             'mysqldump --single-transaction --routines --triggers '
-            .'--host=${:DB_HOST} --port=${:DB_PORT} --user=${:DB_USER} ${:DB_NAME} '
-            .'| gzip > ${:DB_FILE}'
+                . '--host="${:DB_HOST}" --port="${:DB_PORT}" --user="${:DB_USER}" "${:DB_NAME}" '
+                . '| gzip > "${:DB_FILE}"'
         );
 
         $process->setEnv([
