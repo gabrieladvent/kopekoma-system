@@ -21,5 +21,5 @@ Schedule::command('db:backup --keep=14')
     ->dailyAt('02:00')
     ->timezone('Asia/Jakarta')
     ->withoutOverlapping()
-    ->onSuccess(fn() => Process::run('/usr/local/bin/backup-to-telegram.sh'))
-    ->onFailure(fn() => Log::error('Backup kopekoma GAGAL'));
+    ->onSuccess(fn () => Process::run('/usr/local/bin/backup-to-telegram.sh'))
+    ->onFailure(fn () => Log::error('Backup kopekoma GAGAL'));
