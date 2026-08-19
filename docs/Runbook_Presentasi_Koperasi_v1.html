@@ -1,0 +1,768 @@
+<title>Runbook Rapat KOPEKOMA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F3EF;
+    --surface: #FFFFFF;
+    --surface-sunk: #E8ECE6;
+    --ink: #16211D;
+    --ink-soft: #4A5A54;
+    --ink-faint: #7A8880;
+    --rule: #D2D9D2;
+    --rule-strong: #B4BFB7;
+    --accent: #1F6B5B;
+    --accent-soft: #E2EDE8;
+    --brass: #8A6518;
+    --brass-soft: #F0E9D8;
+    --alert: #8E322B;
+    --alert-soft: #F6E6E3;
+
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1412;
+      --surface: #151D1A;
+      --surface-sunk: #1B2523;
+      --ink: #E4EAE5;
+      --ink-soft: #A8B5AE;
+      --ink-faint: #7D8B84;
+      --rule: #2A3733;
+      --rule-strong: #3B4A45;
+      --accent: #5FBFA6;
+      --accent-soft: #17302A;
+      --brass: #C79A46;
+      --brass-soft: #2A2418;
+      --alert: #E08076;
+      --alert-soft: #2E1A18;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0E1412;
+    --surface: #151D1A;
+    --surface-sunk: #1B2523;
+    --ink: #E4EAE5;
+    --ink-soft: #A8B5AE;
+    --ink-faint: #7D8B84;
+    --rule: #2A3733;
+    --rule-strong: #3B4A45;
+    --accent: #5FBFA6;
+    --accent-soft: #17302A;
+    --brass: #C79A46;
+    --brass-soft: #2A2418;
+    --alert: #E08076;
+    --alert-soft: #2E1A18;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+  }
+  nav .wrap {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    align-items: baseline;
+  }
+  nav a {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding: 0.15rem 0;
+    border-bottom: 1px solid transparent;
+  }
+  nav a:hover, nav a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+  nav .brand {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin-right: auto;
+  }
+
+  /* ---------- header ---------- */
+  header.masthead {
+    padding: 3.5rem 0 2.5rem;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5.5vw, 3.2rem);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+  .lede {
+    font-family: var(--serif);
+    font-size: clamp(1.05rem, 2.2vw, 1.22rem);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 44ch;
+    margin: 0;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 2rem;
+    margin-top: 2rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+  }
+  .meta-row b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: 3.25rem; }
+  h2 {
+    font-family: var(--serif);
+    font-size: clamp(1.4rem, 3vw, 1.75rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4rem;
+    text-wrap: balance;
+  }
+  .sec-note {
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 1.75rem;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.75rem;
+  }
+  p { margin: 0 0 1rem; }
+  a { color: var(--accent); }
+
+  code, .mono { font-family: var(--mono); font-size: 0.85em; }
+  code {
+    background: var(--surface-sunk);
+    padding: 0.1em 0.38em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* ---------- outcome cards ---------- */
+  .outcomes { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  .outcome {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    padding: 1.15rem 1.25rem 1.3rem;
+  }
+  .outcome .n {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    color: var(--brass);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+  .outcome p { margin: 0; font-size: 0.95rem; color: var(--ink-soft); }
+  .outcome strong { color: var(--ink); font-weight: 600; display: block; margin-bottom: 0.3rem; font-size: 1rem; }
+
+  /* ---------- checklist ---------- */
+  ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
+  ul.checks li {
+    display: grid;
+    grid-template-columns: 1.15rem 1fr;
+    gap: 0.7rem;
+    align-items: start;
+    padding-bottom: 0.55rem;
+    border-bottom: 1px dashed var(--rule);
+  }
+  ul.checks li::before {
+    content: "";
+    width: 0.95rem;
+    height: 0.95rem;
+    margin-top: 0.32rem;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: 2px;
+  }
+  ul.checks li b { font-weight: 600; }
+  ul.checks li span.hint { color: var(--ink-soft); }
+
+  /* ---------- credentials ---------- */
+  .cred {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1.25rem;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+  .cred-item .label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  .cred-item .value { font-family: var(--mono); font-size: 0.92rem; color: var(--ink); }
+  .cred-item .sub { font-size: 0.85rem; color: var(--ink-soft); margin-top: 0.25rem; }
+
+  pre.cmd {
+    background: var(--ink);
+    color: var(--ground);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.75;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 1rem 0 0;
+    border-radius: 3px;
+  }
+  :root[data-theme="dark"] pre.cmd,
+  :root:not([data-theme="light"]) pre.cmd { border: 1px solid var(--rule); }
+
+  /* ---------- demo steps ---------- */
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
+  ol.steps > li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 3.5rem 1fr;
+    gap: 0 1.25rem;
+    padding: 1.35rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  ol.steps > li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--brass);
+    padding-top: 0.15rem;
+  }
+  .step-head {
+    font-family: var(--serif);
+    font-size: 1.12rem;
+    font-weight: 600;
+    margin: 0 0 0.3rem;
+  }
+  .step-route {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0.12rem 0.4rem;
+    border-radius: 3px;
+    display: inline-block;
+    margin-bottom: 0.55rem;
+  }
+  .step-body { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+  .step-body + .step-body { margin-top: 0.5rem; }
+  .say {
+    border-left: 2px solid var(--brass);
+    padding-left: 0.85rem;
+    margin-top: 0.7rem;
+    font-family: var(--serif);
+    font-size: 1rem;
+    color: var(--ink);
+    max-width: 58ch;
+  }
+  .data-chip {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    margin: 0.6rem 0.4rem 0 0;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .data-chip b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- status ---------- */
+  .status-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+  .status-col { background: var(--surface); border: 1px solid var(--rule); padding: 1.15rem 1.25rem 1.3rem; }
+  .status-col ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+  .status-col li { display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.6rem; font-size: 0.93rem; color: var(--ink-soft); }
+  .status-col li i { font-style: normal; font-family: var(--mono); font-size: 0.85rem; }
+  .st-done i { color: var(--accent); }
+  .st-open i { color: var(--brass); }
+  .st-hold i { color: var(--alert); }
+
+  /* ---------- decisions ---------- */
+  .decisions { display: grid; gap: 0; }
+  .decision {
+    display: grid;
+    grid-template-columns: minmax(9rem, 14rem) 1fr;
+    gap: 0.35rem 1.5rem;
+    padding: 1.15rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .decision:last-child { border-bottom: 1px solid var(--rule); }
+  .decision .topic { font-weight: 600; font-size: 0.98rem; }
+  .decision .ask { margin: 0; color: var(--ink-soft); max-width: 60ch; }
+  .decision .default {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    margin-top: 0.4rem;
+    display: block;
+  }
+  .decision .default b { color: var(--accent); font-weight: 500; }
+
+  /* ---------- QA ---------- */
+  .qa { border-top: 1px solid var(--rule); padding: 1.1rem 0; }
+  .qa:last-of-type { border-bottom: 1px solid var(--rule); }
+  .qa .q { font-family: var(--serif); font-size: 1.08rem; font-weight: 600; margin: 0 0 0.35rem; }
+  .qa .a { margin: 0; color: var(--ink-soft); max-width: 64ch; }
+
+  .callout {
+    background: var(--alert-soft);
+    border-left: 3px solid var(--alert);
+    padding: 1rem 1.2rem;
+    margin: 1.5rem 0 0;
+  }
+  .callout p { margin: 0; color: var(--ink); font-size: 0.95rem; }
+  .callout b { color: var(--alert); }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 2rem;
+  }
+
+  @media (max-width: 40rem) {
+    ol.steps > li { grid-template-columns: 1fr; gap: 0.35rem; }
+    ol.steps > li::before { font-size: 0.78rem; }
+    .decision { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">KPRI Kopekoma</span>
+    <a href="#tujuan">Tujuan</a>
+    <a href="#siap">Persiapan</a>
+    <a href="#demo">Alur Demo</a>
+    <a href="#status">Status</a>
+    <a href="#keputusan">Keputusan</a>
+    <a href="#jadwal">Jadwal</a>
+    <a href="#tanya">Antisipasi</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Runbook Presentasi · 19 Agustus 2026</p>
+    <h1>Sistem Informasi Koperasi Simpan Pinjam</h1>
+    <p class="lede">Panduan pegangan presenter: apa yang disiapkan sebelum berangkat, urutan demo yang harus dijalankan, dan keputusan apa saja yang wajib dibawa pulang dari rapat.</p>
+    <div class="meta-row">
+      <span>Peserta · <b>Pengurus KPRI KOPEKOMA</b></span>
+      <span>Durasi demo · <b>± 25 menit</b></span>
+      <span>Sisa waktu · <b>diskusi &amp; keputusan</b></span>
+    </div>
+  </header>
+
+  <section id="tujuan">
+    <h2>Tiga hal yang harus keluar dari rapat ini</h2>
+    <p class="sec-note">Demo hanyalah alat. Rapat dianggap berhasil kalau tiga hal berikut sudah ada jawabannya sebelum bubar — bukan sekadar pengurus mengangguk melihat layar.</p>
+    <div class="outcomes">
+      <article class="outcome">
+        <span class="n">Hasil 1</span>
+        <strong>Tanggal UAT &amp; go-live</strong>
+        <p>Kesepakatan kapan pengurus menguji dengan data nyata, kapan pelatihan, dan kapan sistem mulai dipakai resmi.</p>
+      </article>
+      <article class="outcome">
+        <span class="n">Hasil 2</span>
+        <strong>Data awal koperasi</strong>
+        <p>Siapa yang menyerahkan daftar anggota, OPD, dan saldo berjalan — dalam format apa, paling lambat kapan.</p>
+      </article>
+      <article class="outcome">
+        <span class="n">Hasil 3</span>
+        <strong>Tujuh keputusan tertunda</strong>
+        <p>Hal-hal yang hanya pengurus yang boleh memutuskan. Daftarnya ada di bagian Keputusan.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="siap">
+    <h2>Sebelum berangkat</h2>
+    <p class="sec-note">Kerjakan berurutan. Poin terakhir yang paling sering menyelamatkan rapat: demo langsung bisa gagal karena hal-hal di luar aplikasi.</p>
+
+    <ul class="checks">
+      <li><span><b>Bangun ulang data demo</b> <span class="hint">— supaya tidak ada data coba-coba yang nyangkut di layar saat dipresentasikan.</span></span></li>
+      <li><span><b>Buka semua halaman demo sekali</b> <span class="hint">— pastikan tidak ada error, dan cache/PDF sudah panas sehingga tidak ada jeda aneh.</span></span></li>
+      <li><span><b>Cetak contoh dokumen fisik</b> <span class="hint">— kartu anggota, slip setoran, tanda terima pinjaman, kuitansi angsuran, dan satu laporan PDF berkop.</span></span></li>
+      <li><span><b>Isi identitas koperasi di Settings</b> <span class="hint">— nama, alamat, telepon, dan nama penandatangan; itu yang muncul di kop laporan.</span></span></li>
+      <li><span><b>Screenshot tiap langkah demo</b> <span class="hint">— cadangan kalau laptop, proyektor, atau jaringan bermasalah di lokasi.</span></span></li>
+      <li><span><b>Backup database sebelum berangkat</b> <span class="hint">— rapat sering berubah jadi sesi coba-coba oleh pengurus; harus bisa dikembalikan.</span></span></li>
+    </ul>
+
+    <h3 style="margin-top:2.25rem">Akun demo</h3>
+    <div class="cred">
+      <div class="cred-item">
+        <span class="label">Pengurus / Bendahara</span>
+        <span class="value">pengurus@kopekoma.test</span>
+        <div class="sub">Kata sandi <span class="mono">password</span>. Bisa meng-ACC pencairan, bayar angsuran dari simpanan, dan mengunduh laporan.</div>
+      </div>
+      <div class="cred-item">
+        <span class="label">Petugas Input</span>
+        <span class="value">petugas@kopekoma.test</span>
+        <div class="sub">Kata sandi <span class="mono">password</span>. Sengaja dipakai di langkah 11 untuk menunjukkan tombol mana yang <em>tidak</em> muncul.</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:2rem">Perintah menyiapkan data</h3>
+    <pre class="cmd">php artisan migrate:fresh --seed
+php artisan db:seed --class=DemoDataSeeder</pre>
+    <p style="margin-top:0.75rem;font-size:0.9rem;color:var(--ink-soft)">Menghasilkan 3 OPD, 12 anggota, simpanan enam bulan terakhir, dan lima pinjaman yang masing-masing sengaja dibuat beda kondisi — lancar, menunggak, Sebrakan, siap didebit dari simpanan, dan lunas.</p>
+
+    <div class="callout">
+      <p><b>Perhatian:</b> <span class="mono">migrate:fresh</span> menghapus seluruh isi database. Jalankan hanya di laptop demo, tidak pernah di server koperasi.</p>
+    </div>
+  </section>
+
+  <section id="demo">
+    <h2>Alur demo</h2>
+    <p class="sec-note">Satu benang cerita, bukan tur menu. Ikuti urutan ini — tiap langkah menyiapkan panggung untuk langkah berikutnya, dan ditutup dengan pembatalan transaksi yang merupakan nilai jual terbesar sistem ini bagi koperasi.</p>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <p class="step-head">Buka dengan dashboard, bukan menu</p>
+          <span class="step-route">/dashboard</span>
+          <p class="step-body">Tunjukkan angka ringkas: total simpanan, pinjaman berjalan, dan daftar angsuran menunggak. Biarkan pengurus melihat sendiri ada nama yang menunggak sebelum Anda menjelaskan apa pun.</p>
+          <p class="say">"Ini yang dilihat pengurus tiap pagi. Yang merah ini yang perlu ditindaklanjuti bulan ini."</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Data anggota &amp; kartu anggota</p>
+          <span class="step-route">/master/anggota</span>
+          <p class="step-body">Buka satu anggota, tunjukkan data ahli waris dan dokumen terlampir, lalu cetak kartu anggotanya. Sebutkan bahwa nomor anggota dibuat otomatis dan tidak bisa dobel.</p>
+          <span class="data-chip">Anggota siap pakai · <b>12 orang, 3 OPD</b></span>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Setoran simpanan — satu anggota</p>
+          <span class="step-route">/setor-simpanan/create</span>
+          <p class="step-body">Input satu setoran sukarela, lalu langsung cetak slipnya. Tekankan nominal simpanan wajib terisi otomatis mengikuti golongan, jadi petugas tidak perlu hafal tabel.</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Batch potong gaji per OPD</p>
+          <span class="step-route">/setor-simpanan/batch</span>
+          <p class="step-body">Ini bagian yang paling menghemat waktu bendahara: pilih OPD dan periode, seluruh anggota muncul dengan nominal wajibnya, sekali simpan jadi puluhan setoran sekaligus.</p>
+          <p class="say">"Yang biasanya diketik satu-satu tiap awal bulan, di sini jadi satu kali proses per OPD."</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Pinjaman baru &amp; tanda terima</p>
+          <span class="step-route">/pinjaman/create</span>
+          <p class="step-body">Masukkan pinjaman jangka panjang. Tunjukkan potongan administrasi dan SWP dihitung sistem, dana diterima muncul otomatis, dan jadwal angsuran langsung terbentuk sepanjang tenor. Cetak tanda terimanya.</p>
+          <p class="step-body">Tegaskan: persetujuan pinjaman tetap keputusan pengurus di luar sistem — aplikasi hanya mencatat yang sudah di-ACC dan cair.</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Progres angsuran &amp; kasus menunggak</p>
+          <span class="step-route">/pinjaman</span>
+          <p class="step-body">Buka pinjaman Bambang Setiawan. Seluruh jadwal terlihat baris per baris: mana yang sudah terbayar, mana yang lewat tempo. Bandingkan dengan pinjaman Sri Wahyuni yang lancar.</p>
+          <span class="data-chip">Bambang · <b>3 dari 24 terbayar, 5 menunggak</b></span>
+          <span class="data-chip">Sri Wahyuni · <b>6 dari 12, lancar</b></span>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Bayar angsuran &amp; kuitansi</p>
+          <span class="step-route">/angsuran/create</span>
+          <p class="step-body">Petugas cukup memasukkan satu angka: berapa uang yang benar-benar diterima. Rincian pokok, jasa, dan tabungan berjangka dihitung sistem. Cetak kuitansinya.</p>
+          <p class="say">"Anggota bayar satu kali satu angka. Petugas tidak perlu memecah sendiri — itu tugas sistem."</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Bayar angsuran dari saldo simpanan</p>
+          <span class="step-route">/angsuran/create</span>
+          <p class="step-body">Kasus "nitip": anggota minta angsurannya diambilkan dari simpanan sukarelanya. Pakai pinjaman Agus Riyanto. Tunjukkan bahwa metode ini hanya muncul untuk Pengurus, nominalnya terkunci persis sebesar tagihan, dan bukti persetujuan anggota wajib diunggah.</p>
+          <span class="data-chip">Tagihan bulan ini · <b>Rp 545.000</b></span>
+          <span class="data-chip">Saldo sukarela Agus · <b>Rp 3.250.000</b></span>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Pelunasan &amp; pengembalian otomatis</p>
+          <span class="step-route">/pinjaman</span>
+          <p class="step-body">Buka pinjaman Endang Purwanti yang sudah lunas. Sistem otomatis membuat draft pengembalian SWP dan tabungan berjangka — menunggu ACC pengurus, bukan langsung cair. Lanjutkan ke halaman pencairan untuk meng-ACC salah satunya.</p>
+          <span class="step-route" style="margin-top:0.4rem">/simpanan/pencairan</span>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Laporan per periode</p>
+          <span class="step-route">/laporan/setoran-simpanan</span>
+          <p class="step-body">Pilih rentang bulan, tunjukkan rekap dikelompokkan per OPD dan per anggota, lalu unduh PDF berkop dan Excel-nya. Buka file PDF-nya di layar — kop dan blok tanda tangan adalah hal pertama yang dicari pengurus.</p>
+          <span class="step-route" style="margin-top:0.4rem">/laporan/angsuran-pinjaman</span>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Ganti akun ke Petugas</p>
+          <span class="step-route">/login</span>
+          <p class="step-body">Masuk sebagai petugas, buka halaman laporan yang sama: tombol unduh tidak ada, dan metode bayar dari simpanan tidak muncul. Pembatasan hak akses terlihat, bukan sekadar dijanjikan.</p>
+          <p class="say">"Petugas bisa mencatat, tapi tidak bisa mengeluarkan uang atau menarik laporan keluar."</p>
+        </div>
+      </li>
+
+      <li>
+        <div>
+          <p class="step-head">Penutup: pembatalan transaksi &amp; jejak audit</p>
+          <span class="step-route">/sistem/log-aktivitas</span>
+          <p class="step-body">Kembali sebagai pengurus. Batalkan satu setoran yang salah input, tunjukkan saldo anggota langsung terkoreksi, lalu buka log aktivitas: transaksi asli tetap ada, pembatalannya tercatat, lengkap dengan siapa dan kapan.</p>
+          <p class="say">"Di sini tidak ada tombol hapus untuk transaksi uang. Yang salah dibatalkan dengan transaksi lawan — persis seperti pembukuan manual, tapi otomatis. Jadi angka koperasi selalu bisa dipertanggungjawabkan sampai ke RAT."</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="status">
+    <h2>Status pekerjaan</h2>
+    <p class="sec-note">Tampilkan apa adanya. Pengurus lebih percaya pada daftar yang jujur menyebut apa yang belum ada daripada klaim "semua sudah selesai".</p>
+
+    <div class="status-grid">
+      <div class="status-col st-done">
+        <h3>Sudah berjalan</h3>
+        <ul>
+          <li><i>✓</i><span>Data anggota, OPD, golongan</span></li>
+          <li><i>✓</i><span>Simpanan: pokok, wajib, sukarela, hari raya, wajib belanja</span></li>
+          <li><i>✓</i><span>Batch potong gaji per OPD</span></li>
+          <li><i>✓</i><span>Pinjaman, jadwal, angsuran, pelunasan dipercepat</span></li>
+          <li><i>✓</i><span>Bayar angsuran dari saldo simpanan</span></li>
+          <li><i>✓</i><span>Pencairan simpanan dengan alur persetujuan</span></li>
+          <li><i>✓</i><span>Laporan setoran &amp; angsuran + PDF/Excel</span></li>
+          <li><i>✓</i><span>Pembatalan transaksi &amp; jejak audit</span></li>
+          <li><i>✓</i><span>Hak akses bertingkat &amp; backup terjadwal</span></li>
+        </ul>
+      </div>
+
+      <div class="status-col st-open">
+        <h3>Belum dikerjakan — perlu keputusan</h3>
+        <ul>
+          <li><i>○</i><span>Penutupan akun anggota (keluar / meninggal)</span></li>
+          <li><i>○</i><span>Perhitungan SHU</span></li>
+          <li><i>○</i><span>Laporan khusus RAT</span></li>
+          <li><i>○</i><span>Integrasi aplikasi toko untuk wajib belanja</span></li>
+          <li><i>○</i><span>Jenis laporan tambahan di luar dua yang ada</span></li>
+        </ul>
+      </div>
+
+      <div class="status-col st-hold">
+        <h3>Menunggu koperasi</h3>
+        <ul>
+          <li><i>▲</i><span>Data anggota &amp; saldo berjalan yang asli</span></li>
+          <li><i>▲</i><span>Jadwal UAT bersama pengurus</span></li>
+          <li><i>▲</i><span>Jadwal pelatihan petugas</span></li>
+          <li><i>▲</i><span>Penetapan siapa memegang peran Pengurus &amp; Petugas</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="keputusan">
+    <h2>Keputusan yang diminta hari ini</h2>
+    <p class="sec-note">Semua sudah ada usulan default. Kalau pengurus tidak punya preferensi, tawarkan default-nya dan catat sebagai keputusan — jangan biarkan menggantung untuk rapat berikutnya.</p>
+
+    <div class="decisions">
+      <div class="decision">
+        <div class="topic">Bukti persetujuan debit simpanan</div>
+        <div>
+          <p class="ask">Saat angsuran diambilkan dari simpanan anggota, cukup unggah bukti bebas (foto surat, WhatsApp), atau koperasi ingin formulir kuasa pendebitan baku yang ditandatangani?</p>
+          <span class="default">Usulan · <b>formulir kuasa baku</b> — lebih kuat kalau suatu saat ada sengketa</span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">Bukti bayar pelunasan</div>
+        <div>
+          <p class="ask">Untuk pelunasan dipercepat, apakah bukti pembayaran wajib diunggah atau boleh opsional seperti angsuran biasa?</p>
+          <span class="default">Usulan · <b>wajib</b> — nominalnya besar dan sekali jalan</span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">Pembulatan bulan terakhir</div>
+        <div>
+          <p class="ask">Melunasi di bulan terakhir sedikit lebih murah daripada menyelesaikan angsuran normal, akibat pembulatan pokok. Dibiarkan (memihak anggota) atau disamakan?</p>
+          <span class="default">Usulan · <b>dibiarkan</b> — selisihnya kecil dan menguntungkan anggota</span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">Laporan tambahan</div>
+        <div>
+          <p class="ask">Selain rekap setoran dan angsuran, laporan apa yang benar-benar dipakai pengurus tiap bulan? Minta contoh format yang selama ini dipakai manual.</p>
+          <span class="default">Usulan · <b>kunci maksimal dua tambahan</b> untuk fase ini</span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">SHU &amp; RAT</div>
+        <div>
+          <p class="ask">Perhitungan SHU dan laporan RAT saat ini di luar lingkup. Apakah dibutuhkan, dan kalau ya, harus siap sebelum RAT tahun berapa?</p>
+          <span class="default">Usulan · <b>fase terpisah setelah sistem inti dipakai rutin</b></span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">Penutupan akun anggota</div>
+        <div>
+          <p class="ask">Alur anggota keluar, pensiun, atau meninggal belum ada. Apakah sudah ada kasusnya dalam waktu dekat sehingga perlu didahulukan?</p>
+          <span class="default">Usulan · <b>dahulukan bila ada kasus tahun ini</b></span>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="topic">Integrasi toko koperasi</div>
+        <div>
+          <p class="ask">Saldo wajib belanja saat ini dipotong manual oleh petugas. Kapan toko mau disambungkan langsung ke sistem?</p>
+          <span class="default">Usulan · <b>setelah go-live sistem inti stabil</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="jadwal">
+    <h2>Jadwal yang perlu disepakati</h2>
+    <p class="sec-note">Bawa kalender. Empat tanggal ini yang menentukan kapan koperasi benar-benar bisa berhenti memakai cara lama.</p>
+    <ul class="checks">
+      <li><span><b>Serah terima data awal</b> <span class="hint">— daftar anggota, OPD, dan saldo berjalan; sepakati format dan penanggung jawabnya.</span></span></li>
+      <li><span><b>UAT bersama pengurus</b> <span class="hint">— pengurus menjalankan kasus nyata mereka sendiri, bukan menonton demo.</span></span></li>
+      <li><span><b>Pelatihan petugas</b> <span class="hint">— setengah hari, dipandu langsung di aplikasi, disertai manual singkat.</span></span></li>
+      <li><span><b>Mulai dipakai resmi</b> <span class="hint">— tentukan bulan buku pertama yang dicatat di sistem, supaya tidak ada periode abu-abu.</span></span></li>
+    </ul>
+  </section>
+
+  <section id="tanya">
+    <h2>Antisipasi pertanyaan</h2>
+    <p class="sec-note">Pertanyaan yang hampir selalu muncul dari pengurus koperasi, dan jawaban singkat yang bisa langsung dibuktikan di layar.</p>
+
+    <div class="qa">
+      <p class="q">Kalau petugas salah input, bagaimana?</p>
+      <p class="a">Transaksi keuangan tidak bisa dihapus. Yang salah dibatalkan dengan transaksi lawan, saldo terkoreksi otomatis, dan keduanya tetap terlihat di riwayat beserta nama pembatalnya. Bisa langsung diperagakan — ini langkah 12.</p>
+    </div>
+
+    <div class="qa">
+      <p class="q">Apakah saldo bisa diubah manual oleh petugas?</p>
+      <p class="a">Tidak. Saldo bukan angka yang disimpan, melainkan dihitung ulang dari seluruh transaksi setiap kali dibuka. Tidak ada kolom saldo yang bisa diketik.</p>
+    </div>
+
+    <div class="qa">
+      <p class="q">Bagaimana kalau datanya hilang?</p>
+      <p class="a">Backup database berjalan otomatis terjadwal dan hasilnya dikirim ke saluran pengurus, jadi salinannya tidak hanya ada di satu mesin.</p>
+    </div>
+
+    <div class="qa">
+      <p class="q">Petugas bisa lihat data pribadi anggota semua?</p>
+      <p class="a">Akses dibatasi per peran. Petugas mencatat transaksi; pengurus yang berwenang mengeluarkan uang, meng-ACC pencairan, dan menarik laporan keluar. Bisa diperagakan langsung — ini langkah 11.</p>
+    </div>
+
+    <div class="qa">
+      <p class="q">Berapa lama petugas belajar memakainya?</p>
+      <p class="a">Setengah hari pelatihan untuk alur harian: setoran, batch potong gaji, dan angsuran. Menu disusun mengikuti urutan kerja sehari-hari, bukan urutan tabel database.</p>
+    </div>
+
+    <div class="qa">
+      <p class="q">Kalau anggota minta angsurannya dipotong dari simpanan?</p>
+      <p class="a">Sudah bisa, tapi sengaja dibatasi: hanya dari simpanan sukarela, hanya oleh pengurus, nominal terkunci persis sebesar tagihan, dan bukti persetujuan anggota wajib diunggah. Bukan sesuatu yang bisa dilakukan diam-diam.</p>
+    </div>
+  </section>
+
+  <section id="setelah">
+    <h2>Setelah rapat</h2>
+    <p class="sec-note">Kirim hari itu juga selagi ingatan semua orang masih segar.</p>
+    <ul class="checks">
+      <li><span><b>Notulen keputusan</b> <span class="hint">— tujuh butir keputusan beserta jawabannya, dikirim untuk dikonfirmasi tertulis.</span></span></li>
+      <li><span><b>Empat tanggal yang disepakati</b> <span class="hint">— data awal, UAT, pelatihan, go-live.</span></span></li>
+      <li><span><b>Daftar permintaan baru</b> <span class="hint">— pisahkan mana yang masuk fase ini dan mana yang ditunda, sebelum lingkup melebar diam-diam.</span></span></li>
+      <li><span><b>Format data awal</b> <span class="hint">— kirim contoh berkas isian supaya koperasi tidak menebak-nebak kolomnya.</span></span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>KPRI KOPEKOMA — Magelang</span>
+    <span>Runbook presentasi · 19 Agustus 2026</span>
+    <span>Data demo: DemoDataSeeder</span>
+  </footer>
+</div>
