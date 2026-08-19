@@ -65,11 +65,29 @@ class InstallmentPolicy
         return false;
     }
 
-    /**
-     * Ability custom (D7): reversal pembayaran = Petugas + Pengurus.
-     */
     public function reverse(User $user, Installment $installment): bool
     {
+        // Angsuran dari saldo simpanan: reverse MENAIKKAN saldo sukarela (withdrawable)
+        // anggota — setara privilege pelunasan. Gate `reverse_loan` (Pengurus), cegah
+        // privilege inversion (Petugas "manufaktur" saldo). ADR 2026-07-22 item 1e.
+        if ($installment->is_settlement || $installment->payment_method === 'saldo_simpanan') {
+            return $user->can('reverse_loan');
+        }
+
         return $user->can('reverse_installment');
+    }
+
+    public function settleEarly(User $user): bool
+    {
+        return $user->can('settle_early_installment');
+    }
+
+    /**
+     * Debit angsuran dari saldo Simpanan Sukarela (ADR 2026-07-22) — Pengurus-only.
+     * Sukarela = uang withdrawable anggota → otoritas setara pencairan + atribusi.
+     */
+    public function payFromSavings(User $user): bool
+    {
+        return $user->can('pay_installment_from_savings');
     }
 }

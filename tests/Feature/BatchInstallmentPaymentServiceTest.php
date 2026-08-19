@@ -40,6 +40,32 @@ function loanWithSchedules(string $agencyId, int $count = 1): array
     return [$loan, $schedules];
 }
 
+it('settles a loan early when a row is flagged settle_early', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 12);
+
+    // payoff default = sisa pokok 12jt + 1× jasa 78rb.
+    $result = $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[0]->id, 'loan_id' => $loan->id, 'settle_early' => true, 'amount_paid' => '12078000'],
+    ], $this->user->id);
+
+    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+        ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas)
+        ->and(Installment::where('loan_id', $loan->id)->where('is_settlement', true)->count())->toBe(1)
+        ->and(InstallmentSchedule::where('loan_id', $loan->id)
+            ->where('status', InstallmentScheduleStatus::BelumBayar)->count())->toBe(0);
+});
+
+it('fails the whole batch when a settlement amount is below the payoff', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 12);
+
+    expect(fn () => $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[0]->id, 'loan_id' => $loan->id, 'settle_early' => true, 'amount_paid' => '12077999'],
+    ], $this->user->id))->toThrow(InvalidArgumentException::class);
+
+    expect($loan->fresh()->status)->toBe(LoanStatus::Cair)
+        ->and(Installment::where('loan_id', $loan->id)->count())->toBe(0);
+});
+
 it('pays one installment per row and marks the schedule terbayar', function () {
     [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 2);
 

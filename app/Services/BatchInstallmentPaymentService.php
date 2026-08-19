@@ -8,6 +8,7 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
+use App\Models\Loan;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -75,6 +76,35 @@ class BatchInstallmentPaymentService
                     || $schedule->status === InstallmentScheduleStatus::Terbayar
                     || ! $this->belongsToAgency($schedule, $agency)) {
                     $skipped++;
+
+                    continue;
+                }
+
+                // Pelunasan dipercepat per baris (ADR 2026-07-22 5b): tutup seluruh
+                // sisa pinjaman, bukan satu jadwal. Otorisasi `settle_early_installment`
+                // ditegakkan di entry point (Livewire process()); guard jenis/status
+                // di settleEarly(). Bukti dilampirkan langsung di dalam service.
+                if ($row['settle_early'] ?? false) {
+                    try {
+                        $loan = $schedule->loan;
+
+                        $installment = $this->payments->settleEarly(
+                            $loan,
+                            [
+                                'amount_paid' => $row['amount_paid'],
+                                'payment_method' => self::METHOD,
+                                'payment_date' => $row['payment_date'] ?? $period,
+                            ],
+                            $causerId,
+                            $row['bukti'] ?? null,
+                        );
+
+                        $this->attachBukti($installment, $row['bukti_path'] ?? null, $row['bukti_disk'] ?? null);
+
+                        $created++;
+                    } catch (CannotProcessPayment) {
+                        $skipped++;
+                    }
 
                     continue;
                 }
@@ -152,6 +182,23 @@ class BatchInstallmentPaymentService
                 || $schedule->status === InstallmentScheduleStatus::Terbayar
                 || $schedule->loan?->status !== LoanStatus::Cair
                 || ! $this->belongsToAgency($schedule, $agency)) {
+                continue;
+            }
+
+            // Baris pelunasan (ADR 2026-07-22 5b): batas bawah = jumlah pelunasan
+            // (sisa pokok + 1× jasa), bukan tagihan satu jadwal.
+            if ($row['settle_early'] ?? false) {
+                $loan = $schedule->loan;
+                $payoff = bcadd($loan->settledPrincipal(), (string) $loan->monthly_interest, self::SCALE);
+
+                if (bccomp($amount, $payoff, self::SCALE) < 0) {
+                    throw new InvalidArgumentException(sprintf(
+                        'Nominal pelunasan pinjaman %s kurang dari jumlah pelunasan Rp %s — periksa kembali sebelum memproses batch.',
+                        $loan->loan_number,
+                        number_format((float) $payoff, 0, ',', '.'),
+                    ));
+                }
+
                 continue;
             }
 

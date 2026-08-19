@@ -207,6 +207,10 @@ class SchedulesRelationManager extends RelationManager
     {
         $loan = $schedule->loan;
 
+        if ($loan->hasActiveSettlement()) {
+            return '0.00';
+        }
+
         $paid = bcmul((string) $loan->monthly_principal, (string) (int) $schedule->installment_seq, 2);
 
         $remaining = bcsub((string) $loan->principal_amount, $paid, 2);

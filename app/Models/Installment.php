@@ -37,6 +37,7 @@ class Installment extends Model implements HasMedia, Reversible
         'payment_method',
         'notes',
         'is_reversal',
+        'is_settlement',
         'reversal_of_id',
         'recorded_by',
     ];
@@ -47,6 +48,7 @@ class Installment extends Model implements HasMedia, Reversible
         'due_date' => 'date',
         'amount_paid' => 'decimal:2',
         'is_reversal' => 'boolean',
+        'is_settlement' => 'boolean',
     ];
 
     /**
@@ -79,6 +81,7 @@ class Installment extends Model implements HasMedia, Reversible
     {
         return $query
             ->join('loans', 'installments.loan_id', '=', 'loans.id')
+            ->where('installments.is_settlement', false)
             ->selectRaw(
                 'COALESCE(SUM(CASE WHEN installments.is_reversal = 0 THEN loans.monthly_time_deposit ELSE -loans.monthly_time_deposit END), 0) as net'
             );
@@ -94,6 +97,30 @@ class Installment extends Model implements HasMedia, Reversible
     public function breakdown(): array
     {
         $loan = $this->loan;
+
+        if ($this->is_settlement) {
+            $principal = $this->money($loan?->settledPrincipal());
+
+            $interest = $this->money($loan?->monthly_interest);
+
+            $timeDeposit = '0.00';
+
+            $payoff = bcadd($principal, $interest, 2);
+
+            $other = bcsub($this->money($this->amount_paid), $payoff, 2);
+
+            if (bccomp($other, '0', 2) < 0) {
+                $other = '0.00';
+            }
+
+            return [
+                'principal' => $principal,
+                'interest' => $interest,
+                'time_deposit' => $timeDeposit,
+                'other' => $other,
+                'total' => $this->money($this->amount_paid),
+            ];
+        }
 
         $principal = $this->money($loan?->monthly_principal);
         $interest = $this->money($loan?->monthly_interest);
@@ -175,6 +202,10 @@ class Installment extends Model implements HasMedia, Reversible
             'due_date' => $this->due_date,
             'amount_paid' => $this->amount_paid,
             'payment_method' => $this->payment_method,
+            // Baris-lawan pelunasan HARUS ikut bertanda settlement (ADR 2026-07-22):
+            // load-bearing untuk hasActiveSettlement()/settledPrincipal()/
+            // signedTimeDeposit yang net-aware — tanpa ini, reverse tak pulih benar.
+            'is_settlement' => $this->is_settlement,
         ];
     }
 }

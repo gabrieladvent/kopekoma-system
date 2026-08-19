@@ -25,4 +25,9 @@ class CannotReverseTransaction extends RuntimeException
     {
         return new self('Alasan reversal wajib diisi (minimal 5 karakter).');
     }
+
+    public static function pairedInstallmentDebit(): self
+    {
+        return new self('Debit angsuran dari saldo simpanan hanya bisa dibalik lewat pembatalan angsurannya, bukan dari menu Pencairan.');
+    }
 }

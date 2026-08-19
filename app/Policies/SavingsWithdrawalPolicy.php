@@ -96,9 +96,19 @@ class SavingsWithdrawalPolicy
     /**
      * Reversal pencairan `cair` — uniform Petugas+ (D7, dikonfirmasi pengurus),
      * tradeoff dikontrol via laporan reversal periodik.
+     *
+     * Debit angsuran-dari-simpanan (ber-`installment_id`, ADR 2026-07-22) DITOLAK
+     * di sini: kalau boleh dibalik terpisah, saldo pulih tapi angsuran tetap
+     * terbayar = angsuran gratis (uang tercipta). Hanya boleh dibalik atomik lewat
+     * `Installment::reverse`. Menutup 3 UI (Resource/SavingsWithdrawals/Detail —
+     * semua gate `can('reverse')`).
      */
     public function reverse(User $user, SavingsWithdrawal $savingsWithdrawal): bool
     {
+        if ($savingsWithdrawal->installment_id !== null) {
+            return false;
+        }
+
         return $user->can('reverse_savings::withdrawal');
     }
 }

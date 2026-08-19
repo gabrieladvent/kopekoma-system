@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Contracts\Reversible;
 use App\Exceptions\CannotReverseTransaction;
+use App\Models\SavingsWithdrawal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +20,19 @@ class ReverseTransaction
      * @param  int|string|false|null  $causerId  user id pelaku. `false` (default) =
      *                                           resolve dari auth user (jalur Filament). `null` eksplisit = anonim/tanpa
      *                                           causer (jalur API store_api tanpa User — ADR D6/D8).
+     * @param  bool  $allowInactiveMember  `true` HANYA untuk reverse yang MENGEMBALIKAN
+     *                                     dana ke anggota (mis. debit angsuran-dari-simpanan,
+     *                                     ADR 2026-07-22 item 1d): membalik debit = menaikkan
+     *                                     saldo anggota → selalu boleh walau anggota Keluar/Meninggal.
+     * @param  bool  $allowPairedInstallmentDebit  `true` HANYA dari `LoanPaymentService::reverse`
+     *                                             (konteks `Installment::reverse`). Debit angsuran-dari-simpanan
+     *                                             (SavingsWithdrawal ber-`installment_id`) TAK boleh dibalik
+     *                                             terpisah — kalau lolos, saldo pulih tapi angsuran tetap
+     *                                             terbayar = angsuran gratis. Guard layer-mutasi (ADR 2026-07-22
+     *                                             item 1f) mencegah caller baru (command/API/bulk) membocorkannya.
      * @return T baris reversal yang dibuat
      */
-    public function __invoke(Model&Reversible $original, string $reason, int|string|false|null $causerId = false): Model
+    public function __invoke(Model&Reversible $original, string $reason, int|string|false|null $causerId = false, bool $allowInactiveMember = false, bool $allowPairedInstallmentDebit = false): Model
     {
         if ($causerId === false) {
             $causerId = auth()->id();
@@ -35,7 +46,11 @@ class ReverseTransaction
             throw CannotReverseTransaction::reasonRequired();
         }
 
-        if (in_array($original->member?->status, self::INACTIVE_STATUSES, true)) {
+        if (! $allowPairedInstallmentDebit && $original instanceof SavingsWithdrawal && $original->installment_id !== null) {
+            throw CannotReverseTransaction::pairedInstallmentDebit();
+        }
+
+        if (! $allowInactiveMember && in_array($original->member?->status, self::INACTIVE_STATUSES, true)) {
             throw CannotReverseTransaction::memberInactive();
         }
 

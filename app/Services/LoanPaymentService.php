@@ -10,20 +10,31 @@ use App\Exceptions\CannotProcessPayment;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
+use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
+use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class LoanPaymentService
 {
     private const SCALE = 2;
 
+    /** Sumber dana angsuran = debit saldo simpanan (ADR 2026-07-22). */
+    private const SOURCE_SAVINGS = 'saldo_simpanan';
+
+    /** Hanya Sukarela yang boleh didebit (hard — bukan mirror WITHDRAWABLE_TYPES). */
+    private const DEBIT_SAVINGS_TYPE = 'sukarela';
+
     public function __construct(
         private readonly ReverseTransaction $reverse,
         private readonly WithdrawalWorkflow $workflow,
+        private readonly SavingsBalanceService $balances,
     ) {}
 
     /**
@@ -39,7 +50,16 @@ class LoanPaymentService
     ): Installment {
         $causerId ??= auth()->id();
 
-        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti): Installment {
+        $fromSavings = ($input['payment_method'] ?? null) === self::SOURCE_SAVINGS;
+
+        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti, $fromSavings): Installment {
+            // Debit simpanan: lock member DULU (urutan global member→loan→schedule),
+            // konsisten dengan WithdrawalWorkflow::disburse agar tak deadlock.
+            if ($fromSavings) {
+                $memberId = Loan::query()->whereKey($schedule->loan_id)->value('member_id');
+                Member::query()->lockForUpdate()->findOrFail($memberId);
+            }
+
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($schedule->loan_id);
 
@@ -62,6 +82,27 @@ class LoanPaymentService
                 throw CannotProcessPayment::belowBill();
             }
 
+            if ($fromSavings) {
+                // Otoritas Pengurus + atribusi (ADR §Design) — enforce di service
+                // (defense-in-depth), bukan hanya di entry point Livewire.
+                Gate::forUser($this->actingUser($causerId))->authorize('pay_installment_from_savings');
+
+                // Consent WAJIB (server-side) — satu-satunya pengganti mata-kedua.
+                if (! $bukti instanceof UploadedFile) {
+                    throw CannotProcessPayment::consentRequired();
+                }
+
+                // Dikunci tepat-tagihan: cegah lingkaran debit sukarela → kelebihan
+                // balik ke sukarela.
+                if (bccomp($amountPaid, $bill, self::SCALE) > 0) {
+                    throw CannotProcessPayment::savingsMustEqualBill();
+                }
+
+                if (! $this->balances->canWithdraw($loan->member, self::DEBIT_SAVINGS_TYPE, $amountPaid)) {
+                    throw CannotProcessPayment::insufficientSavings();
+                }
+            }
+
             $installment = Installment::create([
                 'idempotency_key' => $input['idempotency_key'] ?? (string) Str::uuid(),
                 'loan_id' => $loan->id,
@@ -77,6 +118,10 @@ class LoanPaymentService
 
             if ($bukti instanceof UploadedFile) {
                 $installment->addMedia($bukti)->toMediaCollection('bukti');
+            }
+
+            if ($fromSavings) {
+                $this->debitSavingsForInstallment($installment, $loan, $amountPaid, $causerId);
             }
 
             $excess = bcsub($amountPaid, $bill, self::SCALE);
@@ -105,6 +150,104 @@ class LoanPaymentService
     }
 
     /**
+     * Pelunasan Dipercepat (ADR 2026-07-22): tutup SELURUH sisa pinjaman sekaligus.
+     * Jumlah pelunasan = sisa pokok + 1× jasa; jasa bulan sisa DIBEBASKAN, tabungan
+     * berjangka masa depan tidak dipaksa. Satu baris `is_settlement=true` mewakili
+     * penutupan (schedule_id & installment_seq null). Atomic.
+     *
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string}  $input
+     */
+    public function settleEarly(
+        Loan $loan,
+        array $input,
+        ?int $causerId = null,
+        ?UploadedFile $bukti = null,
+    ): Installment {
+        $causerId ??= auth()->id();
+
+        return DB::transaction(function () use ($loan, $input, $causerId, $bukti): Installment {
+            /** @var Loan $loan */
+            $loan = Loan::query()->lockForUpdate()->findOrFail($loan->getKey());
+
+            if ($loan->status !== LoanStatus::Cair || $loan->loan_type !== 'jangka_panjang') {
+                throw CannotProcessPayment::notSettleable();
+            }
+
+            /** @var Collection<int, InstallmentSchedule> $unpaid */
+            $unpaid = InstallmentSchedule::query()
+                ->where('loan_id', $loan->id)
+                ->where('status', InstallmentScheduleStatus::BelumBayar)
+                ->lockForUpdate()
+                ->get();
+
+            if ($unpaid->isEmpty()) {
+                throw CannotProcessPayment::notSettleable();
+            }
+
+            $settledPrincipal = $loan->settledPrincipal();
+            $interestCharged = $this->money($loan->monthly_interest);
+            $payoff = bcadd($settledPrincipal, $interestCharged, self::SCALE);
+
+            $amountPaid = $this->money($input['amount_paid']);
+
+            if (bccomp($amountPaid, $payoff, self::SCALE) < 0) {
+                throw CannotProcessPayment::belowSettlement($payoff);
+            }
+
+            $installment = Installment::create([
+                'idempotency_key' => $input['idempotency_key'] ?? (string) Str::uuid(),
+                'loan_id' => $loan->id,
+                'schedule_id' => null,
+                'installment_seq' => null,
+                'payment_date' => $input['payment_date'] ?? now()->toDateString(),
+                'due_date' => $input['payment_date'] ?? now()->toDateString(),
+                'amount_paid' => $amountPaid,
+                'payment_method' => $input['payment_method'] ?? 'manual',
+                'is_reversal' => false,
+                'is_settlement' => true,
+                'recorded_by' => $causerId,
+            ]);
+
+            if ($bukti instanceof UploadedFile) {
+                $installment->addMedia($bukti)->toMediaCollection('bukti');
+            }
+
+            $excess = bcsub($amountPaid, $payoff, self::SCALE);
+
+            if (bccomp($excess, '0', self::SCALE) > 0) {
+                $this->creditOverpaymentToSukarela($installment, $loan, $excess, $causerId);
+            }
+
+            InstallmentSchedule::query()
+                ->whereIn('id', $unpaid->modelKeys())
+                ->update(['status' => InstallmentScheduleStatus::Terbayar]);
+
+            $loan->update(['status' => LoanStatus::Lunas]);
+            $this->createRefunds($loan, $causerId);
+
+            $waivedMonths = max(0, $unpaid->count() - 1);
+            $interestWaived = bcmul($interestCharged, (string) $waivedMonths, self::SCALE);
+
+            activity()
+                ->performedOn($installment)
+                ->causedBy($causerId)
+                ->event('pelunasan_dipercepat')
+                ->withProperties([
+                    'loan_id' => $loan->id,
+                    'amount_paid' => $amountPaid,
+                    'settled_principal' => $settledPrincipal,
+                    'interest_charged' => $interestCharged,
+                    'interest_waived' => $interestWaived,
+                    'excess_to_sukarela' => bccomp($excess, '0', self::SCALE) > 0 ? $excess : '0.00',
+                    'schedules_closed' => $unpaid->count(),
+                ])
+                ->log("Pelunasan dipercepat pinjaman {$loan->loan_number}");
+
+            return $installment;
+        });
+    }
+
+    /**
      * Reversal pembayaran angsuran. Membalik jadwal ke Belum Bayar; bila pinjaman
      * sudah Lunas, kembalikan ke Cair dan batalkan refund SWP/Tab terkait (D8/M2).
      */
@@ -118,7 +261,21 @@ class LoanPaymentService
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($installment->loan_id);
 
-            if ($installment->schedule_id) {
+            if ($installment->is_settlement) {
+                $normallyPaidScheduleIds = Installment::query()
+                    ->where('loan_id', $loan->id)
+                    ->where('is_settlement', false)
+                    ->whereNotNull('schedule_id')
+                    ->groupBy('schedule_id')
+                    ->havingRaw('SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END) > 0')
+                    ->pluck('schedule_id');
+
+                InstallmentSchedule::query()
+                    ->where('loan_id', $loan->id)
+                    ->where('status', InstallmentScheduleStatus::Terbayar)
+                    ->whereNotIn('id', $normallyPaidScheduleIds)
+                    ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
+            } elseif ($installment->schedule_id) {
                 InstallmentSchedule::query()
                     ->whereKey($installment->schedule_id)
                     ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
@@ -126,6 +283,10 @@ class LoanPaymentService
 
             // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
             $this->reverseOverpaymentCredit($installment, $reason, $causerId);
+
+            // Balik debit berpasangan (bila sumber dana = saldo simpanan) — saldo
+            // sukarela anggota pulih. ADR 2026-07-22 item 1d.
+            $this->reverseSavingsDebit($installment, $reason, $causerId);
 
             if ($loan->status === LoanStatus::Lunas) {
                 $loan->update(['status' => LoanStatus::Cair]);
@@ -170,6 +331,61 @@ class LoanPaymentService
     }
 
     /**
+     * Resolusi User pelaku untuk otorisasi debit simpanan. Debit sukarela =
+     * uang withdrawable anggota → wajib ada pelaku terautentikasi.
+     */
+    private function actingUser(?int $causerId): User
+    {
+        $user = $causerId !== null ? User::find($causerId) : auth()->user();
+
+        if (! $user instanceof User) {
+            throw new AuthorizationException('Aksi debit simpanan memerlukan pengguna terautentikasi.');
+        }
+
+        return $user;
+    }
+
+    /**
+     * Buat SavingsWithdrawal berpasangan (status Cair) sebagai debit sumber-dana
+     * angsuran (ADR 2026-07-22). Atribusi Pengurus (`approved_by`/`approved_at`)
+     * mengganti mata-kedua; `installment_id` menautkan pasangan tanpa mencemari
+     * query refund pelunasan (`related_loan_id`). Saldo turun langsung — `withdrawalNet`
+     * hanya menghitung baris Cair.
+     */
+    private function debitSavingsForInstallment(Installment $installment, Loan $loan, string $amount, ?int $causerId): void
+    {
+        $withdrawal = SavingsWithdrawal::create([
+            'idempotency_key' => (string) Str::uuid(),
+            'member_id' => $loan->member_id,
+            'savings_type' => self::DEBIT_SAVINGS_TYPE,
+            'amount' => $amount,
+            'withdrawal_date' => now()->toDateString(),
+            'status' => WithdrawalStatus::Cair,
+            'approved_by' => $causerId,
+            'approved_at' => now(),
+            'disbursed_at' => now(),
+            'installment_id' => $installment->id,
+            'disbursement_method' => 'internal',
+            'recorded_by' => $causerId,
+            'notes' => "Debit angsuran {$installment->installment_number}",
+        ]);
+
+        activity()
+            ->performedOn($withdrawal)
+            ->causedBy($causerId)
+            ->event('debit_simpanan_angsuran')
+            ->withProperties([
+                'member_id' => $loan->member_id,
+                'savings_type' => self::DEBIT_SAVINGS_TYPE,
+                'amount' => $amount,
+                'installment_number' => $installment->installment_number,
+                'loan_id' => $loan->id,
+                'approved_by' => $causerId,
+            ])
+            ->log("Debit Simpanan Sukarela untuk angsuran {$installment->installment_number}");
+    }
+
+    /**
      * Tarik kembali kredit Sukarela saat angsuran di-reverse: balikkan deposit
      * sukarela yang tertaut (non-reversal, belum dibalik) via mekanisme reversal
      * generik agar saldo ter-net ke semula.
@@ -187,6 +403,30 @@ class LoanPaymentService
             ->whereNotIn('id', $reversedIds)
             ->get()
             ->each(fn (SavingsDeposit $deposit) => ($this->reverse)($deposit, $reason, $causerId));
+    }
+
+    /**
+     * Balik debit simpanan berpasangan saat angsuran di-reverse (ADR 2026-07-22 item 1d).
+     * Cari SavingsWithdrawal non-reversal `Cair` ber-`installment_id` yang BELUM dibalik
+     * (pola `whereNotIn(reversed_ids)`), lalu reverse dengan `allowInactiveMember: true` —
+     * membalik debit MENGEMBALIKAN saldo ke anggota, harus selalu boleh walau anggota
+     * sudah Keluar/Meninggal (kalau tidak, angsuran-dari-simpanan jadi permanen tak
+     * bisa dibatalkan begitu anggota keluar — melanggar Goal).
+     */
+    private function reverseSavingsDebit(Installment $installment, string $reason, ?int $causerId): void
+    {
+        $reversedIds = SavingsWithdrawal::query()
+            ->whereNotNull('reversal_of_id')
+            ->pluck('reversal_of_id');
+
+        SavingsWithdrawal::query()
+            ->where('installment_id', $installment->id)
+            ->where('savings_type', self::DEBIT_SAVINGS_TYPE)
+            ->where('is_reversal', false)
+            ->where('status', WithdrawalStatus::Cair)
+            ->whereNotIn('id', $reversedIds)
+            ->get()
+            ->each(fn (SavingsWithdrawal $debit) => ($this->reverse)($debit, $reason, $causerId, allowInactiveMember: true, allowPairedInstallmentDebit: true));
     }
 
     private function createRefunds(Loan $loan, ?int $causerId): void

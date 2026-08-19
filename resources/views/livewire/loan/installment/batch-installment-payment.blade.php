@@ -206,6 +206,18 @@
                                             </div>
                                             @error('rows.'.$i.'.lines.'.$j.'.amount')<p class="mt-1 text-xs text-danger">{{ $message }}</p>@enderror
 
+                                            {{-- Pelunasan dipercepat per pinjaman (ADR 2026-07-22 5b) --}}
+                                            @if ($canSettle && ($line['settleable'] ?? false))
+                                                <label class="mt-2 flex cursor-pointer items-center gap-2 rounded-lg bg-warning/5 px-2.5 py-1.5 ring-1 ring-inset ring-warning/20">
+                                                    <input type="checkbox" wire:model.live="rows.{{ $i }}.lines.{{ $j }}.settle_early"
+                                                           class="h-4 w-4 shrink-0 rounded border-border accent-warning focus-visible:ring-2 focus-visible:ring-warning focus-visible:outline-none">
+                                                    <span class="text-xs leading-tight">
+                                                        <span class="font-semibold text-warning">Lunasi sekarang</span>
+                                                        <span class="text-muted"> · pelunasan Rp {{ number_format((float) ($line['payoff'] ?? 0), 0, ',', '.') }}, jasa sisa dibebaskan</span>
+                                                    </span>
+                                                </label>
+                                            @endif
+
                                             {{-- Bukti opsional per pinjaman --}}
                                             <div class="mt-3">
                                                 <label for="bukti-{{ $line['schedule_id'] }}"
@@ -267,6 +279,16 @@
                             <p class="text-[11px] text-muted">Angsuran</p>
                         </div>
                     </div>
+
+                    @if ($settlementCount > 0)
+                        <label class="flex cursor-pointer items-start gap-2 rounded-xl bg-warning/5 px-3 py-2.5 ring-1 ring-inset ring-warning/25">
+                            <input type="checkbox" wire:model.live="confirm_settlement"
+                                   class="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-warning focus-visible:ring-2 focus-visible:ring-warning focus-visible:outline-none">
+                            <span class="text-xs leading-relaxed text-warning">
+                                <span class="font-semibold">{{ $settlementCount }} pinjaman akan DILUNASI</span> — jasa bulan sisa dibebaskan, SWP &amp; Tab. Berjangka dikembalikan. Saya paham &amp; konfirmasi.
+                            </span>
+                        </label>
+                    @endif
 
                     <button type="button" wire:click="process" wire:loading.attr="disabled" wire:target="process"
                             @disabled(blank($agency_id) || empty($rows))

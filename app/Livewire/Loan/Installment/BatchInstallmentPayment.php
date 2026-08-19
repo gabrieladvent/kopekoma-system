@@ -46,6 +46,11 @@ class BatchInstallmentPayment extends Component
 
     public array $bukti = [];
 
+    /** Konfirmasi eksplisit saat ada baris pelunasan (ADR 2026-07-22 5b). */
+    public bool $confirm_settlement = false;
+
+    public const SETTLE_PERMISSION = 'settle_early_installment';
+
     public function mount(): void
     {
         abort_unless(auth()->user()?->can(self::PERMISSION) ?? false, 403);
@@ -63,6 +68,34 @@ class BatchInstallmentPayment extends Component
     public function updatedBukti(): void
     {
         $this->dispatch('rows-updated');
+    }
+
+    /**
+     * Toggle pelunasan per baris: nominal berpindah antara tagihan ↔ jumlah
+     * pelunasan (payoff). Reset konfirmasi agar disengaja ulang tiap perubahan.
+     */
+    public function updated(string $name, mixed $value): void
+    {
+        if (preg_match('/^rows\.(\d+)\.lines\.(\d+)\.settle_early$/', $name, $m)) {
+            $i = (int) $m[1];
+            $j = (int) $m[2];
+            $line = $this->rows[$i]['lines'][$j] ?? null;
+
+            if ($line !== null) {
+                $this->rows[$i]['lines'][$j]['amount'] = $value
+                    ? (string) (int) round((float) ($line['payoff'] ?? $line['total_due']))
+                    : (string) (int) round((float) $line['total_due']);
+            }
+
+            $this->confirm_settlement = false;
+            $this->dispatch('rows-updated');
+        }
+    }
+
+    /** Apakah user boleh melakukan pelunasan dipercepat? Menentukan visibilitas toggle. */
+    public function canSettle(): bool
+    {
+        return auth()->user()?->can(self::SETTLE_PERMISSION) ?? false;
     }
 
     public function rebuildRows(): void
@@ -154,6 +187,13 @@ class BatchInstallmentPayment extends Component
 
         $bill = (string) (int) round((float) $schedule->total_due);
 
+        // Pelunasan dipercepat hanya untuk jangka panjang (Sebrakan lunas sekali
+        // bayar). payoff = sisa pokok + 1× jasa (ADR 2026-07-22).
+        $settleable = $loan->loan_type === 'jangka_panjang';
+        $payoff = $settleable
+            ? (string) (int) round((float) bcadd($loan->settledPrincipal(), (string) $loan->monthly_interest, 2))
+            : $bill;
+
         return [
             'loan_id' => $loan->id,
             'schedule_id' => $schedule->id,
@@ -163,6 +203,9 @@ class BatchInstallmentPayment extends Component
             'due_date' => $schedule->due_date?->translatedFormat('d M Y'),
             'principal_amount' => (string) (int) round((float) $loan->principal_amount),
             'remaining_principal' => (string) (int) round((float) $loan->remainingPrincipal()),
+            'settleable' => $settleable,
+            'payoff' => $payoff,
+            'settle_early' => false,
             'include' => true,
             'amount' => $bill,
         ];
@@ -204,6 +247,8 @@ class BatchInstallmentPayment extends Component
                 ->filter(fn (array $line): bool => (bool) ($line['include'] ?? false))
                 ->map(fn (array $line): array => [
                     'schedule_id' => (string) $line['schedule_id'],
+                    'loan_id' => (string) $line['loan_id'],
+                    'settle_early' => (bool) ($line['settle_early'] ?? false),
                     'amount_paid' => (string) (int) round((float) ($line['amount'] ?? 0)),
                     'payment_date' => $this->payment_date,
                     'bukti' => $this->bukti[$line['schedule_id']] ?? null,
@@ -217,6 +262,20 @@ class BatchInstallmentPayment extends Component
             $this->dispatch('toast', type: 'warning', message: 'Aktifkan minimal satu anggota dan satu pinjaman untuk dibayar.');
 
             return null;
+        }
+
+        // Baris pelunasan: gate permission (ADR 2026-07-22 §Keamanan) + konfirmasi
+        // eksplisit sebelum meluluskan banyak pinjaman sekaligus.
+        $settlementCount = collect($rows)->filter(fn (array $r): bool => $r['settle_early'])->count();
+
+        if ($settlementCount > 0) {
+            abort_unless($this->canSettle(), 403);
+
+            if (! $this->confirm_settlement) {
+                $this->dispatch('toast', type: 'warning', message: "Centang konfirmasi dulu — {$settlementCount} pinjaman akan DILUNASI (jasa sisa dibebaskan).");
+
+                return null;
+            }
         }
 
         try {
@@ -239,10 +298,18 @@ class BatchInstallmentPayment extends Component
     {
         $includedMembers = collect($this->rows)->where('include', true)->count();
 
+        $settlementCount = collect($this->rows)
+            ->where('include', true)
+            ->flatMap(fn (array $r): array => $r['lines'] ?? [])
+            ->filter(fn (array $line): bool => (bool) ($line['include'] ?? false) && (bool) ($line['settle_early'] ?? false))
+            ->count();
+
         return view('livewire.loan.installment.batch-installment-payment', [
             'agencies' => $this->agencies(),
             'includedMembers' => $includedMembers,
             'memberCount' => count($this->rows),
+            'canSettle' => $this->canSettle(),
+            'settlementCount' => $settlementCount,
         ])->layout('components.layouts.app', ['title' => 'Batch Potong Gaji Angsuran']);
     }
 }

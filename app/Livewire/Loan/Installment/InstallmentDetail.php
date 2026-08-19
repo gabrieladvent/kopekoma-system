@@ -115,6 +115,10 @@ class InstallmentDetail extends Component
      */
     protected function remainingAfter(Installment $installment): string
     {
+        if ($installment->is_settlement) {
+            return '0.00';
+        }
+
         $loan = $installment->loan;
 
         $paid = bcmul((string) ($loan?->monthly_principal ?? '0'), (string) (int) $installment->installment_seq, 2);

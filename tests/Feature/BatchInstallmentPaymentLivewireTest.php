@@ -25,6 +25,64 @@ function lwMemberWithLoan(string $agencyId, int $schedules = 1): array
     return [$member, $loan, $rows];
 }
 
+it('settles a loan early from the batch when confirmed by an authorized pengurus', function () {
+    asPengurus();
+    $agency = Agency::factory()->create();
+    [, $loan, $sch] = lwMemberWithLoan($agency->id, schedules: 12);
+
+    Livewire::test(BatchInstallmentPayment::class)
+        ->set('agency_id', $agency->id)
+        ->set('rows', [
+            ['member_id' => $loan->member_id, 'member_label' => 'a', 'include' => true, 'lines' => [
+                ['loan_id' => $loan->id, 'schedule_id' => $sch[0]->id, 'total_due' => '1090000',
+                    'settle_early' => true, 'include' => true, 'amount' => '12078000'],
+            ]],
+        ])
+        ->set('confirm_settlement', true)
+        ->call('process');
+
+    expect($loan->fresh()->status->value)->toBe('Lunas');
+});
+
+it('requires explicit confirmation before processing settlement rows', function () {
+    asPengurus();
+    $agency = Agency::factory()->create();
+    [, $loan, $sch] = lwMemberWithLoan($agency->id, schedules: 12);
+
+    Livewire::test(BatchInstallmentPayment::class)
+        ->set('agency_id', $agency->id)
+        ->set('rows', [
+            ['member_id' => $loan->member_id, 'member_label' => 'a', 'include' => true, 'lines' => [
+                ['loan_id' => $loan->id, 'schedule_id' => $sch[0]->id, 'total_due' => '1090000',
+                    'settle_early' => true, 'include' => true, 'amount' => '12078000'],
+            ]],
+        ])
+        ->set('confirm_settlement', false)
+        ->call('process');
+
+    expect($loan->fresh()->status->value)->toBe('Cair'); // belum dikonfirmasi → tak diproses
+});
+
+it('forbids batch settlement for petugas even if the flag is injected', function () {
+    asPetugas();
+    $agency = Agency::factory()->create();
+    [, $loan, $sch] = lwMemberWithLoan($agency->id, schedules: 12);
+
+    Livewire::test(BatchInstallmentPayment::class)
+        ->set('agency_id', $agency->id)
+        ->set('rows', [
+            ['member_id' => $loan->member_id, 'member_label' => 'a', 'include' => true, 'lines' => [
+                ['loan_id' => $loan->id, 'schedule_id' => $sch[0]->id, 'total_due' => '1090000',
+                    'settle_early' => true, 'include' => true, 'amount' => '12078000'],
+            ]],
+        ])
+        ->set('confirm_settlement', true)
+        ->call('process')
+        ->assertStatus(403);
+
+    expect($loan->fresh()->status->value)->toBe('Cair');
+});
+
 it('denies the Livewire batch page to a user without the permission', function () {
     asPetugas();
     $stranger = User::factory()->create();

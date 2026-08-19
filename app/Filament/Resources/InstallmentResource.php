@@ -47,6 +47,7 @@ class InstallmentResource extends Resource
     public const PAYMENT_METHODS = [
         'potong_gaji' => 'Potong Gaji',
         'manual' => 'Manual',
+        'saldo_simpanan' => 'Saldo Simpanan',
     ];
 
     /** @return array<string, string> Pinjaman aktif anggota, dibedakan tgl + nominal. */

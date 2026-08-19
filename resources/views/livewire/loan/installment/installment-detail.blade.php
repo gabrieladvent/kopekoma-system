@@ -17,6 +17,8 @@
                     <x-ui.badge color="primary" class="font-mono">{{ $installment->installment_number }}</x-ui.badge>
                     @if ($installment->is_reversal)
                         <x-ui.badge color="danger">Reversal</x-ui.badge>
+                    @elseif ($installment->is_settlement)
+                        <x-ui.badge color="warning">Pelunasan Dipercepat</x-ui.badge>
                     @else
                         <x-ui.badge color="success">Angsuran ke-{{ $installment->installment_seq }}</x-ui.badge>
                     @endif

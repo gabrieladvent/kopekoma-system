@@ -202,7 +202,8 @@
                                 <span class="block text-xs text-muted">
                                     {{ $withdrawal->created_at?->translatedFormat('H.i') }} WIB
                                     @if ($withdrawal->disbursement_method)
-                                        · {{ $disbursementMethods[$withdrawal->disbursement_method] }}
+                                        ·
+                                        {{ $disbursementMethods[$withdrawal->disbursement_method] ?? $withdrawal->disbursement_method }}
                                     @endif
                                 </span>
                             </td>
