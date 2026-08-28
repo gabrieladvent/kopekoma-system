@@ -28,12 +28,14 @@ class Installment extends Model implements HasMedia, Reversible
     protected $fillable = [
         'installment_number',
         'idempotency_key',
+        'session_key',
         'loan_id',
         'schedule_id',
         'installment_seq',
         'payment_date',
         'due_date',
         'amount_paid',
+        'credit_applied',
         'payment_method',
         'notes',
         'is_reversal',
@@ -47,6 +49,7 @@ class Installment extends Model implements HasMedia, Reversible
         'payment_date' => 'date',
         'due_date' => 'date',
         'amount_paid' => 'decimal:2',
+        'credit_applied' => 'decimal:2',
         'is_reversal' => 'boolean',
         'is_settlement' => 'boolean',
     ];

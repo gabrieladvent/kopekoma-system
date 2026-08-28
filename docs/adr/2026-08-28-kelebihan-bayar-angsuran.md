@@ -213,6 +213,8 @@ kunci_baris = kunci_sesi + "-" + urutan   (1, 2, 3, …)
 - Acak per baris → klik simpan dua kali menghasilkan 4 baris, perlindungan idempotensi **hilang**.
 - Diturunkan → klik kedua menghasilkan kunci yang sama persis, ditolak indeks unik. Persis fungsi yang diinginkan.
 
+> **Konsekuensi schema yang terlewat sampai implementasi 0a:** `idempotency_key` dideklarasikan `$table->uuid()` — yaitu `char(36)`, pas persis satu UUID. Kunci turunan `"<uuid>-1"` panjangnya 38 karakter, jadi **tidak muat**: MySQL mode ketat menolaknya. Kolomnya karena itu dilebarkan jadi `varchar(64)` di migrasi yang sama, indeks UNIQUE-nya tetap. Alternatif yang dipertimbangkan — UUIDv5 deterministik dari `(kunci_sesi, urutan)` — ditolak karena kuncinya jadi tak terbaca mata dan keterkaitan sesinya hilang dari kunci itu sendiri, padahal sifat deterministiknya sama saja.
+
 Kunci sesi juga disimpan sebagai **penanda sesi** pada tiap baris, dipakai untuk menampilkan keterkaitan antar transaksi (lihat Pembatalan). Tidak dipakai untuk memaksa pengelompokan.
 
 ### Pembatalan angsuran
@@ -357,7 +359,7 @@ Rumus bergantung pada `total_due` seragam di semua baris jadwal. **Terverifikasi
 | Phase | Behavior | Status |
 |---|---|---|
 | 0 | Baseline — semua kelebihan bayar → Simpanan Sukarela | — |
-| 1 | Migrasi `credit_applied` + kunci sesi; perilaku belum berubah | Pending |
+| 1 | Migrasi `credit_applied` + kunci sesi; perilaku belum berubah | **In Progress** — item 0a Done, menunggu OQ-1/OQ-2 |
 | 2 | Titipan Pokok + tutup-sekalian + penjaga Pelunasan Dipercepat aktif | Pending |
 | 3 | Observasi 1 siklus penggajian penuh + rekonsiliasi | Pending |
 
@@ -370,7 +372,7 @@ Rumus bergantung pada `total_due` seragam di semua baris jadwal. **Terverifikasi
   <!-- source: manual -->
 - [ ] **OQ-2 dijawab Mbak Iin** — cakupan "hide sukarela": jalurnya saja, bukan produk simpanannya
   <!-- source: manual -->
-- [ ] Migrasi `credit_applied` nullable, aman untuk baris lama
+- [x] Migrasi `credit_applied` nullable, aman untuk baris lama
   <!-- source: code | query: grep credit_applied database/migrations | threshold: nullable -->
 
 **Phase 1 → 2:**
@@ -401,7 +403,7 @@ Rumus bergantung pada `total_due` seragam di semua baris jadwal. **Terverifikasi
 
 | # | Item | Effort | Parallel? | Status |
 |---|---|---|---|---|
-| 0a | Migrasi: `credit_applied` (decimal 18,2, nullable) + `session_key` (nullable, index) di `installments` | S | ✅ | Pending |
+| 0a | Migrasi: `credit_applied` (decimal 18,2, nullable) + `session_key` (nullable, index) di `installments`; **`idempotency_key` dilebarkan `char(36)` → `varchar(64)`** agar kunci turunan muat (lihat Idempotensi) | S | ✅ | **Done** |
 | 1a | `Loan::overpaymentCredit()` — saldo turunan + guard status **Lunas atau Dibatalkan** → `0.00` | S | ✅ | Pending |
 | 1b | `Loan::effectiveBill(InstallmentSchedule)` — **satu-satunya sumber** tagihan efektif | S | setelah 1a | Pending |
 | 1c | `Loan::payoffAmount()` — **satu-satunya sumber** jumlah pelunasan, dikurangi titipan; cabut rumus duplikat di `settleEarly()` dan `BatchInstallmentPaymentService:192` | M | setelah 1a | Pending |
@@ -449,7 +451,7 @@ Rumus bergantung pada `total_due` seragam di semua baris jadwal. **Terverifikasi
 
 | File | Fungsi |
 |---|---|
-| `database/migrations/*_add_credit_applied_to_installments.php` | **Baru** — jejak audit + penanda sesi |
+| `database/migrations/2026_08_28_000001_add_credit_applied_to_installments.php` | **Baru** — jejak audit + penanda sesi + pelebaran `idempotency_key` |
 | `app/Models/Loan.php` | `overpaymentCredit()`, `effectiveBill()`, `payoffAmount()` — sejajar `settledPrincipal()` |
 | `app/Models/Installment.php` | `breakdown()` (`:97`), `reverseClone()` (`:194`) — allowlist eksplisit |
 | `app/Services/LoanPaymentService.php` | Satu-satunya pembuat baris angsuran (`:106`, `:197`); rumah `allocate()`, `pay()`, `settleEarly()`, `reverse()` |
@@ -603,7 +605,7 @@ Divergensinya **bukan bawaan ADR ini** — membatalkan angsuran mana pun sudah m
 | Critique | critic | *(retroactive — not invoked)* — 4 ronde self-critique. R1: 5 lubang, 2 bubar. R2: 3 BERAT (jalur batch, premis potong-gaji, kontrol anti-korupsi) + kuitansi tak rekonsiliasi. R3: 2 pintu Filament terlewat, ongkos/manfaat terbalik. R4: klaim batch v3 salah, kunci unik idempotensi jebol, laporan batch menyesatkan, pembalikan sebagian lolos guard. R5 (fokus security & finance): **jalur korupsi loket (R14)** — temuan terberat lima ronde, kuitansi tak menutup saat menyisihkan titipan (R16), ambang pelunasan belum berangka, hak akses mode belum dinyatakan, pembandingan pratinjau berbasis bentuk. Sekaligus **empat hal diverifikasi aman**: penjaga pelunasan kedap (bukti aljabar), bayar-dari-simpanan tak bisa membuat titipan, pembatalan sebagian tak merusak sisa pokok, pembulatan `ceil` tak bocor ke titipan. R6 (area yang belum pernah disentuh): `addMedia()` memindahkan berkas sehingga bukti multi-baris **gagal di baris kedua** (R17); tabrakan dengan ADR Penutupan Akun Anggota (dicatat sebagai ketergantungan, ADR itu sendiri tidak dikerjakan atas keputusan pemilik produk); angka tunggakan dashboard melebih-lebihkan (R13 kini menyebut lokasinya); pinjaman **Dibatalkan** diverifikasi aman lewat guard `canCorrect()`, ketergantungannya dicatat (R18). R7 (laporan, ekspor, layar angsuran): kolom baru tak terdaftar di peta label audit sehingga kontrol utama R14 tampil setengah jadi (R19); `remainingAfter()` berbasis nomor urut vs `settledPrincipal()` berbasis jumlah — divergensi lama yang diperbesar ADR ini (R20 → OQ-9). Diverifikasi aman: `InstallmentReportService` menjumlah `amount_paid` bertanda (uang tunai riil, tetap benar), dan `ExportSalaryDeductionRecap` ternyata rekap **simpanan**, bukan angsuran — tak bersinggungan. | 2026-08-28 |
 | Security review | security-reviewer | pending — **wajib, dan agenda utamanya sudah spesifik: OQ-0 / R14.** Pemilik produk telah **menerima** risiko loket secara sadar dan menolak gerbang Pengurus; review diminta menilai apakah pendeteksian pasca-kejadian (kuitansi + panel riwayat + log) memadai sebagai satu-satunya pengaman atas kontrol yang kodenya sendiri melabeli "Anti-korupsi". Sekunder: guard baru pada jalur `reverse` ber-privilege Pengurus | — |
 | Deploy review | deploy-reviewer | pending — ada migrasi kolom; urutan Phase 1 → 2 dan rollback yang tidak bersih (R10) perlu ditinjau | — |
-| Implementation | implementer / human | pending | — |
+| Implementation | implementer / human | in progress — item **0a** (schema) selesai; pelebaran `idempotency_key` ditemukan saat implementasi | 2026-08-28 |
 | Review | reviewer | pending | — |
 
 **Ronde**: 7
@@ -614,6 +616,7 @@ Divergensinya **bukan bawaan ADR ini** — membatalkan angsuran mana pun sudah m
 
 ## Changelog
 
+- **2026-08-28 v8**: Item **0a selesai** — migrasi `credit_applied` (decimal 18,2, nullable) + `session_key` (uuid, nullable, index) di `installments`, plus `$fillable`/`$casts` di `Installment`. **Temuan implementasi:** kunci idempotensi turunan `kunci_sesi + "-" + urutan` (38 karakter) **tidak muat** di `idempotency_key` yang dideklarasikan `uuid` = `char(36)`; kolomnya dilebarkan jadi `varchar(64)` dalam migrasi yang sama, indeks UNIQUE dipertahankan. Tanpa ini item 1e tidak bisa dijalankan seperti tertulis. Dikunci test `InstallmentCreditColumnsTest` (kolom ada, NULL aman untuk baris lama, kunci turunan muat, duplikat tetap ditolak UNIQUE). Perilaku belum berubah sama sekali — suite penuh hijau (611 passed).
 - **2026-08-28 v7**: Ronde kritik ke-7 (laporan, ekspor, layar daftar/detail angsuran). **R19** — `credit_applied` & `session_key` tak akan terbaca di jejak audit karena peta label di `InstallmentDetail:78` bersifat eksplisit per-layar; ini penting karena jejak audit adalah kontrol utama atas risiko R14 yang diterima (item 2g). **R20 → OQ-9** — `remainingAfter()` berbasis nomor urut jadwal sementara `settledPrincipal()` berbasis jumlah angsuran; keduanya hanya sama tanpa lubang, dan ADR ini memperbesar peluang lubang lewat pembatalan per-transaksi. Divergensinya lama, bukan bawaan ADR ini. **Keputusan pemilik produk: diperbaiki** (item 2h + test 3q) — perbaikan bug lama yang menumpang secara sadar, ditandai agar reviewer tahu kenapa ada layar berubah angkanya. Diverifikasi aman: `InstallmentReportService` (menjumlah uang tunai riil, benar apa adanya) dan `ExportSalaryDeductionRecap` (rekap simpanan, tak bersinggungan).
 - **2026-08-28 v6**: Ronde kritik ke-6 (area yang belum pernah disentuh: media, ADR tetangga, widget, status pinjaman). **`addMedia($uploadedFile)` memindahkan berkas sumbernya**, sehingga keputusan "bukti melekat di setiap baris" tidak bisa dijalankan dengan pola kode yang ada — dua jalan sah ditulis eksplisit (R17). Ketergantungan ke [ADR Penutupan Akun Anggota](2026-07-13-penutupan-akun-anggota.md) dicatat di Non-Goals — ADR itu **tidak dikerjakan** atas keputusan pemilik produk, tapi saat dikerjakan nanti wajib memakai `payoffAmount()` dan membaca ulang saldo Sukarela setelah settle. R13 kini menyebut dua lokasi konkret (`SavingsStatsOverview:81`, `OverdueInstallmentsTable:52`) plus item 2f. Guard `overpaymentCredit()` diperluas ke status **Dibatalkan**; aman hari ini karena `canCorrect()` melarang pembatalan pinjaman berangsuran, tapi ketergantungan itu dicatat (R18) dan dijaga test 3p.
 - **2026-08-28 v5**: Ronde kritik ke-5 (fokus security & finance). **Risiko korupsi loket (R14) dinaikkan jadi OQ-0 dan DITERIMA secara sadar** — gerbang Pengurus atas pemakaian titipan dipertimbangkan lalu ditolak karena menyulitkan operasional harian; pengaman yang tersisa seluruhnya bersifat pendeteksian pasca-kejadian, dan itu dicatat apa adanya untuk `security-reviewer`. Diperbaiki: kuitansi kini menutup di **kedua** arah — baris "Titipan Pokok disisihkan" (+) ditambahkan, sebelumnya nota multi-angsuran tidak berjumlah (R16); ambang penjaga Pelunasan Dipercepat didefinisikan sebagai `uang ≥ payoffAmount()` beserta bukti aljabar bahwa penjaganya kedap; hak akses pemilihan mode dinyatakan Petugas-level; pembandingan pratinjau basi diubah dari berbasis bentuk jadi berbasis **saldo titipan** (R15); `credit_applied` NULL diperlakukan 0; klaim `Δ = 0` di batch dipersempit — nominal batch bisa dinaikkan petugas. Diverifikasi aman: penjaga pelunasan, bayar-dari-simpanan, pembatalan sebagian, pembulatan `ceil`.
