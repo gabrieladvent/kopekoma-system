@@ -11,6 +11,7 @@ use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -55,7 +56,9 @@ it('records a payment through the service, settles the loan and refunds (final i
     expect(Installment::where('loan_id', $this->loan->id)->where('is_reversal', false)->count())->toBe(1)
         ->and($this->schedule->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and($this->loan->fresh()->status)->toBe(LoanStatus::Lunas)
-        ->and(SavingsWithdrawal::where('related_loan_id', $this->loan->id)->where('savings_type', 'swp')->where('amount', '120000.00')->exists())->toBeTrue();
+        // SWP tetap jadi simpanan anggota — pelunasan tak menerbitkan pencairan.
+        ->and(app(SavingsBalanceService::class)->balanceByType($this->loan->member, 'swp'))->toBe('120000.00')
+        ->and(SavingsWithdrawal::where('member_id', $this->loan->member_id)->count())->toBe(0);
 });
 
 it('prefills the total bill as integer rupiah, not scaled by decimals', function () {

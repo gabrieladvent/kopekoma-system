@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Enums\WithdrawalStatus;
 use App\Exceptions\UnsupportedSavingsType;
-use App\Models\Installment;
-use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
@@ -16,20 +14,21 @@ class SavingsBalanceService
 {
     private const SCALE = 2;
 
-    private const DIRECT_TYPES = ['pokok', 'wajib', 'sukarela'];
+    /**
+     * Jenis yang saldonya = `Σ setoran − Σ penarikan cair`, tanpa perlakuan khusus.
+     *
+     * `swp` dan `tabungan_berjangka` ADA DI SINI sejak keduanya jadi simpanan
+     * sungguhan. Sebelumnya keduanya dihitung dari tabel pinjaman —
+     * `SUM(loans.swp_amount)` dan `monthly_time_deposit × jumlah angsuran
+     * terbayar` — dua rumus khusus yang kini dicabut. Yang membedakan keduanya
+     * dari jenis lain tinggal **pintu masuk setorannya** (hanya lewat pencairan
+     * pinjaman dan pembayaran angsuran, lihat {@see LoanSavingsService}), bukan
+     * cara saldonya dihitung.
+     */
+    private const DIRECT_TYPES = ['pokok', 'wajib', 'sukarela', 'swp', 'tabungan_berjangka'];
 
     public function balanceByType(Member $member, string $type): string
     {
-        // SWP & Tabungan Berjangka: dititipkan modul Pinjaman
-        // Sumber akumulasi = tabel pinjaman; pengurang = refund withdrawal.
-        if ($type === 'swp') {
-            return $this->loanSwpBalance($member);
-        }
-
-        if ($type === 'tabungan_berjangka') {
-            return $this->timeDepositBalance($member);
-        }
-
         if ($type === 'hari_raya') {
             throw new \InvalidArgumentException('Saldo hari_raya per-tahun: gunakan holidayBalance(member, year).');
         }
@@ -45,41 +44,6 @@ class SavingsBalanceService
         return bcsub(
             $this->depositNet($member, $type),
             $this->withdrawalNet($member, $type),
-            self::SCALE
-        );
-    }
-
-    public function loanSwpBalance(Member $member): string
-    {
-        $accrued = Loan::query()
-            ->where('member_id', $member->id)
-            ->selectRaw('COALESCE(SUM(swp_amount), 0) as total')
-            ->value('total');
-
-        return bcsub(
-            $this->toAmount($accrued),
-            $this->withdrawalNet($member, 'swp'),
-            self::SCALE
-        );
-    }
-
-    /**
-     * Saldo Tabungan Berjangka anggota (ADR D7 + amendment 2026-06-26 D5):
-     * terkumpul per angsuran = `loans.monthly_time_deposit` × jumlah angsuran
-     * terbayar (net reversal), dikurangi refund yang sudah cair. Count-based —
-     * `signedTimeDeposit()` sudah join `loans`, jadi filter via `loans.member_id`
-     * (jangan `whereHas` agar tak double-join).
-     */
-    public function timeDepositBalance(Member $member): string
-    {
-        $accrued = Installment::query()
-            ->signedTimeDeposit()
-            ->where('loans.member_id', $member->id)
-            ->value('net');
-
-        return bcsub(
-            $this->toAmount($accrued),
-            $this->withdrawalNet($member, 'tabungan_berjangka'),
             self::SCALE
         );
     }
@@ -120,13 +84,13 @@ class SavingsBalanceService
      * Semua saldo anggota (D1 koreksi v5): deposits grouped, withdrawals cair grouped,
      * hari_raya per `period_year` terpisah, plus pemakaian belanja. Digabung di PHP.
      *
-     * @return array{pokok:string,wajib:string,sukarela:string,wajib_belanja:string,hari_raya:array<int,string>}
+     * @return array{pokok:string,wajib:string,sukarela:string,swp:string,tabungan_berjangka:string,wajib_belanja:string,hari_raya:array<int,string>}
      */
     public function allBalances(Member $member): array
     {
         $depositNet = SavingsDeposit::query()
             ->where('member_id', $member->id)
-            ->whereIn('savings_type', ['pokok', 'wajib', 'sukarela', 'wajib_belanja'])
+            ->whereIn('savings_type', [...self::DIRECT_TYPES, 'wajib_belanja'])
             ->groupBy('savings_type')
             ->selectRaw('savings_type, COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount ELSE -amount END), 0) as net')
             ->pluck('net', 'savings_type');
@@ -134,7 +98,7 @@ class SavingsBalanceService
         $withdrawalNet = SavingsWithdrawal::query()
             ->where('member_id', $member->id)
             ->where('status', WithdrawalStatus::Cair)
-            ->whereIn('savings_type', ['pokok', 'wajib', 'sukarela'])
+            ->whereIn('savings_type', self::DIRECT_TYPES)
             ->groupBy('savings_type')
             ->selectRaw('savings_type, COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount ELSE -amount END), 0) as net')
             ->pluck('net', 'savings_type');
@@ -177,11 +141,21 @@ class SavingsBalanceService
      * Di layar daftar saldo, memanggil keduanya per baris berarti dua kali kerja
      * query untuk angka yang sama.
      *
-     * @param  array{pokok: string, wajib: string, sukarela: string, wajib_belanja: string, hari_raya: array<int, string>}  $all
+     * SWP dan Tabungan Berjangka IKUT DIJUMLAH sejak keduanya jadi simpanan
+     * sungguhan. Sebelumnya keduanya tak masuk total sama sekali — anggota
+     * melihat angka yang lebih kecil dari simpanan yang benar-benar ia punya,
+     * dan pemanggil yang butuh angka utuh harus menambahkannya sendiri.
+     *
+     * @param  array{pokok: string, wajib: string, sukarela: string, swp: string, tabungan_berjangka: string, wajib_belanja: string, hari_raya: array<int, string>}  $all
      */
     public function sumBalances(array $all): string
     {
-        $total = bcadd(bcadd($all['pokok'], $all['wajib'], self::SCALE), $all['sukarela'], self::SCALE);
+        $total = '0';
+
+        foreach (self::DIRECT_TYPES as $type) {
+            $total = bcadd($total, $all[$type], self::SCALE);
+        }
+
         $total = bcadd($total, $all['wajib_belanja'], self::SCALE);
 
         foreach ($all['hari_raya'] as $balance) {

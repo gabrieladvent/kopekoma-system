@@ -143,6 +143,31 @@ it('dedupes a double-submit with the same idempotency key (D4)', function () {
     expect(SavingsWithdrawal::where('idempotency_key', $key)->count())->toBe(1);
 });
 
+/**
+ * Dua pencairan bertaut satu pinjaman — bentuk yang dulu diterbitkan otomatis
+ * saat lunas, kini dibuat pengurus sebagai pencairan biasa. Mesin pasangannya
+ * tetap berlaku untuk bentuk ini.
+ *
+ * @return array{0: SavingsWithdrawal, 1: SavingsWithdrawal}
+ */
+function refundPairWithdrawals(Loan $loan): array
+{
+    $make = fn (string $type, int|string $amount): SavingsWithdrawal => SavingsWithdrawal::factory()
+        ->type($type)
+        ->status('draft')
+        ->create([
+            'member_id' => $loan->member_id,
+            'amount' => $amount,
+            'related_loan_id' => $loan->id,
+            'is_reversal' => false,
+        ]);
+
+    return [
+        $make('swp', (int) round((float) $loan->swp_amount)),
+        $make('tabungan_berjangka', (int) round((float) $loan->monthly_time_deposit)),
+    ];
+}
+
 it('processes the loan-refund pair together on a single transition (D2)', function () {
     asSuperAdmin();
     $member = Member::factory()->create();
@@ -165,8 +190,10 @@ it('processes the loan-refund pair together on a single transition (D2)', functi
     ]);
     app(LoanPaymentService::class)->pay($schedule, ['amount_paid' => 1007500], auth()->id());
 
-    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
+    // Pelunasan TIDAK lagi menerbitkan pengembalian; pasangannya dibuat pengurus
+    // sebagai pencairan biasa. Yang diuji di sini mesin pasangannya.
+    [$swp, $tab] = refundPairWithdrawals($loan);
+
     expect($swp->status)->toBe(WithdrawalStatus::Draft)->and($tab->status)->toBe(WithdrawalStatus::Draft);
 
     // Satu aksi ACC pada salah satu record → keduanya ikut acc.
@@ -203,8 +230,7 @@ it('shows a loan-refund pair as one representative row with the combined total',
     ]);
     app(LoanPaymentService::class)->pay($schedule, ['amount_paid' => 1007500], auth()->id());
 
-    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
+    [$swp, $tab] = refundPairWithdrawals($loan);
 
     // Hanya satu baris representatif (swp) muncul; pasangan tab disembunyikan.
     Livewire::test(ListSavingsWithdrawals::class)

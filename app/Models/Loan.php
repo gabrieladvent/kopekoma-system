@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LoanStatus;
 use App\Models\Concerns\GeneratesTransactionNumber;
+use App\Services\LoanSavingsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -74,6 +75,20 @@ class Loan extends Model implements HasMedia
             if ($changingLocked && $loan->installments()->exists()) {
                 throw new \RuntimeException(
                     'Konstanta angsuran (monthly_*) tidak boleh diubah setelah ada angsuran tercatat.'
+                );
+            }
+        });
+
+        static::created(function (self $loan): void {
+            app(LoanSavingsService::class)->recordSwp($loan);
+        });
+
+        static::updated(function (self $loan): void {
+            if ($loan->wasChanged('status') && $loan->status === LoanStatus::Dibatalkan) {
+                app(LoanSavingsService::class)->reverseSwp(
+                    $loan,
+                    "Pembatalan pinjaman {$loan->loan_number}",
+                    $loan->recorded_by,
                 );
             }
         });

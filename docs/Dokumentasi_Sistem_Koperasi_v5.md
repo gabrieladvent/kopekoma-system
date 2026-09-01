@@ -220,7 +220,7 @@ Modul ini mencatat pinjaman anggota yang **sudah disetujui** (persetujuan dilaku
 Pada pinjaman jangka panjang, dua potongan dikenakan **satu kali** saat pencairan:
 
 - **Biaya Administrasi 1%** — menjadi **pendapatan koperasi** (tidak dikembalikan).
-- **SWP 1%** — merupakan **simpanan milik anggota**, yang **dikembalikan saat pinjaman lunas**.
+- **SWP 1%** — merupakan **simpanan milik anggota**. Saat pinjaman lunas ia **tetap jadi simpanan**, tidak otomatis dicairkan; anggota menariknya kapan ia mau lewat pencairan biasa.
 
 Sehingga dana yang benar-benar diterima anggota:
 
@@ -248,7 +248,7 @@ Modul ini mencatat pembayaran cicilan pinjaman jangka panjang. Setiap angsuran b
 |---|---|---|
 | **Pokok** | Jumlah Pinjaman ÷ Jangka Waktu (dibulatkan ke atas) | Cicilan pokok pinjaman. |
 | **Jasa** | **Jumlah Pinjaman × 0,65%** | Imbal jasa untuk koperasi (dari nilai pinjaman, bukan pokok). |
-| **Tabungan Berjangka** | **Jumlah Pinjaman × 0,1%** | Simpanan milik anggota, dikembalikan saat lunas (dari nilai pinjaman, bukan pokok). |
+| **Tabungan Berjangka** | **Jumlah Pinjaman × 0,1%** | Simpanan milik anggota (dari nilai pinjaman, bukan pokok). Tetap jadi simpanan setelah pinjaman lunas — ditarik anggota kapan ia mau lewat pencairan biasa. |
 
 > **Angsuran per Bulan = Pokok + Jasa + Tabungan Berjangka** (ketiganya konstan tiap bulan)
 
@@ -258,7 +258,7 @@ Modul ini mencatat pembayaran cicilan pinjaman jangka panjang. Setiap angsuran b
 >
 > - **Saat pencairan**: Admin 1% = Rp 120.000; SWP 1% = Rp 120.000 → **Diterima Rp 11.760.000**.
 > - **Angsuran tiap bulan**: Pokok Rp 1.000.000 + Jasa (Rp 12.000.000 × 0,65% = Rp 78.000) + Tabungan Berjangka (Rp 12.000.000 × 0,1% = Rp 12.000) = **Rp 1.090.000**.
-> - **Saat lunas**: SWP Rp 120.000 + total Tabungan Berjangka (12 × Rp 12.000 = Rp 144.000) **dikembalikan kepada anggota**.
+> - **Saat lunas**: SWP Rp 120.000 + total Tabungan Berjangka (12 × Rp 12.000 = Rp 144.000) **tetap tercatat sebagai simpanan anggota**. Tidak ada pencairan otomatis — anggota mengajukan penarikan bila ingin mengambilnya.
 
 #### Cara Pembayaran
 
@@ -345,7 +345,7 @@ Rincian laporan bulanan **akan disusun lebih lanjut pada tahap berikutnya**. Seb
 3. Petugas mencatat pembayaran (potong gaji/manual).
 4. Sistem mencatat pokok & jasa, serta menambah Tabungan Berjangka.
 5. Kuitansi dicetak.
-6. Bila ini angsuran terakhir → status **Lunas**, SWP + Tabungan Berjangka dikembalikan.
+6. Bila ini angsuran terakhir → status **Lunas**. SWP + Tabungan Berjangka tetap jadi simpanan anggota; tidak ada pencairan yang terbit sendiri.
 
 ### 5.5 Pinjaman Jangka Pendek (Sebrakan)
 
@@ -387,7 +387,7 @@ Rincian laporan bulanan **akan disusun lebih lanjut pada tahap berikutnya**. Seb
 ### Angsuran
 - Angsuran/bulan = Pokok + Jasa (Pokok × 0,65%) + Tabungan Berjangka (Pokok × 0,1%).
 - Boleh bolong; tidak ada pemutusan otomatis.
-- SWP dan Tabungan Berjangka dikembalikan saat pinjaman lunas.
+- SWP dan Tabungan Berjangka tetap jadi simpanan anggota setelah pinjaman lunas — ditarik lewat pencairan biasa, bukan dicairkan otomatis.
 
 ### Transaksi Umum
 - Tidak ada penghapusan permanen untuk transaksi keuangan.

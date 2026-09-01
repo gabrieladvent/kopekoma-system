@@ -8,7 +8,9 @@ use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
+use App\Models\SavingsWithdrawal;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Database\Seeders\TitipanPokokDemoSeeder;
 
 /**
@@ -140,4 +142,38 @@ it('leaves every schedule of a paid-off loan closed', function () {
 
     expect(InstallmentSchedule::where('loan_id', $loan->id)
         ->where('status', InstallmentScheduleStatus::BelumBayar)->count())->toBe(0);
+});
+
+/**
+ * Angka SWP & Tabungan Berjangka yang disebut §9 dokumen UAT. Dikunci di sini
+ * karena penguji membacanya sebagai hasil yang diharapkan — seeder yang bergeser
+ * tanpa dokumennya ikut bergeser membuat penguji melaporkan "tidak sesuai" atas
+ * sistem yang benar.
+ */
+it('matches the SWP and tabungan berjangka figures the UAT document states', function () {
+    $balances = app(SavingsBalanceService::class);
+
+    $expected = [
+        'Rahayu Kusumaningrum' => '24000.00',
+        'Yusuf Maulana' => '24000.00',
+        'Wahyu Nugroho' => '24000.00',
+        'Ratna Dewi Anggraini' => '24000.00',
+        // 11 angsuran biasa; baris pelunasan TIDAK mengakru.
+        'Hesti Prabaningrum' => '132000.00',
+        'Bagus Prakoso' => '48000.00',
+    ];
+
+    foreach ($expected as $name => $timeDeposit) {
+        $member = Member::where('full_name', $name)->firstOrFail();
+
+        expect($balances->balanceByType($member, 'swp'))->toBe('120000.00', "SWP {$name}")
+            ->and($balances->balanceByType($member, 'tabungan_berjangka'))->toBe($timeDeposit, "Tab. Berjangka {$name}");
+    }
+});
+
+/** Pinjaman lunas tak menerbitkan pencairan apa pun (§9.2). */
+it('issues no withdrawal for the paid-off demo loan', function () {
+    $member = Member::where('full_name', 'Hesti Prabaningrum')->firstOrFail();
+
+    expect(SavingsWithdrawal::where('member_id', $member->id)->count())->toBe(0);
 });

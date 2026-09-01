@@ -172,6 +172,40 @@ Catatan: SWP = potongan sekali saat cair → akumulasi dari `loans.swp_amount`. 
 
 #### D8 — Status Lunas otomatis + pengembalian SWP & Tabungan Berjangka
 
+> **AMANDEMEN 2026-09-01 — bagian "pengembalian" DICABUT.** Keputusan di bawah
+> menerbitkan pencairan otomatis (`savings_withdrawals` ber-`related_loan_id`)
+> begitu pinjaman Lunas. Itu tidak lagi berlaku.
+>
+> **Yang berlaku sekarang:** SWP dan Tabungan Berjangka adalah **simpanan
+> sungguhan** — punya baris `savings_deposits` sendiri, bernomor transaksi,
+> bertanggal, muncul di buku mutasi anggota. SWP lahir saat pinjaman cair,
+> Tabungan Berjangka saat tiap angsuran dibayar. Saat pinjaman Lunas **tak ada
+> apa pun yang terbit**: uangnya tetap di jenisnya masing-masing, dan anggota
+> menariknya kapan ia mau lewat pencairan biasa (keduanya sudah ada di
+> `WithdrawalWorkflow::WITHDRAWABLE_TYPES`, lengkap dengan gerbang
+> draft → ACC → cair).
+>
+> **Alasannya bukan penyederhanaan.** Bentuk lama membuat uang bisa keluar
+> koperasi sebagai *efek samping* lunasnya pinjaman, bukan karena anggota
+> memintanya. Mata-keduanya tidak hilang — ia pindah ke saat anggota benar-benar
+> meminta uangnya. Dan D7 di bawah ikut gugur: dua rumus saldo khusus
+> (`SUM(loans.swp_amount)` dan `monthly_time_deposit × jumlah angsuran terbayar`)
+> dicabut, keduanya kini memakai formula standar `Σ setoran − Σ penarikan cair`
+> yang sama dengan pokok/wajib/sukarela.
+>
+> **Konsekuensi yang harus disadari:** saldo kedua jenis ini tak pernah turun
+> sendiri lagi; ia menumpuk lintas pinjaman sampai anggota menariknya — dan itu
+> memang perilaku simpanan. Keduanya juga kini **ikut `totalBalance()`**;
+> sebelumnya tidak, sehingga total yang ditampilkan lebih kecil dari simpanan
+> yang benar-benar dimiliki anggota.
+>
+> Dikerjakan tanpa ADR tersendiri atas keputusan pemilik produk — sistem belum
+> naik produksi, jadi tak ada data yang perlu dimigrasikan. Dikunci
+> `LoanSavingsServiceTest`. Yang perlu diketahui pengurus: aturan koperasi
+> berubah, dari "otomatis dikembalikan saat lunas" jadi "tetap jadi simpanan,
+> ditarik bila diminta".
+
+
 **Auto-Lunas:** `loans.status → 'Lunas'` saat **semua `installment_schedules` = 'Terbayar'** (Jangka Panjang) atau pembayaran penuh tercatat (Jangka Pendek). Dievaluasi atomik di akhir setiap pembayaran (D5). Reversal pembayaran terakhir membalik Lunas → Cair.
 
 **Pengembalian saat lunas** ([Dokumentasi §4.6](../Dokumentasi_Sistem_Koperasi_v5.md): anggota terima Tabungan Berjangka + SWP): direkam sebagai **`savings_withdrawals`** bertaut `related_loan_id`, type `swp` & `tabungan_berjangka`, sebesar saldo akumulasi pinjaman tsb. **Mengapa di `savings_withdrawals`, bukan tabel baru:** skema `savings_withdrawals` (kolom `related_loan_id` + enum `swp`/`tabungan_berjangka`) **dirancang persis untuk ini** → reuse penuh idempotency/reversal/audit; saldo D7 otomatis ter-net.

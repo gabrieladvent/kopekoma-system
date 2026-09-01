@@ -37,7 +37,8 @@ use Spatie\Permission\Models\Role;
  *   C. Pinjaman SEBRAKAN   — jangka pendek, belum dibayar.
  *   D. Siap BAYAR DARI SIMPANAN — anggota punya saldo sukarela besar, ada satu
  *      jadwal jatuh tempo yang belum dibayar.
- *   E. Pinjaman LUNAS      — memicu draft pengembalian SWP + Tabungan Berjangka.
+ *   E. Pinjaman LUNAS      — SWP + Tabungan Berjangka tetap jadi simpanan anggota
+ *      (tak ada pencairan yang terbit sendiri; ditarik lewat pencairan biasa).
  *
  * Jalankan:
  *   php artisan migrate:fresh --seed && php artisan db:seed --class=DemoDataSeeder
@@ -356,8 +357,8 @@ class DemoDataSeeder extends Seeder
         $loanD = $this->createLoan($members['agus'], 'jangka_panjang', '6000000', 12, Carbon::now()->subMonths(3)->day(12), 'tunai');
         $this->payFirst($loanD, 2, 'manual');
 
-        // E — lunas: pembayaran terakhir otomatis membuat draft pengembalian SWP
-        //     dan Tabungan Berjangka (menunggu ACC pengurus).
+        // E — lunas: SWP + Tabungan Berjangka tetap jadi simpanan anggota di
+        //     jenisnya masing-masing. Tak ada pencairan otomatis.
         $loanE = $this->createLoan($members['endang'], 'jangka_panjang', '6000000', 6, Carbon::now()->subMonths(7)->day(20), 'transfer');
         $this->payFirst($loanE, 6, 'potong_gaji');
     }
