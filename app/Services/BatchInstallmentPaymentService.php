@@ -116,6 +116,14 @@ class BatchInstallmentPaymentService
                             'amount_paid' => $row['amount_paid'],
                             'payment_method' => self::METHOD,
                             'payment_date' => $row['payment_date'] ?? $period,
+                            // Penjaga "arahkan ke Pelunasan Dipercepat" DIMATIKAN di
+                            // jalur potong gaji (R23). Nominalnya angka kontrak yang
+                            // ditetapkan bendahara OPD, bukan uang sekaligus yang
+                            // diserahkan anggota di loket — jadi tak ada yang perlu
+                            // dilindungi. Dibiarkan menyala, penjaga itu melempar dan
+                            // batch MENELAN potongannya diam-diam (catch di bawah):
+                            // uang terpotong dari gaji, angsuran tak pernah tercatat.
+                            'redirect_to_settlement' => false,
                         ],
                         $causerId,
                         // Livewire: UploadedFile langsung dilampirkan di dalam pay().
