@@ -189,7 +189,11 @@ class BatchInstallmentPaymentService
             // (sisa pokok + 1× jasa), bukan tagihan satu jadwal.
             if ($row['settle_early'] ?? false) {
                 $loan = $schedule->loan;
-                $payoff = bcadd($loan->settledPrincipal(), (string) $loan->monthly_interest, self::SCALE);
+
+                // Satu sumber (ADR 2026-08-28 item 1c) — harus angka yang sama
+                // persis dengan yang ditegakkan settleEarly(), termasuk potongan
+                // Titipan Pokok. Rumus lokal di sini dulunya duplikat (R2).
+                $payoff = $loan->payoffAmount();
 
                 if (bccomp($amount, $payoff, self::SCALE) < 0) {
                     throw new InvalidArgumentException(sprintf(

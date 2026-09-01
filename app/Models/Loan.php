@@ -132,6 +132,180 @@ class Loan extends Model implements HasMedia
         return (int) $net > 0;
     }
 
+    /**
+     * Tagihan KONTRAK satu bulan = Σ konstanta akad. Seragam di seluruh baris
+     * jadwal: `buildSchedule()` menulis `total_due` dari konstanta yang sama, dan
+     * tak ada jalur yang meng-update baris jadwal setelah dibuat (ADR 2026-08-28,
+     * "Verifikasi asumsi"). Karena itu ia boleh dihitung dari loan, tanpa join.
+     *
+     * Ini angka yang dipakai Titipan Pokok sebagai patokan — BUKAN tagihan
+     * efektif. Lihat overpaymentCredit().
+     */
+    public function monthlyTotal(): string
+    {
+        return bcadd(
+            bcadd((string) $this->monthly_principal, (string) $this->monthly_interest, 2),
+            (string) $this->monthly_time_deposit,
+            2
+        );
+    }
+
+    /**
+     * Saldo Titipan Pokok pinjaman ini (ADR 2026-08-28) — DITURUNKAN dari riwayat
+     * angsuran, tidak disimpan di kolom mana pun:
+     *
+     *     titipan = Σ_signed(amount_paid) − netCount × monthlyTotal()
+     *
+     * Konvensi tanda dan pengecualian baris pelunasan mengikuti settledPrincipal()
+     * persis. Karena diturunkan, ia otomatis benar setelah pembatalan — tak ada
+     * kolom yang bisa menyimpang diam-diam (Alternatives Considered: kolom saldo
+     * di `loans` ditolak justru karena bisa jadi minus tanpa jejak).
+     *
+     * PATOKANNYA TAGIHAN KONTRAK, BUKAN TAGIHAN EFEKTIF. Memakai tagihan efektif
+     * menghitung ganda titipan yang sudah dipotong dan membuat saldonya membengkak
+     * tiap bulan — kekeliruan v2 ADR ini, dijaga test invariant (item 3f).
+     *
+     * Lunas / Dibatalkan ⇒ 0.00. Untuk Lunas ini pasangan dari pelimpahan sisa
+     * titipan ke Simpanan Sukarela saat pinjaman ditutup (item 1h); untuk
+     * Dibatalkan ia menjaga R18 — jadwalnya sudah dihapus, jadi titipan yang
+     * tersisa di sana tak akan pernah bisa dimakan atau dilimpahkan siapa pun.
+     *
+     * TIDAK di-floor ke 0: nilai negatif berarti sebuah pembatalan menghapus
+     * titipan yang sudah terpakai, dan justru itu yang harus terlihat supaya guard
+     * di LoanPaymentService::reverse() (item 1j) bisa menolaknya. Pada state yang
+     * sudah ter-commit, guard itulah yang menjamin hasilnya ≥ 0.
+     *
+     * HANYA BARIS MILIK FITUR INI YANG DIHITUNG (`credit_applied` non-NULL) —
+     * R21/OQ-10. Sebelum fitur ini, `pay()` menyimpan SELURUH uang yang diterima
+     * di `amount_paid` lalu mengkreditkan kelebihannya ke Simpanan Sukarela lewat
+     * transaksi terpisah. Tanpa saringan ini, setiap kelebihan bayar lama muncul
+     * lagi sebagai titipan dan anggota menerima keringanan yang sama dua kali —
+     * uangnya sudah diserahkan sebagai simpanan, lalu dipotongkan sekali lagi dari
+     * tagihannya. Baris lama yang bayar pas berkontribusi nol, jadi menyaringnya
+     * tidak mengubah apa pun; yang kurang bayar tak pernah ada karena ditolak
+     * `belowBill()`.
+     *
+     * `credit_applied` layak jadi penandanya karena ia ditulis sekali saat baris
+     * dibuat, tak pernah di-UPDATE, dan ikut disalin `Installment::reverseClone()`
+     * — jadi penandanya stabil dan tetap benar setelah pembatalan. Konsekuensinya:
+     * **setiap jalur yang membuat baris angsuran WAJIB mengisi `credit_applied`**
+     * (0 bila tak memakai titipan, bukan NULL), atau barisnya hilang diam-diam
+     * dari saldo. Hari ini pembuatnya hanya LoanPaymentService::pay() dan
+     * settleEarly(); dijaga test.
+     */
+    public function overpaymentCredit(): string
+    {
+        if (in_array($this->status, [LoanStatus::Lunas, LoanStatus::Dibatalkan], true)) {
+            return '0.00';
+        }
+
+        $totals = Installment::query()
+            ->where('loan_id', $this->id)
+            ->where('is_settlement', false)
+            ->whereNotNull('credit_applied')
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount_paid ELSE -amount_paid END), 0) as paid')
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END), 0) as net')
+            ->first();
+
+        $paid = bcadd((string) ($totals->paid ?? '0'), '0', 2);
+        $billed = bcmul($this->monthlyTotal(), (string) (int) ($totals->net ?? 0), 2);
+
+        return bcsub($paid, $billed, 2);
+    }
+
+    /**
+     * Tagihan EFEKTIF satu angsuran (ADR 2026-08-28) — **satu-satunya sumber**:
+     *
+     *     tagihan_efektif = total_due − min(titipan, principal_due)
+     *
+     * Titipan hanya boleh memotong komponen POKOK. Kalau ia boleh menghapus satu
+     * jadwal utuh, jumlah angsuran berkurang → jasa tertagih koperasi berkurang
+     * DAN hak Tabungan Berjangka anggota hangus (akrualnya count-based). Batas
+     * `principal_due` itulah yang menjaga keduanya, jadi jangan dilonggarkan.
+     *
+     * Angka kontraknya dibaca dari baris jadwal, bukan dari konstanta loan —
+     * keduanya identik (`buildSchedule()` menulis `total_due` dari konstanta yang
+     * sama), tapi baris jadwal adalah kontrak untuk bulan itu.
+     *
+     * Saldo titipan di-floor 0 di sini: saldo negatif — keadaan sementara yang
+     * hanya bisa muncul lewat pembatalan yang seharusnya ditolak guard reverse()
+     * — tidak boleh sampai MENAIKKAN tagihan anggota di atas kontraknya.
+     */
+    public function effectiveBill(InstallmentSchedule $schedule): string
+    {
+        return $this->effectiveBillWithCredit($schedule, $this->overpaymentCredit());
+    }
+
+    /**
+     * Varian yang menerima saldo titipan dari luar. Dipakai `allocate()` saat
+     * MENSIMULASIKAN beberapa angsuran dalam satu setoran: saldo di database
+     * belum bergerak sampai barisnya benar-benar dibuat, jadi angsuran kedua dan
+     * seterusnya harus dihitung dengan saldo berjalan hasil simulasi — bukan
+     * dengan saldo lama yang dibaca `overpaymentCredit()`.
+     *
+     * Rumusnya tetap hidup di satu tempat: `effectiveBill()` hanyalah metode ini
+     * dengan saldo yang dibaca dari database.
+     */
+    public function effectiveBillWithCredit(InstallmentSchedule $schedule, string $credit): string
+    {
+        if ($schedule->loan_id !== $this->id) {
+            throw new \InvalidArgumentException(
+                'Jadwal angsuran bukan milik pinjaman ini — tagihan efektif tidak bisa dihitung.'
+            );
+        }
+
+        if (bccomp($credit, '0', 2) < 0) {
+            $credit = '0.00';
+        }
+
+        $principalDue = bcadd((string) $schedule->principal_due, '0', 2);
+
+        $applied = bccomp($credit, $principalDue, 2) < 0 ? $credit : $principalDue;
+
+        return bcsub((string) $schedule->total_due, $applied, 2);
+    }
+
+    /**
+     * Jumlah Pelunasan Dipercepat (ADR 2026-07-22 + 2026-08-28) — **satu-satunya
+     * sumber**:
+     *
+     *     payoff = settledPrincipal() + 1× monthly_interest − min(titipan, settledPrincipal())
+     *
+     * Jasa bulan sisa dibebaskan; yang ditagih hanya 1× jasa. Rumus ini sebelumnya
+     * ditulis ulang di dua tempat (`settleEarly()` dan validasi batch) — R2:
+     * perbaikan yang cuma dipasang di satu jalur membuat jalur satunya menagih
+     * dobel, dan anggota rugi tanpa ada yang sadar. Jangan disalin lagi.
+     *
+     * Titipan dipotong dengan batas `settledPrincipal()` — konsisten dengan
+     * effectiveBill() yang membatasi di `principal_due`: Titipan **Pokok** hanya
+     * membayar pokok, tak pernah menggerus jasa. Sisa titipan di atas batas itu
+     * tidak hilang — ia dilimpahkan ke Simpanan Sukarela saat pinjaman jadi Lunas.
+     *
+     * Ambang penjaga "arahkan ke Pelunasan Dipercepat" memakai angka INI, bukan
+     * sisa kontrak mentah: dibandingkan terhadap sisa mentah, anggota bertitipan
+     * tak akan pernah terdeteksi dan justru kehilangan pembebasan jasanya.
+     */
+    public function payoffAmount(): string
+    {
+        $principal = $this->settledPrincipal();
+
+        $credit = $this->overpaymentCredit();
+
+        if (bccomp($credit, '0', 2) < 0) {
+            $credit = '0.00';
+        }
+
+        $applied = bccomp($credit, $principal, 2) < 0 ? $credit : $principal;
+
+        $payoff = bcsub(
+            bcadd($principal, (string) $this->monthly_interest, 2),
+            $applied,
+            2
+        );
+
+        return bccomp($payoff, '0', 2) < 0 ? '0.00' : $payoff;
+    }
+
     public function transactionNumberColumn(): string
     {
         return 'loan_number';
