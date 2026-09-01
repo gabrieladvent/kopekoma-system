@@ -60,6 +60,8 @@ class MemberSavingsDetail extends Component
                 ['label' => 'Sukarela', 'value' => $all['sukarela'], 'icon' => 'wallet'],
                 ['label' => 'Hari Raya', 'value' => $holidayTotal, 'icon' => 'gift'],
                 ['label' => 'Wajib Belanja', 'value' => $all['wajib_belanja'], 'icon' => 'shopping-cart'],
+                ['label' => 'SWP', 'value' => $all['swp'], 'icon' => 'banknotes'],
+                ['label' => 'Tab. Berjangka', 'value' => $all['tabungan_berjangka'], 'icon' => 'wallet'],
             ],
             'holidayByYear' => $all['hari_raya'],
             'total' => $balances->totalBalance($member),

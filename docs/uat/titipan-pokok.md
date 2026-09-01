@@ -212,7 +212,7 @@ Periksa angkanya: sisa pokok 8.000.000 + jasa 78.000 − titipan 1.090.000 =
 | Nominal baris pelunasan | **78.000** — sisa pokok 1.000.000 + jasa 78.000 − titipan terpakai 1.000.000 |
 | Rincian baris pelunasan | Kolom **Titipan Pokok dipakai** terisi **1.000.000**, bukan kosong |
 | Simpanan Sukarela anggota | Bertambah **1.000.000** — sisa titipan yang tak terpakai, **tidak hangus** |
-| Pengembalian SWP & Tab. Berjangka | Terbit sebagai **draft**, menunggu ACC pengurus |
+| SWP & Tab. Berjangka | **Tetap jadi simpanan anggota** di jenisnya masing-masing. Tidak ada pencairan yang terbit sendiri — lihat §9 |
 
 ### 5.3 Panel Riwayat harus memisahkan dua pintu keluar
 
@@ -318,6 +318,83 @@ Masih di T5:
 | Sebrakan (`jangka_pendek`) dengan kelebihan bayar | Kelebihannya **langsung ke Simpanan Sukarela** saat lunas, tanpa singgah jadi titipan |
 | Angka tunggakan di dashboard | Anggota bertitipan **tidak** dilaporkan menunggak lebih besar dari kewajiban riilnya |
 | Σ uang seumur pinjaman, kedua mode | **Identik.** Fitur ini keringanan arus kas, bukan potongan — anggota membayar total yang sama |
+
+---
+
+## Bagian 9 — SWP & Tabungan Berjangka sebagai simpanan
+
+Perubahan terpisah dari Titipan Pokok, tapi ikut terlihat di skenario yang sama.
+Keduanya sekarang **simpanan sungguhan** — punya baris setoran bernomor
+transaksi, seperti Pokok/Wajib/Sukarela. Yang membedakan hanya pintu masuknya:
+SWP lahir saat pinjaman cair, Tabungan Berjangka saat tiap angsuran dibayar.
+Tak ada setoran manual untuk keduanya.
+
+### 9.1 Setorannya terbit sendiri, dan terlihat
+
+Pinjaman uji: **12.000.000 / 12 bulan** → SWP 1% = **120.000**, Tabungan
+Berjangka 0,1% = **12.000 per angsuran**.
+
+*Pengurus · Simpanan → Saldo Anggota → buka salah satu anggota T1–T6*
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Kartu saldo | Ada kartu **SWP** dan **Tab. Berjangka**, bukan hanya Pokok/Wajib/Sukarela |
+| SWP | **120.000** |
+| Tab. Berjangka | 12.000 × jumlah angsuran yang sudah dibayar |
+| Buku mutasi | Barisnya ada, berbunyi **"Potongan SWP saat pencairan pinjaman"** dan **"Tabungan Berjangka dari angsuran"** — bukan "Setoran" |
+| Total saldo | **Termasuk** keduanya. Dulu tidak — anggota melihat angka lebih kecil dari simpanan yang benar-benar ia punya |
+
+Cek cepat per pinjaman uji:
+
+| Kode | Angsuran dibayar | Tab. Berjangka |
+|---|---|---|
+| T1 | 2 | 24.000 |
+| T2 | 2 | 24.000 |
+| T3 | 2 | 24.000 |
+| T4 | 2 | 24.000 |
+| T5 | 11 (+1 pelunasan) | **132.000** — baris pelunasan **tidak** menambah |
+| T6 | 4 | 48.000 |
+
+> T5 yang paling penting: pelunasan dipercepat membebaskan jasa bulan sisa, dan
+> tabungan bulan sisa memang tak pernah disetor. Kalau angkanya 144.000, baris
+> pelunasan salah ikut mengakru.
+
+### 9.2 Lunas tidak memindahkan apa pun
+
+*Pinjaman T5 (Hesti Prabaningrum) — sudah Lunas*
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Daftar Pencairan | **Tidak ada** draft pengembalian SWP maupun Tab. Berjangka atas nama Hesti |
+| Saldo SWP Hesti | **Tetap 120.000** |
+| Saldo Tab. Berjangka Hesti | **Tetap 132.000** |
+
+> Ini kebalikan dari perilaku lama, yang menerbitkan dua draft pencairan begitu
+> pinjaman lunas. Kalau draft itu masih muncul, perubahannya belum jalan.
+
+### 9.3 Anggota mengambilnya sendiri
+
+*Pengurus · Simpanan → Pencairan → Buat*
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Pilih anggota Hesti | Baris sumber dana memuat **SWP** dan **Tabungan Berjangka**, dengan saldo di atas |
+| Ajukan penarikan SWP 120.000 | Tersimpan sebagai **draft** |
+| ACC lalu Cairkan | Saldo SWP jadi **0**; Tab. Berjangka tak tersentuh |
+
+> Gerbang mata-kedua tidak hilang — ia pindah ke sini, ke saat anggota
+> benar-benar meminta uangnya.
+
+### 9.4 Pembalikan harus berpasangan
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Batalkan satu baris angsuran mana pun (mis. T1 angsuran #2) | Saldo Tab. Berjangka anggota **turun 12.000** |
+| Buku mutasi | Muncul baris **"Pembatalan Tabungan Berjangka angsuran"** — baris aslinya tetap ada, dinetralkan, tidak dihapus |
+| Batalkan sebuah **pinjaman** yang belum punya angsuran (salah input) | Saldo SWP anggota **turun 120.000**, dengan baris "Pembatalan potongan SWP" |
+
+> Kalau saldo tidak ikut turun, salah ketik petugas menaikkan simpanan anggota
+> secara permanen — pinjamannya tinggal catatan, uangnya tetap jadi saldo.
 
 ---
 

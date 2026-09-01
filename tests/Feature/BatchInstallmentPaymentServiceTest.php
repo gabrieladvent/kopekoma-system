@@ -10,6 +10,7 @@ use App\Models\Member;
 use App\Models\SavingsWithdrawal;
 use App\Services\BatchInstallmentPaymentService;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -164,10 +165,14 @@ it('auto-settles the loan and refunds SWP + tabungan berjangka on the final inst
 
     expect($loan->fresh()->status)->toBe(LoanStatus::Lunas);
 
-    $refunds = SavingsWithdrawal::where('related_loan_id', $loan->id)->get();
+    // Pelunasan lewat batch pun tak menerbitkan pencairan apa pun. SWP dan
+    // Tabungan Berjangka tetap jadi simpanan anggota di jenisnya masing-masing.
+    $member = $loan->fresh()->member;
+    $balances = app(SavingsBalanceService::class);
 
-    expect($refunds->pluck('savings_type')->sort()->values()->all())->toBe(['swp', 'tabungan_berjangka'])
-        ->and($refunds->firstWhere('savings_type', 'swp')->disbursement_method)->toBe('transfer');
+    expect(SavingsWithdrawal::where('member_id', $member->id)->count())->toBe(0)
+        ->and($balances->balanceByType($member, 'swp'))->toBe((string) $loan->swp_amount)
+        ->and($balances->balanceByType($member, 'tabungan_berjangka'))->toBe((string) $loan->monthly_time_deposit);
 });
 
 it('processes many members of one OPD and logs a single batch activity', function () {

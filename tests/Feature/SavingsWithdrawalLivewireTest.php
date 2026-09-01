@@ -4,7 +4,6 @@ use App\Enums\WithdrawalStatus;
 use App\Filament\Resources\SavingsWithdrawalResource;
 use App\Livewire\Savings\Withdrawal\SavingsWithdrawalForm;
 use App\Livewire\Savings\Withdrawal\SavingsWithdrawals;
-use App\Models\Installment;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\MemberHolidaySaving;
@@ -29,7 +28,12 @@ function refundPairFor(Member $member, string $status = 'draft', int $swp = 1000
         'monthly_time_deposit' => $tab,
         'status' => 'Lunas',
     ]);
-    Installment::factory()->create(['loan_id' => $loan->id]); // 1 angsuran → tab balance = $tab
+
+    // Pinjaman berstatus Lunas tak menerbitkan setoran SWP (hanya pencairan yang
+    // melakukannya), jadi saldonya dibuat langsung di sini. Yang diuji berkas ini
+    // adalah mesin pasangan pencairan, bukan asal-usul saldonya.
+    SavingsDeposit::factory()->type('swp')->create(['member_id' => $member->id, 'amount' => $swp]);
+    SavingsDeposit::factory()->type('tabungan_berjangka')->create(['member_id' => $member->id, 'amount' => $tab]);
 
     $make = function (string $type, int $amount) use ($member, $loan, $status): SavingsWithdrawal {
         $factory = SavingsWithdrawal::factory()->type($type);
@@ -256,10 +260,16 @@ it('blocks the withdrawal pages for users without permission', function () {
 it('builds swp + tabungan berjangka source lines from loan-held balances (1c)', function () {
     asSuperAdmin();
     $member = Member::factory()->create(['status' => 'Aktif']);
-    $loan = Loan::factory()->create([
+    Loan::factory()->create([
         'member_id' => $member->id, 'swp_amount' => 120000, 'monthly_time_deposit' => 12000,
     ]);
-    Installment::factory()->count(3)->create(['loan_id' => $loan->id]); // tab balance = 36000
+
+    // Tabungan Berjangka kini simpanan sungguhan: baris setorannya lahir saat
+    // angsuran dibayar. Di test ini setorannya dibuat langsung — yang diuji
+    // form pencairannya, bukan jalur pembayaran angsuran.
+    SavingsDeposit::factory()->count(3)->type('tabungan_berjangka')->create([
+        'member_id' => $member->id, 'amount' => 12000,
+    ]);
 
     $lines = collect(
         Livewire::test(SavingsWithdrawalForm::class)->call('selectMember', $member->id)->get('lines')

@@ -34,8 +34,8 @@ class LoanPaymentService
 
     public function __construct(
         private readonly ReverseTransaction $reverse,
-        private readonly WithdrawalWorkflow $workflow,
         private readonly SavingsBalanceService $balances,
+        private readonly LoanSavingsService $loanSavings,
     ) {}
 
     /**
@@ -164,6 +164,13 @@ class LoanPaymentService
                 $rowSchedule->update(['status' => InstallmentScheduleStatus::Terbayar]);
             }
 
+            // Tabungan Berjangka bulan itu benar-benar disetor — satu baris
+            // simpanan per angsuran, bukan angka yang dihitung ulang dari jumlah
+            // angsuran terbayar. Inilah yang memberi anggota buku mutasinya.
+            foreach ($installments as $created) {
+                $this->loanSavings->recordTimeDeposit($created, $loan);
+            }
+
             $installment = $installments[0];
 
             // Bukti melekat di SETIAP baris sesi (ADR 2026-08-28 item 1g): baris
@@ -241,8 +248,6 @@ class LoanPaymentService
         if (bccomp($leftover, '0', self::SCALE) > 0) {
             $this->creditOverpaymentToSukarela($closing, $loan, $leftover, $causerId);
         }
-
-        $this->createRefunds($loan, $causerId);
     }
 
     /** Bawaan: sisa uang disimpan sebagai Titipan Pokok. */
@@ -499,8 +504,6 @@ class LoanPaymentService
                 $this->creditOverpaymentToSukarela($installment, $loan, $toSukarela, $causerId);
             }
 
-            $this->createRefunds($loan, $causerId);
-
             $waivedMonths = max(0, $unpaid->count() - 1);
             $interestWaived = bcmul($interestCharged, (string) $waivedMonths, self::SCALE);
 
@@ -597,13 +600,17 @@ class LoanPaymentService
         // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
         $this->reverseOverpaymentCredit($installment, $reason, $causerId);
 
+        // Angsuran yang batal berarti bulan itu tak pernah dibayar — jadi
+        // Tabungan Berjangka-nya juga tak pernah disetor. Pasangannya wajib
+        // ikut, kalau tidak saldo simpanan anggota naik tanpa dasar.
+        $this->loanSavings->reverseTimeDeposit($installment, $reason, $causerId);
+
         // Balik debit berpasangan (bila sumber dana = saldo simpanan) — saldo
         // sukarela anggota pulih. ADR 2026-07-22 item 1d.
         $this->reverseSavingsDebit($installment, $reason, $causerId);
 
         if ($loan->status === LoanStatus::Lunas) {
             $loan->update(['status' => LoanStatus::Cair]);
-            $this->cleanupRefunds($loan, $reason, $causerId);
         }
 
         // Guard presisi Titipan Pokok (ADR 2026-08-28 item 1j). WAJIB paling
@@ -813,84 +820,26 @@ class LoanPaymentService
             ->each(fn (SavingsWithdrawal $debit) => ($this->reverse)($debit, $reason, $causerId, allowInactiveMember: true, allowPairedInstallmentDebit: true));
     }
 
-    private function createRefunds(Loan $loan, ?int $causerId): void
-    {
-        // Metode pengembalian diwarisi dari pinjaman (ditetapkan saat akad) — satu
-        // sumber kebenaran, terekam sejak awal. Fallback 'tunai' untuk pinjaman
-        // lama yang belum punya disbursement_method.
-        $method = $loan->disbursement_method ?? 'tunai';
-
-        $swp = (string) $loan->swp_amount;
-        if (bccomp($swp, '0', self::SCALE) > 0 && ! $this->hasActiveRefund($loan, 'swp')) {
-            $this->makeRefund($loan, 'swp', $swp, $method, $causerId);
-        }
-
-        $tab = $this->loanTimeDepositAccrued($loan);
-        if (bccomp($tab, '0', self::SCALE) > 0 && ! $this->hasActiveRefund($loan, 'tabungan_berjangka')) {
-            $this->makeRefund($loan, 'tabungan_berjangka', $tab, $method, $causerId);
-        }
-    }
-
     /**
-     * Refund auto sebagai DRAFT (D1) — saldo baru berkurang saat pengurus cair-kan
-     * lewat WithdrawalWorkflow. Metode pencairan dititip di draft untuk dipakai saat
-     * disburse.
+     * Pengembalian SWP & Tabungan Berjangka saat lunas DICABUT — dulu di sini.
+     *
+     * Keputusan lama (ADR 2026-06-19 D8) menerbitkan draft pencairan untuk kedua
+     * jenis begitu pinjaman Lunas, lalu pengurus meng-ACC dan mencairkannya.
+     * Artinya uang bisa keluar koperasi sebagai **efek samping** dari lunasnya
+     * pinjaman, bukan karena anggota memintanya.
+     *
+     * Sekarang SWP dan Tabungan Berjangka adalah simpanan sungguhan bernomor
+     * transaksi (lihat {@see LoanSavingsService}); saat lunas ia **tetap di
+     * jenisnya masing-masing**, tak dipindah ke mana pun. Anggota menariknya
+     * kapan ia mau lewat penarikan biasa — keduanya sudah ada di
+     * `WithdrawalWorkflow::WITHDRAWABLE_TYPES`, lengkap dengan gerbang
+     * draft → ACC → cair. Mata-keduanya tidak hilang, ia pindah ke saat anggota
+     * benar-benar meminta uangnya.
+     *
+     * Konsekuensi yang harus disadari: saldo kedua jenis ini tak pernah turun
+     * sendiri lagi. Ia menumpuk lintas pinjaman sampai anggota menariknya — dan
+     * itu memang perilaku simpanan.
      */
-    private function makeRefund(Loan $loan, string $type, string $amount, string $method, ?int $causerId): void
-    {
-        SavingsWithdrawal::create([
-            'idempotency_key' => (string) Str::uuid(),
-            'member_id' => $loan->member_id,
-            'savings_type' => $type,
-            'amount' => $amount,
-            'withdrawal_date' => now()->toDateString(),
-            'status' => 'draft',
-            'related_loan_id' => $loan->id,
-            'disbursement_method' => $method,
-            'recorded_by' => $causerId,
-            'notes' => "Pengembalian saat pelunasan pinjaman {$loan->loan_number}",
-        ]);
-    }
-
-    /**
-     * Idempotensi (D5): ada refund aktif (draft/acc/cair, non-reversal) bertipe ini
-     * untuk pinjaman ini? Refund yang sudah `ditolak` tak menghalangi pembuatan baru
-     * (mis. bayar → lunas → reverse → bayar lagi).
-     */
-    private function hasActiveRefund(Loan $loan, string $type): bool
-    {
-        return SavingsWithdrawal::query()
-            ->where('related_loan_id', $loan->id)
-            ->where('savings_type', $type)
-            ->where('is_reversal', false)
-            ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc, WithdrawalStatus::Cair])
-            ->exists();
-    }
-
-    /**
-     * Bersihkan refund yatim saat pelunasan dibatalkan (D4): draft/acc → reject
-     * (terminal ditolak); cair → reverse (reversal-clone generik). Tak ada
-     * hard-delete dokumen bernomor.
-     */
-    private function cleanupRefunds(Loan $loan, string $reason, ?int $causerId): void
-    {
-        /** @var Collection<int, SavingsWithdrawal> $refunds */
-        $refunds = SavingsWithdrawal::query()
-            ->where('related_loan_id', $loan->id)
-            ->where('is_reversal', false)
-            ->whereIn('savings_type', ['swp', 'tabungan_berjangka'])
-            ->whereIn('status', [WithdrawalStatus::Draft, WithdrawalStatus::Acc, WithdrawalStatus::Cair])
-            ->get();
-
-        foreach ($refunds as $refund) {
-            if ($refund->status === WithdrawalStatus::Cair) {
-                ($this->reverse)($refund, $reason, $causerId);
-            } else {
-                $this->workflow->reject($refund, $causerId);
-            }
-        }
-    }
-
     private function hasUnpaidSchedules(Loan $loan): bool
     {
         return InstallmentSchedule::query()

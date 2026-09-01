@@ -10,6 +10,7 @@ use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 
 beforeEach(function () {
     $this->service = app(LoanPaymentService::class);
@@ -61,10 +62,12 @@ it('settles early: pays exact payoff, marks all schedules paid, loan Lunas, crea
     expect(InstallmentSchedule::where('loan_id', $loan->id)
         ->where('status', InstallmentScheduleStatus::BelumBayar)->count())->toBe(0);
 
-    // Refund: SWP 10000 + Tab akrual (2 angsuran normal × 1000 = 2000), bukan 5×.
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)
-        ->where('savings_type', 'tabungan_berjangka')->value('amount');
-    expect((string) $tab)->toBe('2000.00');
+    // Tabungan Berjangka terkumpul = 2 angsuran normal × 1000, bukan 5×: baris
+    // pelunasan tidak mengakru, sama seperti jasa bulan sisa yang dibebaskan.
+    // Uangnya TETAP jadi simpanan anggota — pelunasan tak menerbitkan pencairan.
+    expect(app(SavingsBalanceService::class)->balanceByType($this->member, 'tabungan_berjangka'))->toBe('2000.00')
+        ->and(app(SavingsBalanceService::class)->balanceByType($this->member, 'swp'))->toBe('10000.00')
+        ->and(SavingsWithdrawal::where('member_id', $this->member->id)->count())->toBe(0);
 });
 
 it('rejects settlement below payoff and creates nothing', function () {

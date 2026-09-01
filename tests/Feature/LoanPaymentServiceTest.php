@@ -2,7 +2,6 @@
 
 use App\Enums\InstallmentScheduleStatus;
 use App\Enums\LoanStatus;
-use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessPayment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -92,10 +91,9 @@ it('records overpayment as "Lain-lain" without inflating tabungan berjangka or p
         ->and($inst->breakdown()['credit_reserved'])->toBe('92500.00')
         ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas);
 
-    // Tab berjangka = konstanta (1000), TIDAK bertambah dari kelebihan
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)
-        ->where('savings_type', 'tabungan_berjangka')->first();
-    expect($tab->amount)->toBe('1000.00');
+    // Tab berjangka = konstanta (1000), TIDAK bertambah dari kelebihan.
+    // Kini dibaca dari saldo simpanannya sendiri, bukan dari draft pengembalian.
+    expect($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00');
 });
 
 /**
@@ -181,31 +179,37 @@ it('reverses the closing sukarela transfer when the final installment is reverse
     expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('0.00');
 });
 
-it('auto-settles the loan and creates DRAFT refunds for SWP + tabungan berjangka on final payment', function () {
-    // Metode refund diwarisi dari pinjaman (disbursement_method), bukan argumen.
+/**
+ * Pengembalian otomatis saat lunas DICABUT — menggantikan keputusan D8
+ * (ADR 2026-06-19). SWP dan Tabungan Berjangka tetap jadi simpanan anggota di
+ * jenisnya masing-masing; anggota menariknya kapan ia mau lewat penarikan
+ * biasa, yang sudah punya gerbang draft → ACC → cair.
+ *
+ * Yang dijaga di sini: pelunasan tidak menerbitkan pencairan apa pun, dan
+ * saldonya tidak ikut hilang.
+ */
+it('settles the loan without creating any withdrawal', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000, disbursementMethod: 'transfer');
 
     $this->service->pay($rows[0], billPayment(), $this->user->id);
 
-    expect($loan->fresh()->status)->toBe(LoanStatus::Lunas);
-
-    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
-
-    expect($swp->amount)->toBe('10000.00')
-        ->and($swp->status)->toBe(WithdrawalStatus::Draft)
-        ->and($swp->disbursed_at)->toBeNull()
-        ->and($swp->disbursement_method)->toBe('transfer')
-        ->and($tab->amount)->toBe('1000.00')
-        ->and($tab->status)->toBe(WithdrawalStatus::Draft)
-        // draft belum kurangi saldo — refund menunggu persetujuan (D3)
+    expect($loan->fresh()->status)->toBe(LoanStatus::Lunas)
+        ->and(SavingsWithdrawal::where('member_id', $this->member->id)->count())->toBe(0)
+        // Uangnya tetap di tempatnya — tidak dipindah, tidak dicairkan.
         ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('10000.00')
         ->and($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00');
 });
 
-it('reverses a settlement: loan back to Cair and DRAFT refunds rejected, not reversed (D4)', function () {
+/**
+ * Pembatalan angsuran harus menarik kembali Tabungan Berjangka bulan itu —
+ * angsuran yang batal berarti bulan itu tak pernah dibayar. SWP tidak tersentuh:
+ * ia melekat pada pencairan pinjaman, bukan pada angsuran.
+ */
+it('pulls back the tabungan berjangka when the installment is reversed', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
     $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
+
+    expect($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00');
 
     $this->service->reverse($inst, 'Salah catat nominal angsuran', $this->user->id);
 
@@ -213,23 +217,18 @@ it('reverses a settlement: loan back to Cair and DRAFT refunds rejected, not rev
         ->and($rows[0]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar)
         ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('10000.00')
         ->and($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('0.00');
-
-    // Draft refund di-reject (terminal ditolak), BUKAN reversal-clone (D4).
-    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
-    expect($swp->status)->toBe(WithdrawalStatus::Ditolak)
-        ->and(SavingsWithdrawal::where('related_loan_id', $loan->id)->where('is_reversal', true)->exists())->toBeFalse();
 });
 
-it('does not duplicate refunds when a settled loan is reversed then re-paid (D5)', function () {
+/** Bayar → batal → bayar lagi tidak boleh menumpuk Tabungan Berjangka ganda. */
+it('does not double the tabungan berjangka when a payment is reversed then re-paid', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
     $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
     $this->service->reverse($inst, 'koreksi', $this->user->id);
 
     $this->service->pay($rows[0]->fresh(), billPayment(), $this->user->id);
 
-    // Satu refund AKTIF (draft) per tipe; yang lama berstatus ditolak.
-    expect(SavingsWithdrawal::where('related_loan_id', $loan->id)
-        ->where('savings_type', 'swp')->where('status', 'draft')->where('is_reversal', false)->count())->toBe(1);
+    expect($this->balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00')
+        ->and($this->balances->balanceByType($this->member, 'swp'))->toBe('10000.00');
 });
 
 it('rejects paying a schedule that is already paid', function () {

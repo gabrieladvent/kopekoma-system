@@ -44,6 +44,13 @@ class SavingsMutationService
             $description = match (true) {
                 $isOverpaymentTransfer && $d->is_reversal => 'Pembatalan pengalihan kelebihan dana',
                 $isOverpaymentTransfer => 'Pengalihan kelebihan dana',
+                // SWP & Tabungan Berjangka tak pernah disetor di loket — menyebut
+                // barisnya "Setoran" membuat anggota mencari transaksi yang tak
+                // pernah ia lakukan. Asal-usulnya disebut apa adanya.
+                $d->savings_type === 'swp' && $d->is_reversal => 'Pembatalan potongan SWP',
+                $d->savings_type === 'swp' => 'Potongan SWP saat pencairan pinjaman',
+                $d->savings_type === 'tabungan_berjangka' && $d->is_reversal => 'Pembatalan Tabungan Berjangka angsuran',
+                $d->savings_type === 'tabungan_berjangka' => 'Tabungan Berjangka dari angsuran',
                 $d->is_reversal => 'Pembatalan setoran',
                 default => 'Setoran',
             };
