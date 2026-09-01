@@ -162,6 +162,80 @@ class LoanDetail extends Component
         };
     }
 
+    /**
+     * Riwayat Titipan Pokok (ADR 2026-08-28 item 2e) — *kapan masuk, kapan
+     * dipotong dan berapa, kapan habis*. Seluruhnya dihitung dari riwayat
+     * angsuran yang sudah ada; tak ada tabel, kolom, atau mesin tambahan.
+     *
+     * Gerak saldo per baris = `Δ = uang diterima − tagihan kontrak`, dengan tanda
+     * dibalik untuk baris pembalik. Bentuk ini menangani pembatalan dengan
+     * sendirinya, dan Σ Δ persis sama dengan `Loan::overpaymentCredit()`.
+     *
+     * Baris ber-Δ nol (pembayaran pas) dilewati — ia tak menggerakkan saldo dan
+     * hanya jadi derau di tabel yang tugasnya menjelaskan pergerakan.
+     *
+     * **Tanpa pelacakan per-lot**, sesuai keputusan Design: sistem tidak mencatat
+     * potongan ini berasal dari setoran yang mana. Titipan adalah satu kantong.
+     *
+     * @return list<array{date:?string, number:string, in:string, used:string, balance:string, reversal:bool, note:?string}>
+     */
+    private function overpaymentCreditHistory(Loan $loan): array
+    {
+        $monthly = $loan->monthlyTotal();
+
+        $rows = Installment::query()
+            ->where('loan_id', $loan->id)
+            ->where('is_settlement', false)
+            ->whereNotNull('credit_applied')
+            ->orderBy('installment_number')
+            ->get();
+
+        $balance = '0.00';
+        $history = [];
+
+        foreach ($rows as $row) {
+            $paid = bcadd((string) $row->amount_paid, '0', 2);
+
+            $delta = $row->is_reversal
+                ? bcsub($monthly, $paid, 2)
+                : bcsub($paid, $monthly, 2);
+
+            if (bccomp($delta, '0', 2) === 0) {
+                continue;
+            }
+
+            $balance = bcadd($balance, $delta, 2);
+
+            $history[] = [
+                'date' => $row->payment_date?->format('d/m/Y'),
+                'number' => $row->installment_number,
+                'in' => bccomp($delta, '0', 2) > 0 ? $delta : '0.00',
+                'used' => bccomp($delta, '0', 2) < 0 ? bcmul($delta, '-1', 2) : '0.00',
+                'balance' => $balance,
+                'reversal' => (bool) $row->is_reversal,
+                'note' => null,
+            ];
+        }
+
+        // Saat pinjaman ditutup, sisa titipan dilimpahkan ke Simpanan Sukarela
+        // (item 1h/1i). Tanpa baris ini tabel berhenti pada saldo yang sudah tak
+        // ada lagi, dan pertanyaan "kapan habis" justru tak terjawab.
+        if (bccomp($balance, '0', 2) > 0
+            && in_array($loan->status, [LoanStatus::Lunas, LoanStatus::Dibatalkan], true)) {
+            $history[] = [
+                'date' => null,
+                'number' => '—',
+                'in' => '0.00',
+                'used' => $balance,
+                'balance' => '0.00',
+                'reversal' => false,
+                'note' => 'Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup',
+            ];
+        }
+
+        return $history;
+    }
+
     public function render(): View
     {
         $loan = Loan::with(['member.agency', 'recordedBy'])->findOrFail($this->loanId);
@@ -205,6 +279,8 @@ class LoanDetail extends Component
             'activities' => $activities,
             'selectedActivity' => $selectedActivity,
             'diff' => $this->auditDiff($selectedActivity),
+            'creditBalance' => $loan->overpaymentCredit(),
+            'creditHistory' => $this->overpaymentCreditHistory($loan),
         ])->layout('components.layouts.app', ['title' => 'Detail Pinjaman']);
     }
 }
