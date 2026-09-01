@@ -47,7 +47,7 @@ class LoanPaymentService
      * dicari lewat `session_key`, bukan lewat nilai kembalian, agar kontrak lama
      * pemanggil tidak berubah.
      *
-     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string}  $input
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string, expected_credit?:string|int|float|null}  $input
      */
     public function pay(
         InstallmentSchedule $schedule,
@@ -95,6 +95,18 @@ class LoanPaymentService
             // `belowBill()` (kini bertumpu tagihan EFEKTIF), penjaga Pelunasan
             // Dipercepat, dan penolakan jadwal basi ditegakkan.
             $plan = $this->allocate($loan, $schedule, $amountPaid, $input['mode'] ?? self::MODE_TITIPAN);
+
+            // Pratinjau basi (item 1f): petugas membuka form, pembayaran lain masuk,
+            // petugas menyimpan — akibat yang dikonfirmasi di dialog tak lagi berlaku.
+            // Yang dibandingkan SALDO TITIPAN, bukan bentuk alokasinya: memeriksa
+            // jumlah baris bisa diakali payload yang mengaku alokasi apa pun (R15).
+            if (array_key_exists('expected_credit', $input) && $input['expected_credit'] !== null) {
+                $expected = $this->money($input['expected_credit']);
+
+                if (bccomp($expected, $plan['credit_before'], self::SCALE) !== 0) {
+                    throw CannotProcessPayment::stalePreview($plan['credit_before']);
+                }
+            }
 
             if ($fromSavings) {
                 // Dikunci tepat-tagihan: cegah lingkaran debit sukarela → kelebihan

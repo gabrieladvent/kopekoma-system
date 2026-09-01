@@ -130,9 +130,21 @@ class InstallmentDetail extends Component
     }
 
     /**
-     * Sisa pokok SETELAH angsuran ini = `principal_amount − seq × monthly_principal`,
-     * floor 0 (count-based, ADR 2026-06-26). Konsisten dgn SchedulesRelationManager
-     * & Loan::remainingPrincipal(); tak ada kolom remaining_principal lagi.
+     * Sisa pokok pinjaman — **satu sumber**, `Loan::settledPrincipal()`
+     * (ADR 2026-08-28 item 2h, OQ-9).
+     *
+     * Versi lama menghitungnya dari **nomor urut jadwal**
+     * (`principal_amount − seq × monthly_principal`), dan komentarnya mengklaim
+     * itu konsisten dengan `settledPrincipal()`. Klaim itu menyimpan asumsi
+     * tersembunyi yang tak pernah ditulis: **angsuran terbayar berurutan tanpa
+     * lubang**. Membatalkan angsuran mana pun sudah bisa melubanginya sejak dulu;
+     * ADR ini memperbesar peluangnya lewat pembatalan per-transaksi atas sesi
+     * multi-angsuran (#3 lunas, #2 dibatalkan). Di keadaan itu layar menampilkan
+     * sisa pokok yang lebih kecil dari kenyataan — dua angka berbeda dari aplikasi
+     * yang sama.
+     *
+     * Ini **perbaikan bug lama yang menumpang secara sadar**: angka pada layar
+     * detail berubah untuk data yang sudah ada, dan itu disengaja.
      */
     protected function remainingAfter(Installment $installment): string
     {
@@ -140,12 +152,37 @@ class InstallmentDetail extends Component
             return '0.00';
         }
 
-        $loan = $installment->loan;
+        // Didelegasikan, bukan dihitung ulang. Varian "sampai baris ini" sempat
+        // dicoba dan justru melahirkan angka KETIGA: baris pembalik bernomor lebih
+        // besar daripada angsuran yang dilihat, sehingga pembatalan tak terhitung
+        // dan layar kembali menampilkan sisa pokok yang terlalu kecil. Satu sumber
+        // menutup divergensinya untuk selamanya.
+        return $installment->loan?->settledPrincipal() ?? '0.00';
+    }
 
-        $paid = bcmul((string) ($loan?->monthly_principal ?? '0'), (string) (int) $installment->installment_seq, 2);
-        $remaining = bcsub((string) ($loan?->principal_amount ?? '0'), $paid, 2);
+    /**
+     * Angsuran lain dari SETORAN yang sama (ADR 2026-08-28 item 2d).
+     *
+     * Pembatalan tetap per-transaksi — memaksa satu sesi dibatalkan sepaket akan
+     * menciptakan konsep yang sistem ini belum punya, dan tiap baris sudah punya
+     * nomor transaksinya sendiri. Yang ditambahkan hanya pemberitahuan: agar
+     * petugas tak membatalkan separuh penerimaan tunai tanpa sadar ada
+     * pasangannya. Memberi tahu, bukan memaksa.
+     *
+     * @return list<string>
+     */
+    public function sessionSiblings(Installment $installment): array
+    {
+        if (blank($installment->session_key)) {
+            return [];
+        }
 
-        return bccomp($remaining, '0', 2) < 0 ? '0.00' : $remaining;
+        return Installment::query()
+            ->where('session_key', $installment->session_key)
+            ->whereKeyNot($installment->getKey())
+            ->orderBy('installment_number')
+            ->pluck('installment_number')
+            ->all();
     }
 
     public function render(): View
@@ -162,6 +199,7 @@ class InstallmentDetail extends Component
             'installment' => $installment,
             'paymentMethodLabel' => Resource::PAYMENT_METHODS[$installment->payment_method] ?? $installment->payment_method,
             'breakdown' => $installment->breakdown(),
+            'sessionSiblings' => $this->sessionSiblings($installment),
             'remaining' => $this->remainingAfter($installment),
             'bukti' => $installment->getFirstMedia('bukti'),
             'activities' => $activities,

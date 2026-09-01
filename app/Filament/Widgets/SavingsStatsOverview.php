@@ -10,6 +10,7 @@ use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\ShoppingTransaction;
+use App\Services\LoanArrearsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
@@ -76,9 +77,11 @@ class SavingsStatsOverview extends StatsOverviewWidget
             ->value('outstanding');
 
         // Tunggakan: jadwal angsuran yang jatuh tempo namun belum terbayar.
-        $overdue = InstallmentSchedule::query()->overdue();
-        $overdueCount = (clone $overdue)->count();
-        $overdueAmount = (float) (clone $overdue)->sum('total_due');
+        // Nominalnya memakai tagihan EFEKTIF (ADR 2026-08-28 item 2f, R13) —
+        // `total_due` kontraktual melaporkan anggota bertitipan menunggak lebih
+        // besar dari kewajiban riilnya.
+        $overdueCount = InstallmentSchedule::query()->overdue()->count();
+        $overdueAmount = (float) app(LoanArrearsService::class)->overdueAmount();
 
         return [
             Stat::make('Total Simpanan', 'Rp '.number_format($totalSavings, 0, ',', '.'))

@@ -131,7 +131,11 @@ class SendInstallmentReminders extends Command
 
         $due = $schedule->due_date?->translatedFormat('d M Y');
 
-        $amount = number_format((float) $schedule->total_due, 0, ',', '.');
+        // Tagihan efektif (ADR 2026-08-28 item 2f): pengingat yang menyebut angka
+        // kontrak membuat petugas menagih anggota bertitipan melebihi kewajibannya.
+        $bill = $schedule->loan?->effectiveBill($schedule) ?? (string) $schedule->total_due;
+
+        $amount = number_format((float) $bill, 0, ',', '.');
 
         return "{$member} — angsuran ke-{$schedule->installment_seq} pinjaman {$loanNumber} {$state} ({$due}). Tagihan Rp {$amount}.";
     }
