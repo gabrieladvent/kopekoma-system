@@ -26,6 +26,7 @@ use App\Livewire\Master\Member\Members;
 use App\Livewire\Profile\EditProfile;
 use App\Livewire\Reports\LaporanAngsuranPinjaman;
 use App\Livewire\Reports\LaporanSetoranSimpanan;
+use App\Livewire\Reports\LaporanTitipanPokok;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
 use App\Livewire\Savings\Deposit\SavingsDepositDetail;
 use App\Livewire\Savings\Deposit\SavingsDepositForm;
@@ -235,6 +236,10 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:access_laporan_angsuran')
         ->name('reports.angsuran');
 
+    Route::get('/laporan/titipan-pokok', LaporanTitipanPokok::class)
+        ->middleware('can:access_laporan_titipan')
+        ->name('reports.titipan');
+
     // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
     // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.
     Route::get('/pinjaman', Loans::class)
@@ -286,9 +291,14 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage_settings')
         ->name('settings');
 
-    Route::middleware('can:manage-system')->group(function (): void {
-        Route::get('/sistem/log-aktivitas', ActivityLogs::class)->name('system.activity-logs');
+    // Log aktivitas dipisah dari modul Sistem: ia dijaga permission tersendiri
+    // (`access_activity_log`, dipegang Pengurus) — MEMBACA jejak bukan
+    // MENGELOLA sistem. Pengguna & Peran tetap di balik `manage-system`.
+    Route::get('/sistem/log-aktivitas', ActivityLogs::class)
+        ->middleware('can:access_activity_log')
+        ->name('system.activity-logs');
 
+    Route::middleware('can:manage-system')->group(function (): void {
         Route::get('/sistem/peran', Roles::class)->name('system.roles');
         Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
         Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');

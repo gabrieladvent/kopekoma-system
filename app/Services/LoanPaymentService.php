@@ -47,19 +47,27 @@ class LoanPaymentService
      * dicari lewat `session_key`, bukan lewat nilai kembalian, agar kontrak lama
      * pemanggil tidak berubah.
      *
-     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string, expected_credit?:string|int|float|null, redirect_to_settlement?:bool}  $input
+     * `$redirectToSettlement` adalah PARAMETER BERNAMA, bukan kunci di `$input`.
+     * Ia mematikan penjaga Pelunasan Dipercepat (R23) — kewenangan yang hanya
+     * boleh dipegang jalur potong gaji. `$input` datang dari payload Livewire
+     * pada jalur loket; kunci boolean di dalamnya bisa disisipkan pemanggil mana
+     * pun tanpa terlihat di tanda tangan metode. Sebagai parameter, satu-satunya
+     * cara mematikannya adalah menuliskannya di call site.
+     *
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string, expected_credit?:string|int|float|null}  $input
      */
     public function pay(
         InstallmentSchedule $schedule,
         array $input,
         ?int $causerId = null,
         ?UploadedFile $bukti = null,
+        bool $redirectToSettlement = true,
     ): Installment {
         $causerId ??= auth()->id();
 
         $fromSavings = ($input['payment_method'] ?? null) === self::SOURCE_SAVINGS;
 
-        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti, $fromSavings): Installment {
+        return DB::transaction(function () use ($schedule, $input, $causerId, $bukti, $fromSavings, $redirectToSettlement): Installment {
             // Debit simpanan: lock member DULU (urutan global member→loan→schedule),
             // konsisten dengan WithdrawalWorkflow::disburse agar tak deadlock.
             if ($fromSavings) {
@@ -99,7 +107,7 @@ class LoanPaymentService
                 $schedule,
                 $amountPaid,
                 $input['mode'] ?? self::MODE_TITIPAN,
-                $input['redirect_to_settlement'] ?? true,
+                $redirectToSettlement,
             );
 
             // Pratinjau basi (item 1f): petugas membuka form, pembayaran lain masuk,
@@ -525,70 +533,104 @@ class LoanPaymentService
     {
         $causerId ??= auth()->id();
 
-        return DB::transaction(function () use ($installment, $reason, $causerId): Installment {
-            /** @var Loan $loan */
-            $loan = Loan::query()->lockForUpdate()->findOrFail($installment->loan_id);
-
-            // Dibaca SEBELUM baris pembalik dibuat — sesudahnya ini sudah saldo
-            // "setelah", bukan "sebelum". Pinjaman berstatus Lunas memang menjawab
-            // 0.00, dan itu benar: sisanya sudah dilimpahkan ke Sukarela.
-            $creditBefore = $loan->overpaymentCredit();
-
-            $reversal = ($this->reverse)($installment, $reason, $causerId);
-
-            if ($installment->is_settlement) {
-                $normallyPaidScheduleIds = Installment::query()
-                    ->where('loan_id', $loan->id)
-                    ->where('is_settlement', false)
-                    ->whereNotNull('schedule_id')
-                    ->groupBy('schedule_id')
-                    ->havingRaw('SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END) > 0')
-                    ->pluck('schedule_id');
-
-                InstallmentSchedule::query()
-                    ->where('loan_id', $loan->id)
-                    ->where('status', InstallmentScheduleStatus::Terbayar)
-                    ->whereNotIn('id', $normallyPaidScheduleIds)
-                    ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
-            } elseif ($installment->schedule_id) {
-                InstallmentSchedule::query()
-                    ->whereKey($installment->schedule_id)
-                    ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
+        try {
+            return DB::transaction(function () use ($installment, $reason, $causerId): Installment {
+                return $this->reverseInTransaction($installment, $reason, $causerId);
+            });
+        } catch (CannotReverseTransaction $e) {
+            // Jejak penolakan ditulis DI LUAR transaksi, sesudah rollback. Ditulis
+            // di titik deteksi (di dalam transaksi) ia ikut hilang bersama
+            // lemparannya — dan peristiwa inilah yang paling perlu terlihat:
+            // bentuknya sama persis dengan percobaan menarik kembali uang yang
+            // sudah terpakai. Payload-nya dititipkan pada exception karena
+            // angkanya hanya ada saat state pembatalan masih berlaku.
+            if ($e->auditPayload !== null) {
+                activity()
+                    ->performedOn(Loan::query()->findOrFail($installment->loan_id))
+                    ->causedBy($causerId)
+                    ->event('pembatalan_ditolak')
+                    ->withProperties(['attributes' => $e->auditPayload])
+                    ->log('Pembatalan angsuran ditolak — Titipan Pokok sudah terpakai');
             }
 
-            // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
-            $this->reverseOverpaymentCredit($installment, $reason, $causerId);
+            throw $e;
+        }
+    }
 
-            // Balik debit berpasangan (bila sumber dana = saldo simpanan) — saldo
-            // sukarela anggota pulih. ADR 2026-07-22 item 1d.
-            $this->reverseSavingsDebit($installment, $reason, $causerId);
+    /** Badan pembatalan — dipisah dari reverse() agar jejak penolakan bisa ditulis setelah rollback. */
+    private function reverseInTransaction(Installment $installment, string $reason, ?int $causerId): Installment
+    {
+        /** @var Loan $loan */
+        $loan = Loan::query()->lockForUpdate()->findOrFail($installment->loan_id);
 
-            if ($loan->status === LoanStatus::Lunas) {
-                $loan->update(['status' => LoanStatus::Cair]);
-                $this->cleanupRefunds($loan, $reason, $causerId);
-            }
+        // Dibaca SEBELUM baris pembalik dibuat — sesudahnya ini sudah saldo
+        // "setelah", bukan "sebelum". Pinjaman berstatus Lunas memang menjawab
+        // 0.00, dan itu benar: sisanya sudah dilimpahkan ke Sukarela.
+        $creditBefore = $loan->overpaymentCredit();
 
-            // Guard presisi Titipan Pokok (ADR 2026-08-28 item 1j). WAJIB paling
-            // akhir: `overpaymentCredit()` menjawab 0.00 selama status masih Lunas,
-            // jadi dijalankan sebelum pemulihan status di atas ia akan buta.
-            $this->assertOverpaymentCreditNotNegative($loan, $causerId);
+        // Titipan yang ditahan pelunasan — dibaca sebelum baris pembalik
+        // dibuat, sama seperti $creditBefore.
+        $creditInSettlement = $loan->settlementCreditApplied();
 
-            activity()
-                ->performedOn($reversal)
-                ->causedBy($causerId)
-                ->event('pembatalan_angsuran')
-                ->withProperties(['attributes' => [
-                    'loan_id' => $loan->id,
-                    'reversed_installment' => $installment->installment_number,
-                    'amount_paid' => $installment->amount_paid,
-                    'credit_before' => $creditBefore,
-                    'credit_after' => $loan->overpaymentCredit(),
-                    'session_key' => $installment->session_key,
-                ]])
-                ->log("Pembatalan angsuran {$installment->installment_number}");
+        $reversal = ($this->reverse)($installment, $reason, $causerId);
 
-            return $reversal;
-        });
+        if ($installment->is_settlement) {
+            $normallyPaidScheduleIds = Installment::query()
+                ->where('loan_id', $loan->id)
+                ->where('is_settlement', false)
+                ->whereNotNull('schedule_id')
+                ->groupBy('schedule_id')
+                ->havingRaw('SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END) > 0')
+                ->pluck('schedule_id');
+
+            InstallmentSchedule::query()
+                ->where('loan_id', $loan->id)
+                ->where('status', InstallmentScheduleStatus::Terbayar)
+                ->whereNotIn('id', $normallyPaidScheduleIds)
+                ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
+        } elseif ($installment->schedule_id) {
+            InstallmentSchedule::query()
+                ->whereKey($installment->schedule_id)
+                ->update(['status' => InstallmentScheduleStatus::BelumBayar]);
+        }
+
+        // Tarik kembali kredit Sukarela dari kelebihan bayar angsuran ini.
+        $this->reverseOverpaymentCredit($installment, $reason, $causerId);
+
+        // Balik debit berpasangan (bila sumber dana = saldo simpanan) — saldo
+        // sukarela anggota pulih. ADR 2026-07-22 item 1d.
+        $this->reverseSavingsDebit($installment, $reason, $causerId);
+
+        if ($loan->status === LoanStatus::Lunas) {
+            $loan->update(['status' => LoanStatus::Cair]);
+            $this->cleanupRefunds($loan, $reason, $causerId);
+        }
+
+        // Guard presisi Titipan Pokok (ADR 2026-08-28 item 1j). WAJIB paling
+        // akhir: `overpaymentCredit()` menjawab 0.00 selama status masih Lunas,
+        // jadi dijalankan sebelum pemulihan status di atas ia akan buta.
+        $this->assertOverpaymentCreditNotNegative($loan, $causerId);
+
+        activity()
+            ->performedOn($reversal)
+            ->causedBy($causerId)
+            ->event('pembatalan_angsuran')
+            ->withProperties(['attributes' => [
+                'loan_id' => $loan->id,
+                'reversed_installment' => $installment->installment_number,
+                'amount_paid' => $installment->amount_paid,
+                'credit_before' => $creditBefore,
+                'credit_after' => $loan->overpaymentCredit(),
+                // Tanpa baris ini jejaknya MENENANGKAN padahal ada uang
+                // bergerak: pada pinjaman yang dilunasi dipercepat, saldo
+                // "sebelum" dan "sesudah" sama-sama 0.00 sementara titipan
+                // anggota sesungguhnya sudah dimakan potongan pelunasan.
+                'credit_in_settlement' => $creditInSettlement,
+                'session_key' => $installment->session_key,
+            ]])
+            ->log("Pembatalan angsuran {$installment->installment_number}");
+
+        return $reversal;
     }
 
     /**
@@ -608,33 +650,35 @@ class LoanPaymentService
      */
     private function assertOverpaymentCreditNotNegative(Loan $loan, ?int $causerId): void
     {
-        $credit = $loan->overpaymentCredit();
+        // Yang dipakai saldo NET-OF-SETTLEMENT, bukan `overpaymentCredit()` polos:
+        // titipan yang dimakan Pelunasan Dipercepat tidak muncul di saldo polos,
+        // sehingga guard ini buta persis pada transaksi terbesarnya. Lihat
+        // Loan::overpaymentCreditNetOfSettlement().
+        $credit = $loan->overpaymentCreditNetOfSettlement();
 
         if (bccomp($credit, '0', self::SCALE) >= 0) {
             return;
         }
 
+        // Baris pelunasan ikut dicari, dan didahulukan: bila ia yang menahan
+        // titipan, dialah yang harus dibatalkan lebih dulu — menyebut angsuran
+        // biasa di pesan hanya mengirim petugas ke jalan buntu.
         $blocker = Installment::query()
             ->where('loan_id', $loan->id)
             ->where('is_reversal', false)
-            ->where('is_settlement', false)
             ->where('credit_applied', '>', 0)
             ->whereDoesntHave('reversal')
+            ->orderByDesc('is_settlement')
             ->orderByDesc('installment_seq')
             ->first();
 
-        activity()
-            ->performedOn($loan)
-            ->causedBy($causerId)
-            ->event('pembatalan_ditolak')
-            ->withProperties(['attributes' => [
+        throw CannotReverseTransaction::overpaymentCreditSpent($blocker?->installment_number)
+            ->withAuditPayload([
                 'loan_id' => $loan->id,
                 'credit_after' => $credit,
+                'credit_in_settlement' => $loan->settlementCreditApplied(),
                 'blocking_installment' => $blocker?->installment_number,
-            ]])
-            ->log('Pembatalan angsuran ditolak — Titipan Pokok sudah terpakai');
-
-        throw CannotReverseTransaction::overpaymentCreditSpent($blocker?->installment_number);
+            ]);
     }
 
     /**

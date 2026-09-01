@@ -6,6 +6,29 @@ use RuntimeException;
 
 class CannotReverseTransaction extends RuntimeException
 {
+    /**
+     * Payload jejak audit yang harus tetap tercatat WALAU transaksinya di-rollback.
+     *
+     * Penolakan pembatalan terdeteksi di dalam `DB::transaction()`, dan lemparan
+     * ini me-rollback semuanya — termasuk baris `activity_log` yang ditulis di
+     * sana. Jadi jejak "pembatalan ditolak" yang dicatat di titik deteksi tak
+     * pernah benar-benar ada; padahal justru itu peristiwa yang paling perlu
+     * terlihat, karena bentuknya sama persis dengan percobaan menarik kembali
+     * uang yang sudah terpakai. Angkanya dititipkan di sini lalu ditulis
+     * pemanggil setelah rollback.
+     *
+     * @var array<string, mixed>|null
+     */
+    public ?array $auditPayload = null;
+
+    /** @param  array<string, mixed>  $payload */
+    public function withAuditPayload(array $payload): self
+    {
+        $this->auditPayload = $payload;
+
+        return $this;
+    }
+
     public static function alreadyReversed(): self
     {
         return new self('Transaksi sudah pernah di-reversal.');

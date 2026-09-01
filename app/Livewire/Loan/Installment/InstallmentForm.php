@@ -16,6 +16,7 @@ use App\Services\SavingsBalanceService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -41,12 +42,24 @@ class InstallmentForm extends Component
     /** Toggle pelunasan dipercepat (ADR 2026-07-22) — lunasi seluruh sisa sekaligus. */
     public bool $settle_early = false;
 
-    /** Mode alokasi kelebihan bayar (ADR 2026-08-28) — bawaan Titipan Pokok. */
+    /**
+     * Mode alokasi kelebihan bayar (ADR 2026-08-28) — bawaan Titipan Pokok.
+     *
+     * `#[Locked]` bersama {@see $modeConfirmed}: keduanya HANYA boleh bergerak
+     * lewat `chooseMode()`, jalur yang menampilkan akibat kedua pilihan dalam
+     * rupiah lebih dulu. Sebagai properti publik biasa, klien tinggal mengirim
+     * `modeConfirmed = true` untuk melewati dialog dan langsung menutup beberapa
+     * angsuran sekaligus — dialog itu adalah SATU-SATUNYA tempat anggota
+     * diperlihatkan bahwa uangnya menutup lebih dari satu bulan, jadi
+     * melewatinya berarti keputusan berakibat-uang diambil tanpa dia tahu.
+     */
+    #[Locked]
     public string $mode = LoanPaymentService::MODE_TITIPAN;
 
     public bool $showAllocationDialog = false;
 
     /** Petugas sudah memilih mode untuk nominal ini. */
+    #[Locked]
     public bool $modeConfirmed = false;
 
     public function mount(): void
