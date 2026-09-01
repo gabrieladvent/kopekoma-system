@@ -163,12 +163,20 @@ class LoanPaymentService
                 $this->closeLoanWithRemainingCredit($loan, $installment, $causerId);
             }
 
+            // Payload dibungkus `attributes` DENGAN SENGAJA (R22): panel audit
+            // Livewire maupun ActivityResource hanya merender `properties.attributes`
+            // dan `properties.old`. Properti datar tersimpan rapi di database lalu
+            // tak pernah terlihat siapa pun — dan jejak log adalah salah satu dari
+            // tiga kanal pendeteksian yang jadi syarat diterimanya R14.
+            $exhausted = bccomp($plan['credit_before'], '0', self::SCALE) > 0
+                && bccomp($plan['credit_after'], '0', self::SCALE) === 0;
+
             foreach ($installments as $created) {
                 activity()
                     ->performedOn($created)
                     ->causedBy($causerId)
                     ->event('angsuran')
-                    ->withProperties([
+                    ->withProperties(['attributes' => [
                         'loan_id' => $loan->id,
                         'amount_paid' => $created->amount_paid,
                         'seq' => $created->installment_seq,
@@ -177,7 +185,11 @@ class LoanPaymentService
                         'session_key' => $sessionKey,
                         'credit_before' => $plan['credit_before'],
                         'credit_after' => $plan['credit_after'],
-                    ])
+                        'schedules_closed' => count($plan['rows']),
+                        // "Titipan habis" ditandai pada setoran yang menghabiskannya,
+                        // bukan lewat event terpisah (ADR §Jejak log).
+                        'credit_exhausted' => $exhausted,
+                    ]])
                     ->log("Pembayaran angsuran {$created->installment_number}");
             }
 
@@ -464,15 +476,17 @@ class LoanPaymentService
                 ->performedOn($installment)
                 ->causedBy($causerId)
                 ->event('pelunasan_dipercepat')
-                ->withProperties([
+                ->withProperties(['attributes' => [
                     'loan_id' => $loan->id,
                     'amount_paid' => $amountPaid,
                     'settled_principal' => $settledPrincipal,
                     'interest_charged' => $interestCharged,
                     'interest_waived' => $interestWaived,
+                    'credit_applied' => $creditApplied,
+                    'credit_leftover_to_sukarela' => $creditLeftover,
                     'excess_to_sukarela' => bccomp($excess, '0', self::SCALE) > 0 ? $excess : '0.00',
                     'schedules_closed' => $unpaid->count(),
-                ])
+                ]])
                 ->log("Pelunasan dipercepat pinjaman {$loan->loan_number}");
 
             return $installment;
@@ -488,10 +502,15 @@ class LoanPaymentService
         $causerId ??= auth()->id();
 
         return DB::transaction(function () use ($installment, $reason, $causerId): Installment {
-            $reversal = ($this->reverse)($installment, $reason, $causerId);
-
             /** @var Loan $loan */
             $loan = Loan::query()->lockForUpdate()->findOrFail($installment->loan_id);
+
+            // Dibaca SEBELUM baris pembalik dibuat — sesudahnya ini sudah saldo
+            // "setelah", bukan "sebelum". Pinjaman berstatus Lunas memang menjawab
+            // 0.00, dan itu benar: sisanya sudah dilimpahkan ke Sukarela.
+            $creditBefore = $loan->overpaymentCredit();
+
+            $reversal = ($this->reverse)($installment, $reason, $causerId);
 
             if ($installment->is_settlement) {
                 $normallyPaidScheduleIds = Installment::query()
@@ -529,6 +548,20 @@ class LoanPaymentService
             // akhir: `overpaymentCredit()` menjawab 0.00 selama status masih Lunas,
             // jadi dijalankan sebelum pemulihan status di atas ia akan buta.
             $this->assertOverpaymentCreditNotNegative($loan, $causerId);
+
+            activity()
+                ->performedOn($reversal)
+                ->causedBy($causerId)
+                ->event('pembatalan_angsuran')
+                ->withProperties(['attributes' => [
+                    'loan_id' => $loan->id,
+                    'reversed_installment' => $installment->installment_number,
+                    'amount_paid' => $installment->amount_paid,
+                    'credit_before' => $creditBefore,
+                    'credit_after' => $loan->overpaymentCredit(),
+                    'session_key' => $installment->session_key,
+                ]])
+                ->log("Pembatalan angsuran {$installment->installment_number}");
 
             return $reversal;
         });
@@ -570,11 +603,11 @@ class LoanPaymentService
             ->performedOn($loan)
             ->causedBy($causerId)
             ->event('pembatalan_ditolak')
-            ->withProperties([
+            ->withProperties(['attributes' => [
                 'loan_id' => $loan->id,
                 'credit_after' => $credit,
                 'blocking_installment' => $blocker?->installment_number,
-            ])
+            ]])
             ->log('Pembatalan angsuran ditolak — Titipan Pokok sudah terpakai');
 
         throw CannotReverseTransaction::overpaymentCreditSpent($blocker?->installment_number);
@@ -605,11 +638,11 @@ class LoanPaymentService
             ->performedOn($deposit)
             ->causedBy($causerId)
             ->event('kelebihan_bayar')
-            ->withProperties([
+            ->withProperties(['attributes' => [
                 'installment_number' => $installment->installment_number,
                 'loan_id' => $loan->id,
                 'amount' => $excess,
-            ])
+            ]])
             ->log("Pengalihan kelebihan dana angsuran {$installment->installment_number} ke Simpanan Sukarela");
     }
 

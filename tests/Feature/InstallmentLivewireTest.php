@@ -219,3 +219,53 @@ it('labels and formats the titipan pokok columns in the audit trail', function (
         ->assertDontSee('credit_applied')
         ->assertDontSee('session_key');
 });
+
+/**
+ * Item 1m + R22 — properti event kustom HARUS ikut terender. Panel audit dan
+ * ActivityResource sama-sama hanya membaca `properties.attributes`, jadi payload
+ * datar tersimpan rapi di database lalu tak pernah terlihat siapa pun. Jejak log
+ * adalah salah satu dari tiga kanal pendeteksian atas R14 — kalau tak tampil,
+ * kanal itu hanya ada di atas kertas.
+ */
+it('renders the custom angsuran event payload in the audit trail', function () {
+    $inst = app(LoanPaymentService::class)->pay(
+        $this->schedule,
+        ['amount_paid' => 1190000, 'mode' => LoanPaymentService::MODE_TUTUP_SEKALIAN],
+        auth()->id(),
+    );
+
+    $event = Activity::query()
+        ->where('subject_id', $inst->id)
+        ->where('event', 'angsuran')
+        ->firstOrFail();
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $inst])
+        ->call('viewAudit', $event->id)
+        ->assertSee('Mode Alokasi')
+        ->assertSee('Tutup angsuran berikutnya sekalian')
+        ->assertSee('Titipan Pokok sebelum')
+        ->assertSee('Titipan Pokok sesudah')
+        ->assertSee('Angsuran ditutup')
+        ->assertSee('Kunci Sesi')
+        ->assertDontSee('credit_before')
+        ->assertDontSee('schedules_closed');
+});
+
+it('logs the titipan balance around a reversal', function () {
+    $service = app(LoanPaymentService::class);
+
+    $inst = $service->pay($this->schedule, ['amount_paid' => 1190000], auth()->id());
+    $reversal = $service->reverse($inst, 'salah input nominal', auth()->id());
+
+    $event = Activity::query()
+        ->where('subject_id', $reversal->id)
+        ->where('event', 'pembatalan_angsuran')
+        ->firstOrFail();
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $reversal])
+        ->call('viewAudit', $event->id)
+        ->assertSee('Angsuran dibatalkan')
+        ->assertSee($inst->installment_number)
+        ->assertSee('Titipan Pokok sebelum')
+        ->assertSee('Titipan Pokok sesudah');
+});

@@ -102,6 +102,10 @@ class InstallmentDetail extends Component
             'credit_after' => 'Titipan Pokok sesudah',
             'session_key' => 'Kunci Sesi',
             'blocking_installment' => 'Angsuran penghalang',
+            'schedules_closed' => 'Angsuran ditutup',
+            'credit_exhausted' => 'Titipan Pokok habis',
+            'credit_leftover_to_sukarela' => 'Sisa titipan ke Sukarela',
+            'reversed_installment' => 'Angsuran dibatalkan',
             // `pay()` menulis properti `seq`, bukan `installment_seq`.
             'seq' => 'Angsuran ke',
         ][$key] ?? $this->defaultAuditFieldLabel($key);
@@ -116,7 +120,9 @@ class InstallmentDetail extends Component
         return match ($key) {
             'principal_paid', 'interest_paid', 'time_deposit_saved',
             'amount_paid', 'remaining_principal',
-            'credit_applied', 'credit_before', 'credit_after' => 'Rp '.number_format((float) $value, 0, ',', '.'),
+            'credit_applied', 'credit_before', 'credit_after',
+            'credit_leftover_to_sukarela' => 'Rp '.number_format((float) $value, 0, ',', '.'),
+            'credit_exhausted' => $value ? 'Ya' : 'Tidak',
             'payment_method' => Resource::PAYMENT_METHODS[$value] ?? (string) $value,
             'mode' => LoanPaymentService::MODE_LABELS[$value] ?? (string) $value,
             default => $this->defaultFormatAuditFieldValue($key, $value),

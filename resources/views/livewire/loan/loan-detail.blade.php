@@ -311,6 +311,82 @@
             </x-ui.card>
         </div>
 
+        {{-- Riwayat Titipan Pokok (ADR 2026-08-28 item 2e). Kanal utama pengurus
+             untuk menjawab: kapan titipan masuk, kapan dipotong dan berapa, kapan
+             habis. Disembunyikan bila pinjaman ini memang tak pernah bertitipan. --}}
+        @if (count($creditHistory) > 0 || bccomp($creditBalance, '0', 2) !== 0)
+            <div>
+                <x-ui.card class="p-0">
+                    <div class="border-b border-border p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5">
+                                <span class="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+                                    <x-ui.icon name="wallet" class="h-4 w-4" />
+                                </span>
+                                <h3 class="text-sm font-semibold text-text">Riwayat Titipan Pokok</h3>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-muted">Saldo</div>
+                                <div class="text-base font-semibold tabular-nums text-text">Rp
+                                    {{ number_format((float) $creditBalance, 0, ',', '.') }}</div>
+                            </div>
+                        </div>
+                        <p class="mt-3 text-xs text-muted">
+                            Titipan Pokok memotong <strong>pokok</strong> angsuran berikutnya. Jasa dan Tabungan
+                            Berjangka tetap tertagih, jumlah angsuran tidak berubah.
+                        </p>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="border-b border-border bg-bg/50 text-xs uppercase tracking-wide text-muted">
+                                <tr>
+                                    <th class="px-5 py-2.5 text-left font-medium">Tanggal</th>
+                                    <th class="px-5 py-2.5 text-left font-medium">Transaksi</th>
+                                    <th class="px-5 py-2.5 text-right font-medium">Masuk</th>
+                                    <th class="px-5 py-2.5 text-right font-medium">Dipakai</th>
+                                    <th class="px-5 py-2.5 text-right font-medium">Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border">
+                                @forelse ($creditHistory as $row)
+                                    <tr class="transition hover:bg-bg/50">
+                                        <td class="px-5 py-2.5 whitespace-nowrap text-muted">{{ $row['date'] ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-2.5 whitespace-nowrap">
+                                            <span class="font-medium text-text">{{ $row['number'] }}</span>
+                                            @if ($row['reversal'])
+                                                <span class="ml-1.5 text-xs text-danger">pembatalan</span>
+                                            @endif
+                                            @if ($row['note'])
+                                                <div class="text-xs text-muted">{{ $row['note'] }}</div>
+                                            @endif
+                                        </td>
+                                        <td class="px-5 py-2.5 text-right tabular-nums text-text">
+                                            {{ bccomp($row['in'], '0', 2) > 0 ? number_format((float) $row['in'], 0, ',', '.') : '—' }}
+                                        </td>
+                                        <td class="px-5 py-2.5 text-right tabular-nums text-text">
+                                            {{ bccomp($row['used'], '0', 2) > 0 ? number_format((float) $row['used'], 0, ',', '.') : '—' }}
+                                        </td>
+                                        <td
+                                            class="px-5 py-2.5 text-right font-medium tabular-nums {{ bccomp($row['balance'], '0', 2) === 0 ? 'text-muted' : 'text-text' }}">
+                                            {{ number_format((float) $row['balance'], 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="px-5 py-6 text-center text-sm text-muted">
+                                            Belum ada pergerakan Titipan Pokok.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </x-ui.card>
+            </div>
+        @endif
+
         {{-- Audit Trail --}}
         <div>
             <x-ui.card>
