@@ -10,6 +10,7 @@ use App\Models\Member;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use App\Services\BatchInstallmentPaymentService;
+use App\Services\LoanPaymentService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -227,4 +228,75 @@ it('fail-closed: skips a schedule belonging to a member of another OPD (per-OPD 
 it('rejects an empty batch', function () {
     expect(fn () => $this->service->run($this->agency, '2026-06-01', [], $this->user->id))
         ->toThrow(InvalidArgumentException::class);
+});
+
+/**
+ * Item 3n (ADR 2026-08-28) — REGRESI BATCH. ADR menyatakan jalur potong gaji
+ * "tidak disentuh sama sekali" dan `Δtitipan = 0` karena payroll selalu memotong
+ * tepat sebesar tagihan KONTRAK. Klaim itu diuji di sini, bukan sekadar ditulis.
+ */
+it('does not move the titipan at all on a payroll batch', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 3);
+    $loan->update(['principal_amount' => 3000000, 'term_months' => 3]);
+
+    // Titipan 990.000 dari kelebihan bayar manual bulan sebelumnya.
+    app(LoanPaymentService::class)->pay($schedules[0], ['amount_paid' => 2080000], $this->user->id);
+
+    $before = $loan->fresh()->overpaymentCredit();
+
+    $result = $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[1]->id, 'loan_id' => $loan->id, 'amount_paid' => '1090000'],
+    ], $this->user->id);
+
+    $row = Installment::where('schedule_id', $schedules[1]->id)->firstOrFail();
+
+    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+        ->and($before)->toBe('990000.00')
+        // Δ = uang diterima − tagihan kontrak = 0. Titipan tidak bergerak.
+        ->and($loan->fresh()->overpaymentCredit())->toBe('990000.00')
+        ->and($row->amount_paid)->toBe('1090000.00')
+        ->and($row->credit_applied)->toBe('0.00');
+});
+
+/**
+ * R23 — penjaga Pelunasan Dipercepat TIDAK boleh menyala di jalur potong gaji.
+ *
+ * Bila menyala, `pay()` melempar dan batch menelannya diam-diam lewat
+ * `catch (CannotProcessPayment) { $skipped++; }`: gaji anggota sudah terpotong
+ * tapi angsurannya tak pernah tercatat. Kondisi pemicunya sempit tapi nyata —
+ * titipan cukup besar + dua angsuran tersisa membuat jumlah pelunasan turun di
+ * bawah tagihan kontrak satu bulan.
+ */
+it('never silently drops a payroll deduction because of the settlement guard', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 3);
+    $loan->update(['principal_amount' => 3000000, 'term_months' => 3]);
+
+    app(LoanPaymentService::class)->pay($schedules[0], ['amount_paid' => 2080000], $this->user->id);
+
+    // Jumlah pelunasan (1.088.000) kini DI BAWAH tagihan kontrak (1.090.000).
+    expect($loan->fresh()->payoffAmount())->toBe('1088000.00');
+
+    $result = $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[1]->id, 'loan_id' => $loan->id, 'amount_paid' => '1090000'],
+    ], $this->user->id);
+
+    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+        ->and(Installment::where('schedule_id', $schedules[1]->id)->exists())->toBeTrue()
+        // Tetap angsuran biasa — BUKAN dibelokkan jadi pelunasan.
+        ->and(Installment::where('loan_id', $loan->id)->where('is_settlement', true)->exists())->toBeFalse();
+});
+
+it('behaves exactly as before for a loan that never had titipan', function () {
+    [$loan, $schedules] = loanWithSchedules($this->agency->id, count: 3);
+    $loan->update(['principal_amount' => 3000000, 'term_months' => 3]);
+
+    $result = $this->service->run($this->agency, '2026-06-01', [
+        ['schedule_id' => $schedules[0]->id, 'loan_id' => $loan->id, 'amount_paid' => '1090000'],
+    ], $this->user->id);
+
+    $row = Installment::where('schedule_id', $schedules[0]->id)->firstOrFail();
+
+    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+        ->and($row->amount_paid)->toBe('1090000.00')
+        ->and($loan->fresh()->overpaymentCredit())->toBe('0.00');
 });

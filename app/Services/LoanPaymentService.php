@@ -47,7 +47,7 @@ class LoanPaymentService
      * dicari lewat `session_key`, bukan lewat nilai kembalian, agar kontrak lama
      * pemanggil tidak berubah.
      *
-     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string, expected_credit?:string|int|float|null}  $input
+     * @param  array{amount_paid:string|int|float, payment_method?:string, payment_date?:string, idempotency_key?:string, mode?:string, expected_credit?:string|int|float|null, redirect_to_settlement?:bool}  $input
      */
     public function pay(
         InstallmentSchedule $schedule,
@@ -94,7 +94,13 @@ class LoanPaymentService
             // Livewire maupun pratinjau dialog tidak dipercaya. Di sinilah lantai
             // `belowBill()` (kini bertumpu tagihan EFEKTIF), penjaga Pelunasan
             // Dipercepat, dan penolakan jadwal basi ditegakkan.
-            $plan = $this->allocate($loan, $schedule, $amountPaid, $input['mode'] ?? self::MODE_TITIPAN);
+            $plan = $this->allocate(
+                $loan,
+                $schedule,
+                $amountPaid,
+                $input['mode'] ?? self::MODE_TITIPAN,
+                $input['redirect_to_settlement'] ?? true,
+            );
 
             // Pratinjau basi (item 1f): petugas membuka form, pembayaran lain masuk,
             // petugas menyimpan — akibat yang dikonfirmasi di dialog tak lagi berlaku.
@@ -251,6 +257,11 @@ class LoanPaymentService
      *      Pelunasan Dipercepat. Berjalan PALING AWAL, mengalahkan bawaan maupun
      *      pilihan petugas: diproses diam-diam sebagai tutup-sekalian, anggota
      *      membayar jasa berlebih tanpa ada yang sadar.
+     *
+     *      `$redirectToSettlement = false` MEMATIKAN langkah ini, dan hanya jalur
+     *      potong gaji yang boleh memakainya — lihat R23. Penjaga ini melindungi
+     *      anggota yang menyerahkan uang sekaligus di loket; di payroll nominalnya
+     *      angka kontrak yang ditetapkan bendahara, bukan pilihan siapa pun.
      *   2. Tutup angsuran berjalan.
      *   3. Mode `titipan` (bawaan) → seluruh sisa jadi Titipan Pokok.
      *      Mode `tutup_sekalian` → ulangi (2) selama sisa uang ≥ tagihan efektif
@@ -269,6 +280,7 @@ class LoanPaymentService
         InstallmentSchedule $start,
         string|int|float $amount,
         string $mode = self::MODE_TITIPAN,
+        bool $redirectToSettlement = true,
     ): array {
         if (! in_array($mode, [self::MODE_TITIPAN, self::MODE_TUTUP_SEKALIAN], true)) {
             throw new \InvalidArgumentException("Mode alokasi tidak dikenal: {$mode}.");
@@ -305,7 +317,7 @@ class LoanPaymentService
         // dibebaskan nol — sementara barisnya jadi `is_settlement` sehingga
         // angsuran terakhir berhenti mengakru Tabungan Berjangka anggota. Juga
         // dilewati untuk sebrakan, yang memang tidak bisa dilunasi dipercepat.
-        if ($loan->loan_type === 'jangka_panjang' && $unpaid->count() >= 2) {
+        if ($redirectToSettlement && $loan->loan_type === 'jangka_panjang' && $unpaid->count() >= 2) {
             $payoff = $loan->payoffAmount();
 
             if (bccomp($amount, $payoff, self::SCALE) >= 0) {
