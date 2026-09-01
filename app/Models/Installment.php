@@ -209,6 +209,15 @@ class Installment extends Model implements HasMedia, Reversible
             // load-bearing untuk hasActiveSettlement()/settledPrincipal()/
             // signedTimeDeposit yang net-aware — tanpa ini, reverse tak pulih benar.
             'is_settlement' => $this->is_settlement,
+            // Kelas bug yang sama (ADR 2026-08-28 item 1k): `credit_applied` adalah
+            // penanda "baris milik fitur Titipan Pokok", dan Loan::overpaymentCredit()
+            // hanya menghitung baris ber-penanda. Baris-lawan ber-NULL tersaring
+            // keluar, sehingga pembatalan TIDAK memulihkan saldo titipan — uang
+            // anggota tertinggal di layar sebagai titipan yang tak pernah ada.
+            'credit_applied' => $this->credit_applied,
+            // Penanda sesi ikut agar layar pembatalan tetap bisa menampilkan
+            // keterkaitan ("satu setoran bersama ANG-…") pada baris-lawan.
+            'session_key' => $this->session_key,
         ];
     }
 }

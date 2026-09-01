@@ -7,12 +7,13 @@ use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\SavingsDeposit;
 use App\Models\User;
 use App\Services\LoanPaymentService;
 
 /**
- * Helper Titipan Pokok di model Loan (ADR 2026-08-28) — item 1a (saldo turunan)
- * dan 1b (tagihan efektif).
+ * Helper Titipan Pokok di model Loan (ADR 2026-08-28) — item 1a (saldo turunan),
+ * 1b (tagihan efektif), 1c dan 1i (jumlah pelunasan).
  *
  * 1a: patokannya tagihan KONTRAK, bukan efektif — memakai efektif membuat saldo
  * membengkak tiap bulan (kekeliruan v2). Plus pemulihan otomatis setelah
@@ -21,7 +22,11 @@ use App\Services\LoanPaymentService;
  * 1b: titipan hanya memotong POKOK, dibatasi `principal_due` — batas itulah yang
  * menjaga jasa tetap tertagih dan akrual Tabungan Berjangka tetap utuh.
  *
- * Belum ada perilaku baru di jalur pembayaran — LoanPaymentService masih utuh.
+ * 1c/1i: potongan pada pelunasan dibatasi sisa pokok, dan sisa titipan yang tak
+ * terpakai dilimpahkan ke Sukarela — tidak hangus saat status jadi Lunas.
+ *
+ * Sebagian besar berkas ini memakai baris angsuran buatan factory, bukan `pay()`,
+ * supaya rumusnya teruji terpisah dari jalur pembayaran.
  */
 
 /** Pinjaman 5.000.000 / 5 bulan; tagihan kontrak 1.050.000 (1.000.000 + 40.000 + 10.000). */
@@ -374,4 +379,60 @@ it('lets settleEarly accept exactly the titipan-reduced payoff', function () {
 
     expect($settlement->is_settlement)->toBeTrue()
         ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas);
+});
+
+/**
+ * Item 1i / 3i — jejak audit tak boleh putus justru di transaksi terbesar, dan
+ * titipannya tidak boleh tertagih dua kali: sudah dipotong dari payoff, jadi
+ * `credit_applied` hanya MENCATAT potongan yang sama, bukan menambah tagihan.
+ */
+it('writes credit_applied on the settlement row', function () {
+    $loan = titipanLoan();
+
+    collect(range(1, 5))->each(fn (int $seq) => jadwal($loan, $seq));
+
+    setor($loan, 1, 2100000); // titipan 1.050.000
+    $loan->schedules()->where('installment_seq', 1)
+        ->update(['status' => InstallmentScheduleStatus::Terbayar]);
+
+    $payoff = $loan->payoffAmount();
+    $settlement = app(LoanPaymentService::class)
+        ->settleEarly($loan, ['amount_paid' => $payoff], User::factory()->create()->id);
+
+    expect($payoff)->toBe('2990000.00')
+        ->and($settlement->credit_applied)->toBe('1050000.00')
+        ->and($settlement->amount_paid)->toBe('2990000.00');
+
+    // 4.040.000 kontraktual − 1.050.000 titipan = 2.990.000. Tak ada tagihan ganda.
+    expect(bcadd($settlement->amount_paid, $settlement->credit_applied, 2))->toBe('4040000.00');
+});
+
+/**
+ * Titipan yang melebihi sisa pokok tidak terpakai seluruhnya oleh pelunasan —
+ * sisanya WAJIB dilimpahkan ke Sukarela, bukan hangus saat status jadi Lunas.
+ */
+it('moves the unused titipan to sukarela when settling early', function () {
+    $loan = titipanLoan();
+
+    collect(range(1, 5))->each(fn (int $seq) => jadwal($loan, $seq));
+
+    // Titipan 5.250.000, sisa pokok 4.000.000 → 1.250.000 tak terpakai.
+    setor($loan, 1, 6300000);
+    $loan->schedules()->where('installment_seq', 1)
+        ->update(['status' => InstallmentScheduleStatus::Terbayar]);
+
+    expect($loan->payoffAmount())->toBe('40000.00')
+        ->and($loan->payoffCreditApplied())->toBe('4000000.00');
+
+    $settlement = app(LoanPaymentService::class)
+        ->settleEarly($loan, ['amount_paid' => '40000'], User::factory()->create()->id);
+
+    $deposit = SavingsDeposit::where('member_id', $loan->member_id)
+        ->where('savings_type', 'sukarela')->first();
+
+    expect($settlement->credit_applied)->toBe('4000000.00')
+        ->and($deposit)->not->toBeNull()
+        ->and($deposit->amount)->toBe('1250000.00')
+        ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas)
+        ->and($loan->fresh()->overpaymentCredit())->toBe('0.00');
 });

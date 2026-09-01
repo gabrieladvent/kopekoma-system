@@ -21,13 +21,21 @@ beforeEach(function () {
     $this->balances = app(SavingsBalanceService::class);
 });
 
-/** Pinjaman jangka panjang 1.000.000 dengan N jadwal identik (konstan). */
+/**
+ * Pinjaman jangka panjang dengan N jadwal identik, pokok 1.000.000 per bulan.
+ *
+ * `principal_amount` WAJIB `1.000.000 × N`, sama seperti yang dihasilkan
+ * `buildSchedule()`. Versi lama mematoknya 1.000.000 apa pun jumlah jadwalnya,
+ * sehingga satu angsuran seakan melunasi seluruh pokok padahal jadwalnya masih
+ * tersisa — mustahil di data nyata, dan membuat penjaga Pelunasan Dipercepat
+ * menyala pada pembayaran biasa (ADR 2026-08-28 item 1d).
+ */
 function makeLoan(string $memberId, int $schedules = 1, float $swp = 10000, string $disbursementMethod = 'tunai'): array
 {
     $loan = Loan::factory()->create([
         'member_id' => $memberId,
         'loan_type' => 'jangka_panjang',
-        'principal_amount' => 1000000,
+        'principal_amount' => 1000000 * $schedules,
         'swp_amount' => $swp,
         'term_months' => $schedules,
         'monthly_principal' => 1000000,
@@ -59,7 +67,7 @@ it('records a payment, marks the schedule paid, and computes remaining principal
     $inst = $this->service->pay($rows[0], billPayment(), $this->user->id);
 
     expect($inst->amount_paid)->toBe('1007500.00')
-        ->and($loan->fresh()->remainingPrincipal())->toBe('0.00')
+        ->and($loan->fresh()->remainingPrincipal())->toBe('1000000.00')
         ->and($rows[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and($loan->fresh()->status)->toBe(LoanStatus::Cair); // belum semua terbayar
 });
@@ -90,30 +98,54 @@ it('records overpayment as "Lain-lain" without inflating tabungan berjangka or p
     expect($tab->amount)->toBe('1000.00');
 });
 
-it('credits installment overpayment to the member sukarela savings', function () {
+/**
+ * Item 3a (ADR 2026-08-28) — ditulis ulang. Perilaku LAMA: setiap kelebihan bayar
+ * langsung dikreditkan ke Simpanan Sukarela. Perilaku BARU: kelebihan mengendap
+ * sebagai Titipan Pokok dan memotong pokok angsuran berikutnya.
+ */
+it('keeps an installment overpayment as titipan instead of crediting sukarela', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
 
-    // tagihan 1.007.500; bayar 1.107.500 → kelebihan 100.000 → Simpanan Sukarela
+    // tagihan 1.007.500; bayar 1.107.500 → kelebihan 100.000 jadi Titipan Pokok.
+    $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
+    expect($loan->fresh()->overpaymentCredit())->toBe('100000.00')
+        ->and($this->balances->balanceByType($this->member, 'sukarela'))->toBe('0.00')
+        ->and(SavingsDeposit::where('member_id', $this->member->id)
+            ->where('savings_type', 'sukarela')->exists())->toBeFalse();
+});
+
+it('bills the next installment net of the titipan', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
+
+    $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
+    // Tagihan efektif #2 = 1.007.500 − min(100.000, pokok 1.000.000) = 907.500.
+    expect($loan->fresh()->effectiveBill($rows[1]->fresh()))->toBe('907500.00');
+
+    $inst = $this->service->pay($rows[1], ['amount_paid' => 907500], $this->user->id);
+
+    expect($inst->credit_applied)->toBe('100000.00')
+        ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas);
+});
+
+/**
+ * Item 1h — sisa titipan tidak hangus saat pinjaman ditutup; ia dilimpahkan ke
+ * Sukarela dan ditautkan ke angsuran penutup. Invariant: Lunas ⇒ titipan 0.
+ */
+it('moves the leftover titipan to sukarela when the loan closes', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
+
     $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
 
     $deposit = SavingsDeposit::where('member_id', $this->member->id)
         ->where('savings_type', 'sukarela')->first();
 
-    expect($deposit)->not->toBeNull()
+    expect($loan->fresh()->status)->toBe(LoanStatus::Lunas)
+        ->and($deposit)->not->toBeNull()
         ->and($deposit->amount)->toBe('100000.00')
-        ->and($this->balances->balanceByType($this->member, 'sukarela'))->toBe('100000.00');
-});
-
-it('logs the sukarela credit of an installment overpayment', function () {
-    [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
-    $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
-
-    $deposit = SavingsDeposit::where('member_id', $this->member->id)->where('savings_type', 'sukarela')->first();
-
-    // Log eksplisit kelebihan_bayar + auto-log pembuatan deposit (LogsActivity).
-    expect(Activity::where('event', 'kelebihan_bayar')->exists())->toBeTrue()
-        ->and(Activity::where('subject_type', $deposit->getMorphClass())
-            ->where('subject_id', $deposit->id)->exists())->toBeTrue();
+        ->and($loan->fresh()->overpaymentCredit())->toBe('0.00')
+        ->and(Activity::where('event', 'kelebihan_bayar')->exists())->toBeTrue();
 });
 
 it('does not create a sukarela deposit when payment equals the bill exactly', function () {
@@ -124,9 +156,24 @@ it('does not create a sukarela deposit when payment equals the bill exactly', fu
     expect(SavingsDeposit::where('member_id', $this->member->id)->where('savings_type', 'sukarela')->exists())->toBeFalse();
 });
 
-it('reverses the sukarela overpayment deposit when the installment is reversed', function () {
+/** Ditulis ulang (3a): tak ada lagi deposit Sukarela di tengah masa pinjaman. */
+it('gives the titipan back when the overpaying installment is reversed', function () {
     [$loan, $rows] = makeLoan($this->member->id, schedules: 2, swp: 10000);
     $inst = $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
+    expect($loan->fresh()->overpaymentCredit())->toBe('100000.00');
+
+    $this->service->reverse($inst, 'salah input nominal', $this->user->id);
+
+    expect($loan->fresh()->overpaymentCredit())->toBe('0.00')
+        ->and($this->balances->balanceByType($this->member, 'sukarela'))->toBe('0.00');
+});
+
+/** Pelimpahan saat lunas tetap ikut terbalik — mesinnya sudah ada sejak dulu. */
+it('reverses the closing sukarela transfer when the final installment is reversed', function () {
+    [$loan, $rows] = makeLoan($this->member->id, schedules: 1, swp: 10000);
+    $inst = $this->service->pay($rows[0], ['amount_paid' => 1107500], $this->user->id);
+
     expect($this->balances->balanceByType($this->member, 'sukarela'))->toBe('100000.00');
 
     $this->service->reverse($inst, 'salah input nominal', $this->user->id);

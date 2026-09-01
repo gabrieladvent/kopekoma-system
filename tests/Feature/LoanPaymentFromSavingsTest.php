@@ -28,13 +28,20 @@ use Spatie\Permission\Models\Permission;
  * consent WAJIB, tepat-tagihan, canWithdraw, debit berpasangan ber-atribusi.
  */
 
-/** Pinjaman jangka panjang + N jadwal identik (tagihan 1.007.500/jadwal). */
+/**
+ * Pinjaman jangka panjang + N jadwal identik (tagihan 1.007.500/jadwal).
+ *
+ * `principal_amount` = `1.000.000 × N` seperti hasil `buildSchedule()`. Versi
+ * lama mematoknya 1.000.000 apa pun N-nya, sehingga sisa pokok pinjaman lebih
+ * kecil daripada tagihan satu jadwal — mustahil di data nyata, dan menyalakan
+ * penjaga Pelunasan Dipercepat pada pembayaran biasa (ADR 2026-08-28 item 1d).
+ */
 function savingsTestLoan(string $memberId, int $schedules = 1, float $swp = 10000): array
 {
     $loan = Loan::factory()->create([
         'member_id' => $memberId,
         'loan_type' => 'jangka_panjang',
-        'principal_amount' => 1000000,
+        'principal_amount' => 1000000 * $schedules,
         'swp_amount' => $swp,
         'term_months' => $schedules,
         'monthly_principal' => 1000000,
