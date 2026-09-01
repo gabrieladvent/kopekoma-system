@@ -3,12 +3,29 @@
 namespace App\Filament\Widgets;
 
 use App\Models\InstallmentSchedule;
+use App\Services\LoanArrearsService;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
 
 class OverdueInstallmentsTable extends TableWidget
 {
+    /**
+     * Memo per-request. Tanpa ini `effectiveBills()` dihitung ulang untuk SETIAP
+     * baris, dan tiap hitungan menyentuh saldo titipan tiap pinjaman — tabel
+     * 10 baris jadi puluhan query.
+     *
+     * @var array<int|string, string>|null
+     */
+    private ?array $effectiveBillsMemo = null;
+
+    /** @return array<int|string, string> */
+    private function effectiveBills(Table $table): array
+    {
+        return $this->effectiveBillsMemo ??= app(LoanArrearsService::class)
+            ->effectiveBills($table->getRecords());
+    }
+
     protected static ?string $heading = 'Tunggakan Angsuran Terbaru';
 
     protected static ?int $sort = 3;
@@ -49,8 +66,13 @@ class OverdueInstallmentsTable extends TableWidget
                     ->state(fn (InstallmentSchedule $record): string => $record->due_date->diffInDays(now()).' hari')
                     ->badge()
                     ->color('danger'),
+                // Tagihan EFEKTIF, bukan kontraktual (ADR 2026-08-28 item 2f).
+                // Titipan Pokok satu kantong per pinjaman, jadi ia dikuras dalam
+                // urutan angsuran — memotongnya di setiap baris secara terpisah
+                // akan melaporkan tunggakan lebih kecil dari kenyataan.
                 TextColumn::make('total_due')
                     ->label('Nominal')
+                    ->state(fn (InstallmentSchedule $record, Table $table): string => $this->effectiveBills($table)[$record->getKey()] ?? (string) $record->total_due)
                     ->money('IDR')
                     ->alignEnd()
                     ->weight('bold'),

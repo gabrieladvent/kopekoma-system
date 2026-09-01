@@ -266,6 +266,19 @@
                 </div>
             </div>
 
+            {{-- Keterkaitan sesi (ADR 2026-08-28 item 2d). Memberi tahu, bukan
+                 memaksa: pembatalan tetap per-transaksi, tapi petugas berhak tahu
+                 bahwa ini separuh dari satu penerimaan tunai. --}}
+            @if (count($sessionSiblings) > 0)
+                <div class="mt-4 rounded-xl border border-warning/25 bg-warning/5 p-3">
+                    <p class="text-xs leading-relaxed text-text">
+                        <span class="font-semibold">{{ 'Satu setoran bersama '.implode(', ', $sessionSiblings).'.' }}</span>
+                        Membatalkan yang ini saja menyisakan pasangannya tetap terbayar — sah, tapi pastikan itu memang
+                        yang kamu maksud.
+                    </p>
+                </div>
+            @endif
+
             <form wire:submit="performReverse" class="mt-5 space-y-4">
                 <div class="space-y-1">
                     <label for="reverseReason" class="block text-sm font-medium text-text">Alasan Reversal</label>

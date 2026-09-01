@@ -419,40 +419,40 @@ Rumus bergantung pada `total_due` seragam di semua baris jadwal. **Terverifikasi
 | 1c | `Loan::payoffAmount()` — **satu-satunya sumber** jumlah pelunasan, dikurangi titipan (**dibatasi `settledPrincipal()`**); cabut rumus duplikat di `settleEarly()` dan `BatchInstallmentPaymentService:192` | M | setelah 1a | **Done** |
 | 1d | `LoanPaymentService::allocate()` — alokasi bertingkat (deteksi pelunasan → tutup angsuran → sisa jadi titipan), mode `titipan` \| `tutup_sekalian`; plus `Loan::effectiveBillWithCredit()` agar rumus tagihan efektif tetap satu tempat saat disimulasikan | L | setelah 1b, 1c | **Done** |
 | 1e | `LoanPaymentService::pay()` — `belowBill()` pakai tagihan efektif **di dalam lock**; N baris via `allocate()`; baris terakhir menyerap sisa; `credit_applied = max(0, kontrak − dibayar)`; kunci sesi berurut; hapus kredit-ke-Sukarela di tengah masa pinjaman | L | setelah 1d, 0a | **Done** |
-| 1f | Tolak transaksi bila **saldo titipan** saat pratinjau ≠ saldo di dalam kunci (pratinjau basi) — pemeriksaan versi, bukan bentuk | M | setelah 1e | Pending |
+| 1f | Tolak transaksi bila **saldo titipan** saat pratinjau ≠ saldo di dalam kunci (pratinjau basi) — pemeriksaan versi, bukan bentuk | M | setelah 1e | **Done** |
 | 1g | Lampirkan bukti ke **setiap** baris dalam satu sesi — wajib `preservingOriginal()` atau simpan-sekali-lalu-lampirkan-dari-disk; `addMedia($uploadedFile)` polos **gagal di baris kedua** | M | setelah 1e | **Done** |
-| 2f | Angka tagihan/tunggakan pakai tagihan efektif, bukan `total_due` — `SavingsStatsOverview:81` (agregat), `OverdueInstallmentsTable:52` (per baris), `SendInstallmentReminders:134` (isi pengingat ke petugas) | M | setelah 1b | Pending |
+| 2f | Angka tagihan/tunggakan pakai tagihan efektif, bukan `total_due` — `SavingsStatsOverview:81` (agregat), `OverdueInstallmentsTable:52` (per baris), `SendInstallmentReminders:134` (isi pengingat ke petugas). Dikuras berurutan lewat `LoanArrearsService::effectiveBills()` | M | setelah 1b | **Done** |
 | 2g | `InstallmentDetail::auditFieldLabel()` (`:78`) & `formatAuditFieldValue()` (`:98`) — daftarkan `credit_applied` dan `session_key`; tanpa ini jejak audit tampil dengan nama kolom mentah dan angka tak terformat | S | setelah 0a | **Done** |
-| 2h | `InstallmentDetail::remainingAfter()` (`:112`) — ubah jadi berbasis **jumlah** angsuran bersih agar sejalan dengan `settledPrincipal()`; koreksi komentar `:112-114` yang mengklaim konsistensi tanpa menyebut asumsi "tanpa lubang". **Perbaikan bug lama yang menumpang — lihat OQ-9** | M | ✅ | Pending |
+| 2h | `InstallmentDetail::remainingAfter()` (`:112`) — **didelegasikan ke `settledPrincipal()`**, bukan dihitung ulang; koreksi komentar `:112-114` yang mengklaim konsistensi tanpa menyebut asumsi "tanpa lubang". **Perbaikan bug lama yang menumpang — lihat OQ-9** | M | ✅ | **Done** |
 | 1h | `LoanPaymentService` — limpahkan sisa titipan ke Sukarela saat pinjaman jadi Lunas, tautkan ke angsuran penutup | M | setelah 1e | **Done** — dibundel dengan 1e; tanpanya 1e menelantarkan uang |
 | 1i | `LoanPaymentService::settleEarly()` — pakai `payoffAmount()`; tulis `credit_applied` di baris pelunasan; **limpahkan sisa titipan tak terpakai ke Sukarela** | M | setelah 1c | **Done** |
 | 1j | `LoanPaymentService::reverse()` — guard tolak pembatalan yang membuat titipan negatif; pesan menyebut nomor angsuran penghalang | M | setelah 1a | **Done** |
 | 1k | `Installment::reverseClone()` — salin `credit_applied` dan `session_key` | S | setelah 0a | **Done** — dibundel dengan 1e; tanpanya pembatalan tak memulihkan titipan |
 | 1l | `Installment::breakdown()` — baris "Titipan Pokok dipakai" (−) **dan "Titipan Pokok disisihkan" (+)**, plus saldo "Sisa Titipan Pokok"; komponen wajib rekonsiliasi di **kedua** arah; `credit_applied` NULL diperlakukan 0. Kunci `other` dicabut (R12) → `credit_reserved` | M | setelah 0a | **Done** |
 | 1m | Perluas properti activity log sesuai tabel Jejak log — **plus tulis payload-nya di bawah kunci yang benar-benar dirender layar** (lihat R22); menulis properti yang tak pernah tampil bukan kontrol, hanya biaya | M | setelah 1e, 1j | **Done** |
-| 2a | `InstallmentForm` — prefill & anti-korupsi pakai tagihan efektif; dialog konfirmasi berakibat-angka | L | setelah 1e | Pending |
-| 2b | Blade form angsuran — baris Titipan Pokok; cabut kalimat "dikreditkan ke Simpanan Sukarela" (`:174`) | M | setelah 2a | Pending |
-| 2c | `InstallmentResource` + `CreateInstallment` — prefill `:108`, validasi `:236`, helper `:233`, label `:264` | M | setelah 1e, 1l | Pending |
-| 2d | Layar pembatalan — tampilkan keterkaitan sesi ("satu setoran bersama ANG-…") | S | setelah 1k | Pending |
+| 2a | `InstallmentForm` — prefill & anti-korupsi pakai tagihan efektif; dialog konfirmasi berakibat-angka | L | setelah 1e | **Done** |
+| 2b | Blade form angsuran — baris Titipan Pokok; cabut kalimat "dikreditkan ke Simpanan Sukarela" (`:174`) | M | setelah 2a | **Done** |
+| 2c | `InstallmentResource` + `CreateInstallment` — prefill `:108`, validasi `:236`, helper `:233`, label `:264` | M | setelah 1e, 1l | **Done** |
+| 2d | Layar pembatalan — tampilkan keterkaitan sesi ("satu setoran bersama ANG-…") | S | setelah 1k | **Done** |
 | 2e | `LoanDetail` — saldo Titipan Pokok + panel **Riwayat Titipan Pokok** | M | setelah 1a | **Done** |
 | 3a | **Tulis ulang** `LoanPaymentServiceTest:96-114` | M | setelah 1e | **Done** |
 | 3b | **Tulis ulang** `SavingsMutationServiceTest:91-107` | S | setelah 1h | Pending |
 | 3c | **Tulis ulang** `EarlySettlementServiceTest:87` + `EarlySettlementModelTest:82` | M | setelah 1i | Pending |
-| 3d | Test: titipan mengalir lintas beberapa bulan (tabel Design) | M | setelah 1e | Pending |
+| 3d | Test: titipan mengalir lintas beberapa bulan (tabel Design) | M | setelah 1e | **Done** — `TitipanPokokLoanTest` |
 | 3e | Test: kedua mode menghasilkan Σ uang & Σ jasa identik | M | setelah 1e | Pending |
-| 3f | Test: invariant `credit_applied == max(0, kontrak − dibayar)` | S | setelah 1e | Pending |
-| 3g | Test: idempotensi — klik simpan dua kali tidak menghasilkan baris ganda | M | setelah 1e | Pending |
+| 3f | Test: invariant `credit_applied == max(0, kontrak − dibayar)` | S | setelah 1e | **Done** — `AllocateInstallmentTest` |
+| 3g | Test: idempotensi — klik simpan dua kali tidak menghasilkan baris ganda | M | setelah 1e | **Done** — `InstallmentSessionTest` (dua lapis) |
 | 3h | Test: pembatalan — titipan pulih; guard menolak urutan salah; `credit_applied` ikut terbalik | M | setelah 1j, 1k | **Done** |
 | 3i | Test: pelunasan dipercepat bertitipan tak menagih dobel | M | setelah 1i | **Done** |
-| 3j | Test: setoran yang cukup melunasi seluruh sisa **tidak** diproses sebagai tutup-sekalian | M | setelah 1d | Pending |
+| 3j | Test: setoran yang cukup melunasi seluruh sisa **tidak** diproses sebagai tutup-sekalian | M | setelah 1d | **Done** — `AllocateInstallmentTest` |
 | 3k | Test: kuitansi menutup di **kedua** arah — baris yang memakai titipan **dan** baris yang menyisihkannya; baris lama ber-`credit_applied` NULL tetap menutup | M | setelah 1l | **Done** |
-| 3l | Test: invariant "Lunas ⇒ titipan 0" | S | setelah 1h | Pending |
-| 3m | Test: pratinjau basi ditolak | M | setelah 1f | Pending |
+| 3l | Test: invariant "Lunas ⇒ titipan 0" | S | setelah 1h | **Done** — beserta bukti uangnya pindah ke Sukarela, bukan sekadar saldo menjawab 0 |
+| 3m | Test: pratinjau basi ditolak | M | setelah 1f | **Done** |
 | 3n | **Regresi batch**: potong gaji berperilaku persis seperti sebelum perubahan, titipan tak bergerak (`Δ = 0`) | M | setelah 1e | Pending |
 | 3o | Test: setoran multi-angsuran — bukti benar-benar melekat di **semua** baris, tak ada baris tanpa bukti | M | setelah 1g | **Done** — diverifikasi gagal saat `preservingOriginal()` dicabut |
 | 3p | Test penjaga: pinjaman yang sudah punya angsuran **tidak bisa** dibatalkan; pinjaman Dibatalkan bertitipan 0 | S | setelah 1a | Pending |
 | 3r | **Test penjaga R21:** setiap baris yang dibuat `pay()` dan `settleEarly()` mengisi `credit_applied` non-NULL (0 bila tak memakai titipan) — baris ber-NULL sengaja hilang dari saldo, jadi jalur yang lupa mengisinya membuat titipan menguap diam-diam | S | setelah 1e, 1i | Pending |
-| 3q | Test: dengan lubang jadwal (#3 lunas, #2 dibatalkan), Sisa Pokok di layar detail **sama** dengan `settledPrincipal()` | M | setelah 2h | Pending |
+| 3q | Test: dengan lubang jadwal (#3 lunas, #2 dibatalkan), Sisa Pokok di layar detail **sama** dengan `settledPrincipal()` | M | setelah 2h | **Done** |
 
 **Effort:** S = small (< 1 jam), M = medium (1-3 jam), L = large (> 3 jam), — = observasi/non-code
 
@@ -653,7 +653,7 @@ Tiga jalan, semuanya murah, tapi pilihannya bukan milik implementer:
 | Critique | critic | *(retroactive — not invoked)* — 4 ronde self-critique. R1: 5 lubang, 2 bubar. R2: 3 BERAT (jalur batch, premis potong-gaji, kontrol anti-korupsi) + kuitansi tak rekonsiliasi. R3: 2 pintu Filament terlewat, ongkos/manfaat terbalik. R4: klaim batch v3 salah, kunci unik idempotensi jebol, laporan batch menyesatkan, pembalikan sebagian lolos guard. R5 (fokus security & finance): **jalur korupsi loket (R14)** — temuan terberat lima ronde, kuitansi tak menutup saat menyisihkan titipan (R16), ambang pelunasan belum berangka, hak akses mode belum dinyatakan, pembandingan pratinjau berbasis bentuk. Sekaligus **empat hal diverifikasi aman**: penjaga pelunasan kedap (bukti aljabar), bayar-dari-simpanan tak bisa membuat titipan, pembatalan sebagian tak merusak sisa pokok, pembulatan `ceil` tak bocor ke titipan. R6 (area yang belum pernah disentuh): `addMedia()` memindahkan berkas sehingga bukti multi-baris **gagal di baris kedua** (R17); tabrakan dengan ADR Penutupan Akun Anggota (dicatat sebagai ketergantungan, ADR itu sendiri tidak dikerjakan atas keputusan pemilik produk); angka tunggakan dashboard melebih-lebihkan (R13 kini menyebut lokasinya); pinjaman **Dibatalkan** diverifikasi aman lewat guard `canCorrect()`, ketergantungannya dicatat (R18). R7 (laporan, ekspor, layar angsuran): kolom baru tak terdaftar di peta label audit sehingga kontrol utama R14 tampil setengah jadi (R19); `remainingAfter()` berbasis nomor urut vs `settledPrincipal()` berbasis jumlah — divergensi lama yang diperbesar ADR ini (R20 → OQ-9). Diverifikasi aman: `InstallmentReportService` menjumlah `amount_paid` bertanda (uang tunai riil, tetap benar), dan `ExportSalaryDeductionRecap` ternyata rekap **simpanan**, bukan angsuran — tak bersinggungan. | 2026-08-28 |
 | Security review | security-reviewer | pending — **wajib, dan agenda utamanya sudah spesifik: OQ-0 / R14.** Pemilik produk telah **menerima** risiko loket secara sadar dan menolak gerbang Pengurus; review diminta menilai apakah pendeteksian pasca-kejadian (kuitansi + panel riwayat + log) memadai sebagai satu-satunya pengaman atas kontrol yang kodenya sendiri melabeli "Anti-korupsi". Sekunder: guard baru pada jalur `reverse` ber-privilege Pengurus | — |
 | Deploy review | deploy-reviewer | pending — ada migrasi kolom; urutan Phase 1 → 2 dan rollback yang tidak bersih (R10) perlu ditinjau | — |
-| Implementation | implementer / human | in progress — **0a**, **1a**–**1e**, **1g**–**1m**, **2e**, **2g** (+ test **3a**, **3h**, **3i**, **3k**, **3o**) selesai. **Ketiga kanal pendeteksian R14 terpasang.** Sisa: pratinjau basi (1f) dan pintu UI (2a–2d, 2f, 2h) | 2026-08-29 |
+| Implementation | implementer / human | in progress — **Seluruh item implementasi selesai** (0a, 1a–1m, 2a–2h). Sisa: enam item test (3b, 3c, 3e, 3n, 3p, 3r) + verifikasi produksi | 2026-08-29 |
 | Review | reviewer | pending | — |
 
 **Ronde**: 7
@@ -664,6 +664,26 @@ Tiga jalan, semuanya murah, tapi pilihannya bukan milik implementer:
 
 ## Changelog
 
+- **2026-08-29 v22**: Item **2c, 2d, 2f, 2h selesai — seluruh Key Items berkode selesai.**
+
+  **2c** — pintu manual kedua: prefill, lantai validasi, dan helper rincian di `InstallmentResource` semuanya pindah ke tagihan efektif; helper text berhenti menjanjikan kelebihan bayar ke Sukarela. **2d** — layar pembatalan menampilkan "Satu setoran bersama ANG-…"; memberi tahu, bukan memaksa, sesuai keputusan Design.
+
+  **2f** — angka tunggakan memakai tagihan efektif di tiga tempat. Titipan dikuras **berurutan per pinjaman** lewat `LoanArrearsService::effectiveBills()`, bukan dipotong per baris: titipan satu kantong per pinjaman, jadi memotongnya di setiap baris tertunggak akan melaporkan tunggakan lebih kecil dari kenyataan — arah kesalahan yang merugikan koperasi. Hasil per barisnya dimemoisasi per request; tanpa itu tabel 10 baris memicu puluhan query.
+
+  **2h / OQ-9 ditutup** — `remainingAfter()` kini **mendelegasikan** ke `settledPrincipal()`. Varian "berbasis jumlah sampai baris ini" sempat ditulis dan justru melahirkan angka KETIGA: baris pembalik bernomor lebih besar daripada angsuran yang dilihat, sehingga pembatalannya tak terhitung dan layar kembali menampilkan sisa pokok yang terlalu kecil. Satu sumber menutup divergensinya untuk selamanya. Item **3q** ikut selesai.
+
+  **Bug lama kedua yang tersingkap, di luar cakupan ADR:** `settlementPreview()` di `InstallmentForm` menghitung payoff sendiri — anggota bertitipan akan MELIHAT jumlah pelunasan yang berbeda dari yang DITEGAKKAN `settleEarly()`. Bentuk R2 untuk ketiga kalinya; dialihkan ke `payoffAmount()`.
+
+  **Seluruh item implementasi (0a, 1a–1m, 2a–2h) selesai.** Enam item **test** masih terbuka dan sengaja tidak diklaim selesai: **3b**, **3c** (tulis ulang empat berkas test lama — semuanya hijau apa adanya, tapi belum ditulis ulang untuk mencerminkan Titipan Pokok), **3e** (kedua mode menghasilkan Σ uang & Σ jasa identik), **3n** (regresi batch satu siklus), **3p** (penjaga `canCorrect()`), **3r** (penjaga R21 pada `settleEarly()`). Suite penuh hijau (709 passed).
+- **2026-08-29 v21**: Item **2a, 2b, 1f selesai — pintu loket akhirnya terbuka.** Petugas kini bisa memilih mode `tutup_sekalian`; sebelum ini mesinnya jalan tapi separuh permintaan asli tak pernah sampai ke loket.
+
+  Prefill, lantai anti-korupsi, dan kunci tepat-tagihan jalur bayar-dari-simpanan semuanya pindah ke **tagihan efektif**. Panel tagihan menampilkan kontrak → titipan dipakai → tagihan bulan ini, plus sisa titipan anggota; kalimat "dikreditkan ke Simpanan Sukarela" dicabut (R12).
+
+  **Dialog berakibat-angka** muncul hanya bila sisa uang cukup menutup angsuran berikutnya — pembulatan biasa tak memunculkan apa pun. Kedua pilihan menyebut angsuran mana yang lunas, sisa titipannya berapa, dan **tagihan bulan-bulan berikutnya dalam rupiah**. Memilih = menyetujui: langsung tersimpan, tanpa klik kedua. `1f` dibundel karena dialog tanpanya justru berbahaya — akibat yang dikonfirmasi di depan anggota bisa berbeda dari yang tersimpan; kini saldo titipan dikirim balik sebagai versi dan ditolak bila bergeser di dalam lock.
+
+  **Dua rumus duplikat lagi dicabut:** `settlementPreview()` di form menghitung payoff sendiri, sehingga anggota bertitipan akan melihat jumlah pelunasan yang berbeda dari yang ditegakkan `settleEarly()` — persis bentuk R2, kini dialihkan ke `payoffAmount()`.
+
+  **Bug lama yang tersingkap:** aturan validasi `bukti` di jalur `pay()` tidak punya `nullable`, sehingga `file` ikut dijalankan atas nilai null dan **pembayaran tunai tanpa unggahan selalu ditolak** — kasus paling lazim di loket. Jalur `settle()` di berkas yang sama sudah benar; jalur ini terlewat. Tak pernah ketahuan karena seluruh test lama kebetulan selalu mengisi bukti. Diperbaiki; **di luar cakupan ADR ini, ditandai agar reviewer tahu kenapa ada perubahan validasi**. Item **3m** ikut selesai. Suite penuh hijau (701 passed).
 - **2026-08-29 v20**: Item **2e dan 1m selesai — kanal pendeteksian ketiga atas R14 kini benar-benar ada.**
 
   **2e** — panel **Riwayat Titipan Pokok** di halaman detail pinjaman, plus saldo berjalan. Seluruhnya diturunkan dari riwayat angsuran yang sudah ada: gerak per baris `Δ = uang diterima − tagihan kontrak`, dengan tanda dibalik untuk baris pembalik. Bentuk itu menangani pembatalan dengan sendirinya dan Σ Δ persis sama dengan `overpaymentCredit()` — dikunci test. Baris ber-Δ nol dilewati; ia tak menggerakkan saldo dan hanya jadi derau. Panel disembunyikan pada pinjaman yang tak pernah bertitipan. Ditambah **baris penutup sintetis** "Dilimpahkan ke Simpanan Sukarela" saat pinjaman ditutup — tanpanya tabel berhenti pada saldo yang secara fisik sudah tidak ada, dan pertanyaan *kapan habis* justru tak terjawab.

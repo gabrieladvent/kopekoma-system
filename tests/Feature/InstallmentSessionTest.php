@@ -4,6 +4,7 @@ use App\Enums\InstallmentScheduleStatus;
 use App\Enums\LoanStatus;
 use App\Exceptions\CannotProcessPayment;
 use App\Exceptions\CannotReverseTransaction;
+use App\Livewire\Loan\Installment\InstallmentDetail;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -14,6 +15,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 
 /**
  * Item 1e (ADR 2026-08-28) — `pay()` menulis N baris lewat `allocate()`.
@@ -270,4 +272,66 @@ it('settles the loan and moves the leftover titipan when a session closes it', f
 
     expect($this->loan->fresh()->status)->toBe(LoanStatus::Lunas)
         ->and($this->loan->fresh()->overpaymentCredit())->toBe('0.00');
+});
+
+/**
+ * Item 2h / 3q (OQ-9, R20) — dengan lubang jadwal, Sisa Pokok di layar detail
+ * harus sama dengan `settledPrincipal()`. Skenario uji dari ADR: setor 2× tagihan
+ * mode tutup-sekalian (#1 & #2 lunas), lalu batalkan #1 saja.
+ *
+ * Versi lama menghitung dari nomor urut jadwal, jadi ia menjawab "ini angsuran
+ * nomor 2 → 2 juta terbayar" padahal yang tersisa cuma satu angsuran bersih.
+ */
+it('keeps the remaining principal consistent when a schedule hole appears', function () {
+    asSuperAdmin();
+
+    $first = $this->service->pay(
+        $this->schedules[0],
+        ['amount_paid' => 2100000, 'mode' => LoanPaymentService::MODE_TUTUP_SEKALIAN],
+        $this->user->id,
+    );
+
+    $second = Installment::where('loan_id', $this->loan->id)
+        ->where('installment_seq', 2)
+        ->firstOrFail();
+
+    // Batalkan HANYA #1 — menyisakan lubang: #2 lunas, #1 tidak.
+    $this->service->reverse($first, 'koreksi setoran pertama', $this->user->id);
+
+    $loan = $this->loan->fresh();
+
+    // Satu angsuran bersih tersisa → sisa pokok 4.000.000, bukan 3.000.000.
+    expect($loan->settledPrincipal())->toBe('4000000.00');
+
+    $shown = Livewire::test(InstallmentDetail::class, ['installment' => $second->fresh()])
+        ->viewData('remaining');
+
+    expect($shown)->toBe($loan->settledPrincipal());
+});
+
+/** Item 2d — layar pembatalan memberi tahu keterkaitan sesi, tanpa memaksa. */
+it('shows the session sibling on the reversal screen', function () {
+    asSuperAdmin();
+
+    $first = $this->service->pay(
+        $this->schedules[0],
+        ['amount_paid' => 2100000, 'mode' => LoanPaymentService::MODE_TUTUP_SEKALIAN],
+        $this->user->id,
+    );
+
+    $second = Installment::where('loan_id', $this->loan->id)
+        ->where('installment_seq', 2)
+        ->firstOrFail();
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $first])
+        ->assertSee('Satu setoran bersama '.$second->installment_number);
+});
+
+it('says nothing about siblings for a single-row payment', function () {
+    asSuperAdmin();
+
+    $only = $this->service->pay($this->schedules[0], ['amount_paid' => 1050000], $this->user->id);
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $only])
+        ->assertDontSee('Satu setoran bersama');
 });
