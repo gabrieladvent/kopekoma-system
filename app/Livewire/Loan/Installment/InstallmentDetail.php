@@ -91,6 +91,19 @@ class InstallmentDetail extends Component
             'payment_method' => 'Metode Bayar',
             'notes' => 'Catatan',
             'is_reversal' => 'Reversal',
+            // Titipan Pokok (ADR 2026-08-28 item 2g). Peta ini eksplisit per-layar
+            // — kolom baru TIDAK terbaca otomatis, jadi tanpa baris-baris di bawah
+            // jejak audit tampil dengan nama kolom mentah dan angka tak terformat.
+            // Jejak audit adalah kontrol utama atas risiko loket yang diterima
+            // sadar (R14/R19), jadi setengah jadi di sini bukan soal kosmetik.
+            'mode' => 'Mode Alokasi',
+            'credit_applied' => 'Titipan Pokok dipakai',
+            'credit_before' => 'Titipan Pokok sebelum',
+            'credit_after' => 'Titipan Pokok sesudah',
+            'session_key' => 'Kunci Sesi',
+            'blocking_installment' => 'Angsuran penghalang',
+            // `pay()` menulis properti `seq`, bukan `installment_seq`.
+            'seq' => 'Angsuran ke',
         ][$key] ?? $this->defaultAuditFieldLabel($key);
     }
 
@@ -102,8 +115,10 @@ class InstallmentDetail extends Component
 
         return match ($key) {
             'principal_paid', 'interest_paid', 'time_deposit_saved',
-            'amount_paid', 'remaining_principal' => 'Rp '.number_format((float) $value, 0, ',', '.'),
+            'amount_paid', 'remaining_principal',
+            'credit_applied', 'credit_before', 'credit_after' => 'Rp '.number_format((float) $value, 0, ',', '.'),
             'payment_method' => Resource::PAYMENT_METHODS[$value] ?? (string) $value,
+            'mode' => LoanPaymentService::MODE_LABELS[$value] ?? (string) $value,
             default => $this->defaultFormatAuditFieldValue($key, $value),
         };
     }

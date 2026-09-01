@@ -148,7 +148,7 @@ it('records overpayment as Lain-lain without inflating principal or tabungan ber
 
     $inst = Installment::where('loan_id', $loan->id)->first();
 
-    expect($inst->breakdown()['other'])->toBe('110000.00')
+    expect($inst->breakdown()['credit_reserved'])->toBe('110000.00')
         ->and($loan->fresh()->remainingPrincipal())->toBe('11000000.00'); // 12jt − 1jt pokok
 });
 

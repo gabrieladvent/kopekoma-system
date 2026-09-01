@@ -213,6 +213,12 @@ class LoanPaymentService
     /** Petugas memilih menutup angsuran-angsuran berikutnya sekalian. */
     public const MODE_TUTUP_SEKALIAN = 'tutup_sekalian';
 
+    /** Label mode untuk layar & jejak audit. */
+    public const MODE_LABELS = [
+        self::MODE_TITIPAN => 'Simpan sebagai Titipan Pokok',
+        self::MODE_TUTUP_SEKALIAN => 'Tutup angsuran berikutnya sekalian',
+    ];
+
     /**
      * Alokasi bertingkat satu setoran (ADR 2026-08-28 item 1d) — MURNI HITUNGAN,
      * tidak menyentuh database. Urutannya:

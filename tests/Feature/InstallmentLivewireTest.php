@@ -7,9 +7,11 @@ use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Services\LoanPaymentService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Spatie\Activitylog\Models\Activity;
 
 beforeEach(function () {
     asSuperAdmin();
@@ -188,4 +190,32 @@ it('flags rows that have a bukti in the listing', function () {
 
     Livewire::test(Installments::class)
         ->assertSee('Ada bukti');
+});
+
+/**
+ * Item 2g (ADR 2026-08-28, R19) — peta label audit bersifat eksplisit per-layar,
+ * jadi kolom baru TIDAK terbaca otomatis. Jejak audit adalah kontrol utama atas
+ * risiko loket yang diterima sadar (R14): tampil setengah jadi di sini berarti
+ * pengaman itu ikut setengah jadi.
+ */
+it('labels and formats the titipan pokok columns in the audit trail', function () {
+    $inst = app(LoanPaymentService::class)->pay(
+        $this->schedule,
+        ['amount_paid' => 1190000],
+        auth()->id(),
+    );
+
+    $created = Activity::query()
+        ->where('subject_id', $inst->id)
+        ->where('event', 'created')
+        ->firstOrFail();
+
+    Livewire::test(InstallmentDetail::class, ['installment' => $inst])
+        ->call('viewAudit', $created->id)
+        ->assertSee('Titipan Pokok dipakai')
+        ->assertSee('Kunci Sesi')
+        ->assertSee('Rp 0')
+        // Nama kolom mentah tak boleh bocor ke layar pemeriksa.
+        ->assertDontSee('credit_applied')
+        ->assertDontSee('session_key');
 });
