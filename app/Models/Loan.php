@@ -287,6 +287,28 @@ class Loan extends Model implements HasMedia
      */
     public function payoffAmount(): string
     {
+        $payoff = bcsub(
+            bcadd($this->settledPrincipal(), (string) $this->monthly_interest, 2),
+            $this->payoffCreditApplied(),
+            2
+        );
+
+        return bccomp($payoff, '0', 2) < 0 ? '0.00' : $payoff;
+    }
+
+    /**
+     * Titipan yang benar-benar TERPAKAI oleh pelunasan = `min(titipan, sisa
+     * pokok)`. Angka inilah yang ditulis ke `credit_applied` baris pelunasan
+     * (item 1i), dan ia wajib berasal dari sini — bukan dihitung ulang di
+     * service — agar potongan yang ditagihkan dan potongan yang dicatat tak
+     * pernah bisa berbeda.
+     *
+     * Selisih `overpaymentCredit() − payoffCreditApplied()` adalah titipan yang
+     * TIDAK terpakai; ia dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup,
+     * bukan hangus.
+     */
+    public function payoffCreditApplied(): string
+    {
         $principal = $this->settledPrincipal();
 
         $credit = $this->overpaymentCredit();
@@ -295,15 +317,7 @@ class Loan extends Model implements HasMedia
             $credit = '0.00';
         }
 
-        $applied = bccomp($credit, $principal, 2) < 0 ? $credit : $principal;
-
-        $payoff = bcsub(
-            bcadd($principal, (string) $this->monthly_interest, 2),
-            $applied,
-            2
-        );
-
-        return bccomp($payoff, '0', 2) < 0 ? '0.00' : $payoff;
+        return bccomp($credit, $principal, 2) < 0 ? $credit : $principal;
     }
 
     public function transactionNumberColumn(): string
