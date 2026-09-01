@@ -43,8 +43,20 @@ class RolePermissionSeeder extends Seeder
         'settle_early_installment',
         'pay_installment_from_savings',
         'manage_settings',
+        // Log aktivitas (ADR 2026-08-28 v26). Jejak log adalah salah satu dari
+        // tiga kanal pendeteksian yang jadi syarat diterimanya R14, dan Pengurus
+        // adalah orang yang seharusnya memakainya — sebelumnya rutenya dijaga
+        // gate `manage-system` (= super_admin), sementara menu sidebar-nya sudah
+        // tampil untuk Pengurus. Kanal yang menu-nya ada tapi klik-nya 403
+        // bukan kanal.
+        'access_activity_log',
         'access_laporan_setoran',
         'access_laporan_angsuran',
+        // Laporan agregat Titipan Pokok (ADR 2026-08-28 item 2i). Pengurus-only
+        // dengan sengaja: ini kanal pemeriksaan atas risiko yang pelakunya bisa
+        // Petugas (R14), jadi menaruhnya di tangan yang diperiksa menghapus
+        // gunanya. Bukan soal kerahasiaan — soal siapa yang bertugas memeriksa.
+        'access_laporan_titipan',
         'export_laporan_setoran',
         'export_laporan_angsuran',
     ];

@@ -33,7 +33,7 @@
         @php
             $navUser = auth()->user();
             $isSuper = $navUser?->hasRole('super_admin') ?? false;
-            $canAudit = $navUser?->hasAnyRole(['super_admin', 'pengurus']) ?? false;
+            $canAudit = $navUser?->can('access_activity_log') ?? false;
             $canHoliday = $navUser?->can('view_any_member::holiday::saving') ?? false;
             $canShopping = $navUser?->can('view_any_shopping::transaction') ?? false;
             $canBalance = $navUser?->can('view_any_member::savings::balance') ?? false;
@@ -44,10 +44,11 @@
             $canBlacklist = $navUser?->can('view_any_loan::blacklist') ?? false;
             $canLaporanSetoran = $navUser?->can('access_laporan_setoran') ?? false;
             $canLaporanAngsuran = $navUser?->can('access_laporan_angsuran') ?? false;
+            $canLaporanTitipan = $navUser?->can('access_laporan_titipan') ?? false;
 
             $groups = [
                 'Utama' => [['Dashboard', 'home', 'dashboard'], ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit], ['Pinjaman', 'receipt-percent', 'loans.index', $canLoan], ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance]],
-                'Laporan' => [['Laporan Simpanan', 'chart', 'reports.setoran', $canLaporanSetoran], ['Laporan Angsuran', 'receipt', 'reports.angsuran', $canLaporanAngsuran]],
+                'Laporan' => [['Laporan Simpanan', 'chart', 'reports.setoran', $canLaporanSetoran], ['Laporan Angsuran', 'receipt', 'reports.angsuran', $canLaporanAngsuran], ['Laporan Titipan Pokok', 'wallet-stack', 'reports.titipan', $canLaporanTitipan]],
                 'Simpanan' => [['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal], ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday], ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping]],
                 'Pinjaman' => [['Angsuran', 'credit-card', 'installments.index', $canInstallment], ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist]],
                 'Master' => [['Nasabah Koperasi', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],

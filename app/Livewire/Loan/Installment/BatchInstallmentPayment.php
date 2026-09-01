@@ -188,10 +188,15 @@ class BatchInstallmentPayment extends Component
         $bill = (string) (int) round((float) $schedule->total_due);
 
         // Pelunasan dipercepat hanya untuk jangka panjang (Sebrakan lunas sekali
-        // bayar). payoff = sisa pokok + 1× jasa (ADR 2026-07-22).
+        // bayar). Angkanya WAJIB dari Loan::payoffAmount() — satu sumber (ADR
+        // 2026-08-28 item 1c). Rumus lokal di sini adalah salinan KEEMPAT dan
+        // satu-satunya yang lupa memotong Titipan Pokok: bendahara memotong gaji
+        // sebesar angka layar ini, jadi anggota bertitipan dipotong lebih besar
+        // dari yang ia utang — sementara validasi batch dan settleEarly() sudah
+        // memakai angka yang benar. Persis bentuk R2.
         $settleable = $loan->loan_type === 'jangka_panjang';
         $payoff = $settleable
-            ? (string) (int) round((float) bcadd($loan->settledPrincipal(), (string) $loan->monthly_interest, 2))
+            ? (string) (int) round((float) $loan->payoffAmount())
             : $bill;
 
         return [

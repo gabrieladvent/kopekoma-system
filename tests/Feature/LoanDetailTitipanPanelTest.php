@@ -121,3 +121,61 @@ it('reports the same balance as the loan itself', function () {
     expect($component->viewData('creditBalance'))->toBe($this->loan->fresh()->overpaymentCredit())
         ->and(end($history)['balance'])->toBe($this->loan->fresh()->overpaymentCredit());
 });
+
+/**
+ * Temuan security review — panel ini dulu melabeli SELURUH sisa titipan sebagai
+ * "Dilimpahkan ke Simpanan Sukarela" saat pinjaman ditutup, termasuk bagian yang
+ * sesungguhnya dimakan potongan Pelunasan Dipercepat dan tak pernah sampai ke
+ * simpanan anggota. Salah label di tabel yang tugasnya menjawab "titipan saya ke
+ * mana" bukan soal kosmetik: ia menutup pertanyaannya dengan jawaban keliru.
+ */
+it('separates titipan eaten by the payoff from titipan moved to sukarela', function () {
+    foreach ([0, 1, 2] as $i) {
+        $this->service->pay($this->schedules[$i]->fresh(), ['amount_paid' => 1050000], $this->user->id);
+    }
+
+    // Titipan besar hanya bisa terbentuk lewat jalur potong gaji, tempat penjaga
+    // "arahkan ke Pelunasan Dipercepat" memang dimatikan (R23) — di loket penjaga
+    // itu justru mencegah titipan tumbuh melampaui sisa pokok.
+    $this->service->pay(
+        $this->schedules[3]->fresh(),
+        ['amount_paid' => 3050000],
+        $this->user->id,
+        null,
+        redirectToSettlement: false,
+    );
+
+    $loan = $this->loan->fresh();
+
+    expect($loan->overpaymentCredit())->toBe('2000000.00')
+        ->and($loan->settledPrincipal())->toBe('1000000.00');
+
+    $this->service->settleEarly($loan, ['amount_paid' => $loan->payoffAmount()], $this->user->id);
+
+    $rows = Livewire::test(LoanDetail::class, ['loan' => $this->loan->fresh()])
+        ->viewData('creditHistory');
+
+    $closing = array_slice($rows, -2);
+
+    expect($closing[0]['used'])->toBe('1000000.00')
+        ->and($closing[0]['note'])->toBe('Memotong jumlah Pelunasan Dipercepat')
+        ->and($closing[0]['balance'])->toBe('1000000.00')
+        ->and($closing[1]['used'])->toBe('1000000.00')
+        ->and($closing[1]['note'])->toBe('Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup')
+        ->and($closing[1]['balance'])->toBe('0.00');
+});
+
+/** Tanpa pelunasan, satu baris penutup saja — tak ada baris kosong tambahan. */
+it('still shows a single closing row when the loan closes without a payoff', function () {
+    foreach ([1050000, 1050000, 1050000, 1050000, 1100000] as $i => $amount) {
+        $this->service->pay($this->schedules[$i]->fresh(), ['amount_paid' => $amount], $this->user->id);
+    }
+
+    $rows = Livewire::test(LoanDetail::class, ['loan' => $this->loan->fresh()])
+        ->viewData('creditHistory');
+
+    $last = end($rows);
+
+    expect($last['note'])->toBe('Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup')
+        ->and($last['used'])->toBe('50000.00');
+});

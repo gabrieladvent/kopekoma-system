@@ -16,6 +16,14 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class SavingsStatsOverview extends StatsOverviewWidget
 {
+    /**
+     * Polling dimatikan (ADR 2026-08-28). Bawaan Filament 5 detik, dan angka
+     * tunggakan kini menghitung tagihan efektif per pinjaman — satu tab dashboard
+     * yang dibiarkan terbuka mengulang seluruh rangkaian itu setiap 5 detik.
+     * Angka tunggakan tak pernah berubah secepat itu; refresh halaman sudah cukup.
+     */
+    protected static ?string $pollingInterval = null;
+
     protected static ?int $sort = 1;
 
     protected function getColumns(): int

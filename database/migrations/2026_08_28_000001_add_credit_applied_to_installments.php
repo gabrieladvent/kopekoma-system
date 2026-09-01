@@ -36,12 +36,27 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Pelebaran `idempotency_key` SENGAJA TIDAK DIBALIK.
+     *
+     * Versi pertama `down()` menyempitkannya kembali ke `char(36)`, dan itu
+     * **rusak**: begitu ada satu saja setoran multi-angsuran, kolomnya berisi
+     * kunci turunan 38 karakter. `MODIFY … char(36)` lalu gagal — mode ketat
+     * menolak `Data too long`, mode longgar memotongnya sehingga `<uuid>-1` dan
+     * `<uuid>-2` bertabrakan di indeks UNIQUE. DDL MySQL tidak transaksional, dan
+     * `Migrator::runDown()` baru menghapus catatan migrasi SETELAH `down()`
+     * selesai — jadi kegagalan itu meninggalkan keadaan setengah jadi: kolomnya
+     * sudah hilang, tapi migrasi masih dianggap ter-apply dan `migrate` tak akan
+     * mengembalikannya.
+     *
+     * Membiarkannya `varchar(64)` aman: UUID 36 karakter muat di dalamnya, dan
+     * kode lama tak peduli lebar kolom. Yang dibalik hanya yang memang bisa
+     * dibalik tanpa merusak data.
+     */
     public function down(): void
     {
         Schema::table('installments', function (Blueprint $table) {
             $table->dropColumn(['credit_applied', 'session_key']);
-
-            $table->uuid('idempotency_key')->change();
         });
     }
 };

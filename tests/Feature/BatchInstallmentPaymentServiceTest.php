@@ -8,7 +8,6 @@ use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
-use App\Models\User;
 use App\Services\BatchInstallmentPaymentService;
 use App\Services\LoanPaymentService;
 use Illuminate\Http\UploadedFile;
@@ -18,7 +17,8 @@ use Spatie\Activitylog\Models\Activity;
 
 beforeEach(function () {
     $this->service = app(BatchInstallmentPaymentService::class);
-    $this->user = User::factory()->create();
+    // Pelunasan sebaris kini ditegakkan otoritasnya di dalam service juga.
+    $this->user = asSuperAdmin();
     $this->agency = Agency::factory()->create();
 });
 
@@ -49,7 +49,7 @@ it('settles a loan early when a row is flagged settle_early', function () {
         ['schedule_id' => $schedules[0]->id, 'loan_id' => $loan->id, 'settle_early' => true, 'amount_paid' => '12078000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas)
         ->and(Installment::where('loan_id', $loan->id)->where('is_settlement', true)->count())->toBe(1)
         ->and(InstallmentSchedule::where('loan_id', $loan->id)
@@ -74,7 +74,7 @@ it('pays one installment per row and marks the schedule terbayar', function () {
         ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and($schedules[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and($schedules[1]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar)
         ->and(Installment::where('loan_id', $loan->id)->count())->toBe(1)
@@ -96,7 +96,7 @@ it('attaches the per-row bukti from disk to the installment, then removes the tm
 
     $installment = Installment::where('loan_id', $loan->id)->firstOrFail();
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and($installment->hasMedia('bukti'))->toBeTrue()
         // addMediaFromDisk memindahkan file → tmp tak menyisa.
         ->and(Storage::disk($disk)->exists($path))->toBeFalse();
@@ -122,7 +122,7 @@ it('skips a schedule that is already terbayar without creating a duplicate', fun
         ['schedule_id' => $schedules[0]->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 0, 'skipped' => 1])
+    expect($result)->toMatchArray(['created' => 0, 'skipped' => 1])
         ->and(Installment::where('loan_id', $loan->id)->count())->toBe(0);
 });
 
@@ -184,8 +184,10 @@ it('processes many members of one OPD and logs a single batch activity', functio
     $batch = Activity::where('event', 'batch_angsuran_potong_gaji')->first();
 
     expect($batch)->not->toBeNull()
-        ->and($batch->properties['created'])->toBe(2)
-        ->and($batch->properties['agency_id'])->toBe($this->agency->id);
+        // Payload batch kini dibungkus `attributes` — satu-satunya kunci yang
+        // benar-benar dirender panel audit maupun ActivityResource (R22).
+        ->and($batch->properties['attributes']['created'])->toBe(2)
+        ->and($batch->properties['attributes']['agency_id'])->toBe($this->agency->id);
 });
 
 it('skips a row whose loan is no longer Cair and still commits the valid rows', function () {
@@ -201,7 +203,7 @@ it('skips a row whose loan is no longer Cair and still commits the valid rows', 
         ['schedule_id' => $okSch[0]->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 1])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 1])
         ->and($okSch[0]->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and(Installment::where('loan_id', $ok->id)->count())->toBe(1)
         ->and(Installment::where('loan_id', $lunas->id)->count())->toBe(0);
@@ -219,7 +221,7 @@ it('fail-closed: skips a schedule belonging to a member of another OPD (per-OPD 
         ['schedule_id' => $foreign[0]->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 1])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 1])
         // Jadwal OPD lain TIDAK pernah dibayar lewat batch OPD ini.
         ->and(Installment::where('loan_id', $foreignLoan->id)->count())->toBe(0)
         ->and($foreign[0]->fresh()->status)->toBe(InstallmentScheduleStatus::BelumBayar);
@@ -250,7 +252,7 @@ it('does not move the titipan at all on a payroll batch', function () {
 
     $row = Installment::where('schedule_id', $schedules[1]->id)->firstOrFail();
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and($before)->toBe('990000.00')
         // Δ = uang diterima − tagihan kontrak = 0. Titipan tidak bergerak.
         ->and($loan->fresh()->overpaymentCredit())->toBe('990000.00')
@@ -280,7 +282,7 @@ it('never silently drops a payroll deduction because of the settlement guard', f
         ['schedule_id' => $schedules[1]->id, 'loan_id' => $loan->id, 'amount_paid' => '1090000'],
     ], $this->user->id);
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and(Installment::where('schedule_id', $schedules[1]->id)->exists())->toBeTrue()
         // Tetap angsuran biasa — BUKAN dibelokkan jadi pelunasan.
         ->and(Installment::where('loan_id', $loan->id)->where('is_settlement', true)->exists())->toBeFalse();
@@ -296,7 +298,7 @@ it('behaves exactly as before for a loan that never had titipan', function () {
 
     $row = Installment::where('schedule_id', $schedules[0]->id)->firstOrFail();
 
-    expect($result)->toBe(['created' => 1, 'skipped' => 0])
+    expect($result)->toMatchArray(['created' => 1, 'skipped' => 0])
         ->and($row->amount_paid)->toBe('1090000.00')
         ->and($loan->fresh()->overpaymentCredit())->toBe('0.00');
 });

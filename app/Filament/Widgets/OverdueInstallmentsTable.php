@@ -11,6 +11,14 @@ use Filament\Widgets\TableWidget;
 class OverdueInstallmentsTable extends TableWidget
 {
     /**
+     * Polling dimatikan (ADR 2026-08-28). Bawaan Filament 5 detik, dan angka
+     * tunggakan kini menghitung tagihan efektif per pinjaman — satu tab dashboard
+     * yang dibiarkan terbuka mengulang seluruh rangkaian itu setiap 5 detik.
+     * Angka tunggakan tak pernah berubah secepat itu; refresh halaman sudah cukup.
+     */
+    protected static ?string $pollingInterval = null;
+
+    /**
      * Memo per-request. Tanpa ini `effectiveBills()` dihitung ulang untuk SETIAP
      * baris, dan tiap hitungan menyentuh saldo titipan tiap pinjaman — tabel
      * 10 baris jadi puluhan query.

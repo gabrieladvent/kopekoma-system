@@ -143,6 +143,16 @@ class LoanDetail extends Component
             'first_due_date' => 'Jatuh Tempo Pertama',
             'status' => 'Status',
             'notes' => 'Catatan',
+            // Titipan Pokok (ADR 2026-08-28 item 2g / R19). Event
+            // `pembatalan_ditolak` dicatat PADA PINJAMAN, bukan pada angsuran,
+            // jadi peta di InstallmentDetail tak menjangkaunya — tanpa baris di
+            // bawah ia tampil sebagai nama kolom mentah di satu-satunya layar
+            // tempat ia muncul. Peta ini eksplisit per-layar; kolom baru tidak
+            // pernah terbaca otomatis.
+            'loan_id' => 'Pinjaman',
+            'credit_after' => 'Titipan Pokok sesudah',
+            'credit_in_settlement' => 'Titipan Pokok tertahan pelunasan',
+            'blocking_installment' => 'Angsuran penghalang',
         ][$key] ?? $this->defaultAuditFieldLabel($key);
     }
 
@@ -154,7 +164,8 @@ class LoanDetail extends Component
 
         return match ($key) {
             'principal_amount', 'admin_fee', 'swp_amount', 'disbursed_amount',
-            'monthly_principal', 'monthly_interest', 'monthly_time_deposit' => 'Rp '.number_format((float) $value, 0, ',', '.'),
+            'monthly_principal', 'monthly_interest', 'monthly_time_deposit',
+            'credit_after', 'credit_in_settlement' => 'Rp '.number_format((float) $value, 0, ',', '.'),
             'loan_type' => Resource::LOAN_TYPES[$value] ?? (string) $value,
             'disbursement_method' => Resource::DISBURSEMENT_METHODS[$value] ?? (string) $value,
             'term_months' => $value.' bulan',
@@ -217,20 +228,47 @@ class LoanDetail extends Component
             ];
         }
 
-        // Saat pinjaman ditutup, sisa titipan dilimpahkan ke Simpanan Sukarela
-        // (item 1h/1i). Tanpa baris ini tabel berhenti pada saldo yang sudah tak
-        // ada lagi, dan pertanyaan "kapan habis" justru tak terjawab.
+        // Saat pinjaman ditutup, titipan yang tersisa keluar lewat DUA pintu yang
+        // berbeda, dan tabel ini harus memisahkannya. Baris pelunasan sengaja
+        // tidak ikut di-loop di atas (rumus saldo count-based mengecualikannya),
+        // jadi tanpa pemisahan ini seluruh sisanya dilabeli "Dilimpahkan ke
+        // Simpanan Sukarela" — termasuk bagian yang sebenarnya dimakan potongan
+        // Pelunasan Dipercepat dan tak pernah sampai ke simpanan anggota. Salah
+        // label di tabel yang tugasnya menjawab "titipan saya ke mana" adalah
+        // kesalahan yang justru menutup pertanyaannya.
         if (bccomp($balance, '0', 2) > 0
             && in_array($loan->status, [LoanStatus::Lunas, LoanStatus::Dibatalkan], true)) {
-            $history[] = [
-                'date' => null,
-                'number' => '—',
-                'in' => '0.00',
-                'used' => $balance,
-                'balance' => '0.00',
-                'reversal' => false,
-                'note' => 'Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup',
-            ];
+            $inSettlement = $loan->settlementCreditApplied();
+
+            if (bccomp($inSettlement, $balance, 2) > 0) {
+                $inSettlement = $balance;
+            }
+
+            if (bccomp($inSettlement, '0', 2) > 0) {
+                $balance = bcsub($balance, $inSettlement, 2);
+
+                $history[] = [
+                    'date' => null,
+                    'number' => '—',
+                    'in' => '0.00',
+                    'used' => $inSettlement,
+                    'balance' => $balance,
+                    'reversal' => false,
+                    'note' => 'Memotong jumlah Pelunasan Dipercepat',
+                ];
+            }
+
+            if (bccomp($balance, '0', 2) > 0) {
+                $history[] = [
+                    'date' => null,
+                    'number' => '—',
+                    'in' => '0.00',
+                    'used' => $balance,
+                    'balance' => '0.00',
+                    'reversal' => false,
+                    'note' => 'Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup',
+                ];
+            }
         }
 
         return $history;

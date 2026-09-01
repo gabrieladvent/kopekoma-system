@@ -195,22 +195,114 @@ class Loan extends Model implements HasMedia
      */
     public function overpaymentCredit(): string
     {
+        return static::overpaymentCredits([$this])[$this->getKey()] ?? '0.00';
+    }
+
+    /**
+     * Saldo Titipan Pokok BEBERAPA pinjaman sekaligus — satu query agregat.
+     *
+     * Ini **satu-satunya tempat rumusnya hidup**; `overpaymentCredit()` di atas
+     * hanyalah pemanggilan untuk satu pinjaman. Laporan agregat perlu membaca
+     * ratusan pinjaman sekaligus, dan menyalin rumusnya ke dalam satu query
+     * `GROUP BY` tersendiri adalah persis bentuk R2 — rumus yang sama hidup di
+     * dua tempat, lalu salah satunya ketinggalan saat diperbaiki. Bentuk jamak
+     * yang dipakai bentuk tunggal menutup pintu itu.
+     *
+     * Agregasi dilakukan di SQL, aritmetika uangnya tetap di `bcmath`.
+     *
+     * @param  iterable<self>  $loans
+     * @return array<string, string> saldo, dikunci id pinjaman
+     */
+    public static function overpaymentCredits(iterable $loans): array
+    {
+        $byId = [];
+
+        foreach ($loans as $loan) {
+            $byId[$loan->getKey()] = $loan;
+        }
+
+        if ($byId === []) {
+            return [];
+        }
+
+        $totals = Installment::query()
+            ->whereIn('loan_id', array_keys($byId))
+            ->where('is_settlement', false)
+            ->whereNotNull('credit_applied')
+            ->groupBy('loan_id')
+            ->selectRaw('loan_id')
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount_paid ELSE -amount_paid END), 0) as paid')
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END), 0) as net')
+            ->get()
+            ->keyBy('loan_id');
+
+        $credits = [];
+
+        foreach ($byId as $id => $loan) {
+            if (in_array($loan->status, [LoanStatus::Lunas, LoanStatus::Dibatalkan], true)) {
+                $credits[$id] = '0.00';
+
+                continue;
+            }
+
+            $row = $totals->get($id);
+
+            $paid = bcadd((string) ($row->paid ?? '0'), '0', 2);
+            $billed = bcmul($loan->monthlyTotal(), (string) (int) ($row->net ?? 0), 2);
+
+            $credits[$id] = bcsub($paid, $billed, 2);
+        }
+
+        return $credits;
+    }
+
+    /**
+     * Titipan Pokok yang sedang DITAHAN oleh pelunasan = Σ_signed(`credit_applied`)
+     * baris `is_settlement`, konvensi tanda sama dengan overpaymentCredit().
+     *
+     * `overpaymentCredit()` sengaja MENGECUALIKAN baris pelunasan — rumusnya
+     * count-based dan baris pelunasan tak mewakili satu bulan tagihan. Akibatnya
+     * titipan yang dimakan pelunasan tak terlihat sama sekali di saldo, dan itu
+     * benar selama pinjaman Lunas (saldo memang 0). Yang TIDAK benar adalah
+     * memakai saldo itu untuk menilai boleh-tidaknya sebuah pembatalan: lihat
+     * overpaymentCreditNetOfSettlement().
+     */
+    public function settlementCreditApplied(): string
+    {
+        $net = Installment::query()
+            ->where('loan_id', $this->id)
+            ->where('is_settlement', true)
+            ->whereNotNull('credit_applied')
+            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN credit_applied ELSE -credit_applied END), 0) as net')
+            ->value('net');
+
+        return bcadd((string) ($net ?? '0'), '0', 2);
+    }
+
+    /**
+     * Saldo titipan sebagaimana harus dilihat guard pembatalan (item 1j):
+     *
+     *     saldo baris biasa − titipan yang sudah dimakan pelunasan AKTIF
+     *
+     * Tanpa pengurangan itu ada lubang uang yang nyata. Anggota bertitipan
+     * melunasi dipercepat; potongan titipan mengecilkan jumlah pelunasan, lalu
+     * pinjaman jadi Lunas. Petugas membatalkan setoran yang MEMBUAT titipan itu —
+     * baris pelunasannya dibiarkan berdiri. Saldo baris biasa kembali 0 (setoran
+     * dan baris-lawannya saling meniadakan), jadi guard tak melihat apa pun dan
+     * meluluskannya; padahal potongan pada pelunasan sudah terlanjur diterima.
+     * Koperasi menanggung selisihnya, dan jejaknya justru tampak menenangkan.
+     *
+     * Begitu baris pelunasannya IKUT dibatalkan, Σ_signed-nya kembali nol dan
+     * pengurangan ini hilang dengan sendirinya — jadi urutan yang benar
+     * (batalkan pelunasan dulu, baru setorannya) tidak terhalang sama sekali.
+     */
+    public function overpaymentCreditNetOfSettlement(): string
+    {
         if (in_array($this->status, [LoanStatus::Lunas, LoanStatus::Dibatalkan], true)) {
             return '0.00';
         }
 
-        $totals = Installment::query()
-            ->where('loan_id', $this->id)
-            ->where('is_settlement', false)
-            ->whereNotNull('credit_applied')
-            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN amount_paid ELSE -amount_paid END), 0) as paid')
-            ->selectRaw('COALESCE(SUM(CASE WHEN is_reversal = 0 THEN 1 ELSE -1 END), 0) as net')
-            ->first();
-
-        $paid = bcadd((string) ($totals->paid ?? '0'), '0', 2);
-        $billed = bcmul($this->monthlyTotal(), (string) (int) ($totals->net ?? 0), 2);
-
-        return bcsub($paid, $billed, 2);
+        return bcsub($this->overpaymentCredit(), $this->settlementCreditApplied(), 2);
     }
 
     /**
