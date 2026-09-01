@@ -261,8 +261,16 @@ class InstallmentResource extends Resource
                     ->state(fn (Installment $record): string => $record->breakdown()['interest']),
                 Infolists\Components\TextEntry::make('breakdown_time_deposit')->label('Tab. Berjangka')->money('IDR')
                     ->state(fn (Installment $record): string => $record->breakdown()['time_deposit']),
-                Infolists\Components\TextEntry::make('breakdown_other')->label('Kelebihan Bayar')->money('IDR')
-                    ->state(fn (Installment $record): string => $record->breakdown()['other']),
+                // Titipan Pokok (ADR 2026-08-28) — persis satu dari kedua baris
+                // ini bisa bukan-nol; tanpa keduanya rincian tidak berjumlah.
+                Infolists\Components\TextEntry::make('breakdown_credit_applied')->label('Titipan Pokok dipakai')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_applied'])
+                    ->visible(fn (Installment $record): bool => bccomp($record->breakdown()['credit_applied'], '0', 2) > 0),
+                Infolists\Components\TextEntry::make('breakdown_credit_reserved')->label('Titipan Pokok disisihkan')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_reserved'])
+                    ->visible(fn (Installment $record): bool => bccomp($record->breakdown()['credit_reserved'], '0', 2) > 0),
+                Infolists\Components\TextEntry::make('breakdown_credit_balance')->label('Sisa Titipan Pokok')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_balance']),
                 Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR')
                     ->state(fn (Installment $record): string => $record->loan->remainingPrincipal()),
                 Infolists\Components\TextEntry::make('payment_date')->label('Tgl Bayar')->date('d M Y'),

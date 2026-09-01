@@ -80,13 +80,33 @@
                         <dd class="mt-1 text-sm tabular-nums text-text">Rp
                             {{ number_format((float) $breakdown['time_deposit'], 0, ',', '.') }}</dd>
                     </div>
-                    <div>
-                        <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
-                            <x-ui.icon name="plus" class="h-3.5 w-3.5" /> Kelebihan Bayar
-                        </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp
-                            {{ number_format((float) $breakdown['other'], 0, ',', '.') }}</dd>
-                    </div>
+                    @if (bccomp($breakdown['credit_applied'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="minus" class="h-3.5 w-3.5" /> Titipan Pokok dipakai
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">&minus; Rp
+                                {{ number_format((float) $breakdown['credit_applied'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
+                    @if (bccomp($breakdown['credit_reserved'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="plus" class="h-3.5 w-3.5" /> Titipan Pokok disisihkan
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">+ Rp
+                                {{ number_format((float) $breakdown['credit_reserved'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
+                    @if (bccomp($breakdown['credit_applied'], '0', 2) > 0 || bccomp($breakdown['credit_reserved'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="wallet" class="h-3.5 w-3.5" /> Sisa Titipan Pokok
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">Rp
+                                {{ number_format((float) $breakdown['credit_balance'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="wallet" class="h-3.5 w-3.5" /> Sisa Pokok

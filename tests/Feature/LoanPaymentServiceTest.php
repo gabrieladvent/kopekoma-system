@@ -89,7 +89,7 @@ it('records overpayment as "Lain-lain" without inflating tabungan berjangka or p
         ->and($inst->breakdown()['principal'])->toBe('1000000.00')
         ->and($inst->breakdown()['interest'])->toBe('6500.00')
         ->and($inst->breakdown()['time_deposit'])->toBe('1000.00')
-        ->and($inst->breakdown()['other'])->toBe('92500.00')
+        ->and($inst->breakdown()['credit_reserved'])->toBe('92500.00')
         ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas);
 
     // Tab berjangka = konstanta (1000), TIDAK bertambah dari kelebihan

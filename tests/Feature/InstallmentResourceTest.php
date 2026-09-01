@@ -117,11 +117,23 @@ it('streams a kuitansi angsuran PDF', function () {
     expect(InstallmentResource::printReceipt($inst))->toBeInstanceOf(StreamedResponse::class);
 });
 
-it('labels the overpayment breakdown line as Kelebihan Bayar (not Lain-lain)', function () {
-    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+/**
+ * R12 (ADR 2026-08-28): nama lama "Kelebihan Bayar" dipakai untuk arti yang
+ * berbeda — uangnya tidak lagi berangkat ke Simpanan Sukarela, ia mengendap di
+ * pinjaman sebagai Titipan Pokok. Memakai nama lama menyesatkan pengurus.
+ */
+it('labels the set-aside breakdown line as Titipan Pokok', function () {
+    $inst = Installment::factory()->create([
+        'loan_id' => $this->loan->id,
+        'schedule_id' => $this->schedule->id,
+        'amount_paid' => 1190000, // tagihan 1.090.000 → disisihkan 100.000
+        'credit_applied' => '0.00',
+    ]);
 
     Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
-        ->assertSee('Kelebihan Bayar')
+        ->assertSee('Titipan Pokok disisihkan')
+        ->assertSee('Sisa Titipan Pokok')
+        ->assertDontSee('Kelebihan Bayar')
         ->assertDontSee('Lain-lain');
 });
 
