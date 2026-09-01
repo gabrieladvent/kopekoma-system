@@ -149,6 +149,144 @@ class LoanPaymentService
         });
     }
 
+    /** Bawaan: sisa uang disimpan sebagai Titipan Pokok. */
+    public const MODE_TITIPAN = 'titipan';
+
+    /** Petugas memilih menutup angsuran-angsuran berikutnya sekalian. */
+    public const MODE_TUTUP_SEKALIAN = 'tutup_sekalian';
+
+    /**
+     * Alokasi bertingkat satu setoran (ADR 2026-08-28 item 1d) — MURNI HITUNGAN,
+     * tidak menyentuh database. Urutannya:
+     *
+     *   1. Uang cukup melunasi SELURUH sisa pinjaman? → BERHENTI, arahkan ke
+     *      Pelunasan Dipercepat. Berjalan PALING AWAL, mengalahkan bawaan maupun
+     *      pilihan petugas: diproses diam-diam sebagai tutup-sekalian, anggota
+     *      membayar jasa berlebih tanpa ada yang sadar.
+     *   2. Tutup angsuran berjalan.
+     *   3. Mode `titipan` (bawaan) → seluruh sisa jadi Titipan Pokok.
+     *      Mode `tutup_sekalian` → ulangi (2) selama sisa uang ≥ tagihan efektif
+     *      angsuran berikutnya.
+     *   4. Sisa akhir → Titipan Pokok, diserap BARIS TERAKHIR.
+     *
+     * Saldo titipan disimulasikan di dalam loop — database belum bergerak sampai
+     * barisnya dibuat, jadi tagihan efektif angsuran kedua dan seterusnya harus
+     * dihitung dari saldo berjalan, bukan dari saldo lama. Itu sebabnya rumusnya
+     * dipanggil lewat `effectiveBillWithCredit()`.
+     *
+     * @return array{mode:string, rows:list<array{schedule:InstallmentSchedule, amount_paid:string, credit_applied:string}>, credit_before:string, credit_after:string}
+     */
+    public function allocate(
+        Loan $loan,
+        InstallmentSchedule $start,
+        string|int|float $amount,
+        string $mode = self::MODE_TITIPAN,
+    ): array {
+        if (! in_array($mode, [self::MODE_TITIPAN, self::MODE_TUTUP_SEKALIAN], true)) {
+            throw new \InvalidArgumentException("Mode alokasi tidak dikenal: {$mode}.");
+        }
+
+        if ($start->loan_id !== $loan->id) {
+            throw new \InvalidArgumentException('Jadwal angsuran bukan milik pinjaman ini.');
+        }
+
+        if ($start->status === InstallmentScheduleStatus::Terbayar) {
+            throw CannotProcessPayment::scheduleAlreadyPaid();
+        }
+
+        $amount = $this->money($amount);
+
+        /** @var Collection<int, InstallmentSchedule> $unpaid */
+        $unpaid = InstallmentSchedule::query()
+            ->where('loan_id', $loan->id)
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
+            ->where('installment_seq', '>=', $start->installment_seq)
+            ->orderBy('installment_seq')
+            ->get();
+
+        // `$start` bisa saja model basi: statusnya BelumBayar di memori sementara
+        // barisnya sudah Terbayar di database (setoran lain masuk saat form
+        // terbuka). Tanpa cek ini, alokasi diam-diam bergeser ke jadwal
+        // berikutnya dan petugas membayar angsuran yang bukan ia maksud.
+        if ($unpaid->isEmpty() || $unpaid->first()->getKey() !== $start->getKey()) {
+            throw CannotProcessPayment::scheduleAlreadyPaid();
+        }
+
+        // Penjaga Pelunasan Dipercepat. Dilewati saat hanya SATU jadwal tersisa:
+        // di situ "pelunasan" tidak melunasi lebih awal apa pun — jasa yang
+        // dibebaskan nol — sementara barisnya jadi `is_settlement` sehingga
+        // angsuran terakhir berhenti mengakru Tabungan Berjangka anggota. Juga
+        // dilewati untuk sebrakan, yang memang tidak bisa dilunasi dipercepat.
+        if ($loan->loan_type === 'jangka_panjang' && $unpaid->count() >= 2) {
+            $payoff = $loan->payoffAmount();
+
+            if (bccomp($amount, $payoff, self::SCALE) >= 0) {
+                throw CannotProcessPayment::shouldSettleEarly($payoff);
+            }
+        }
+
+        $creditBefore = $loan->overpaymentCredit();
+        $credit = bccomp($creditBefore, '0', self::SCALE) < 0 ? '0.00' : $creditBefore;
+
+        $remaining = $amount;
+        $rows = [];
+
+        foreach ($unpaid as $schedule) {
+            $bill = $loan->effectiveBillWithCredit($schedule, $credit);
+
+            if ($rows === []) {
+                // Angsuran berjalan wajib tertutup penuh — lantai anti-korupsi,
+                // kini berdiri di tagihan EFEKTIF (ADR §OQ-0, risiko diterima).
+                if (bccomp($remaining, $bill, self::SCALE) < 0) {
+                    throw CannotProcessPayment::belowBill();
+                }
+            } elseif (bccomp($remaining, $bill, self::SCALE) < 0) {
+                break;
+            }
+
+            $rows[] = ['schedule' => $schedule, 'amount_paid' => $bill];
+
+            $remaining = bcsub($remaining, $bill, self::SCALE);
+
+            // Δtitipan baris ini = dibayar − kontrak = −min(titipan, principal_due).
+            $credit = bcadd($credit, bcsub($bill, (string) $schedule->total_due, self::SCALE), self::SCALE);
+
+            if ($mode === self::MODE_TITIPAN) {
+                break;
+            }
+        }
+
+        // Baris terakhir menyerap sisa uang; sisanya itulah yang jadi titipan.
+        $last = array_key_last($rows);
+        $rows[$last]['amount_paid'] = bcadd($rows[$last]['amount_paid'], $remaining, self::SCALE);
+        $credit = bcadd($credit, $remaining, self::SCALE);
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['credit_applied'] = $this->creditApplied($row['schedule'], $rows[$i]['amount_paid']);
+        }
+
+        return [
+            'mode' => $mode,
+            'rows' => $rows,
+            'credit_before' => $creditBefore,
+            'credit_after' => $credit,
+        ];
+    }
+
+    /**
+     * Titipan yang DIPAKAI baris ini = `max(0, tagihan kontrak − dibayar)`.
+     *
+     * Patokannya tagihan KONTRAK, bukan efektif. Memakai tagihan efektif
+     * menghitung ganda titipan yang sudah dipotong dan membuat saldonya
+     * membengkak tiap bulan — kekeliruan v2 ADR ini (R3).
+     */
+    private function creditApplied(InstallmentSchedule $schedule, string $amountPaid): string
+    {
+        $shortfall = bcsub((string) $schedule->total_due, $amountPaid, self::SCALE);
+
+        return bccomp($shortfall, '0', self::SCALE) > 0 ? $shortfall : '0.00';
+    }
+
     /**
      * Pelunasan Dipercepat (ADR 2026-07-22): tutup SELURUH sisa pinjaman sekaligus.
      * Jumlah pelunasan = sisa pokok + 1× jasa; jasa bulan sisa DIBEBASKAN, tabungan
@@ -186,7 +324,11 @@ class LoanPaymentService
 
             $settledPrincipal = $loan->settledPrincipal();
             $interestCharged = $this->money($loan->monthly_interest);
-            $payoff = bcadd($settledPrincipal, $interestCharged, self::SCALE);
+
+            // Satu sumber (ADR 2026-08-28 item 1c) — sudah dikurangi Titipan Pokok.
+            // Rumusnya JANGAN ditulis ulang di sini: versi lokal yang menyimpang
+            // dari validasi batch adalah persis bentuk R2.
+            $payoff = $loan->payoffAmount();
 
             $amountPaid = $this->money($input['amount_paid']);
 
