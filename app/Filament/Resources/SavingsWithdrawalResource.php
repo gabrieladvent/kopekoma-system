@@ -589,6 +589,21 @@ class SavingsWithdrawalResource extends Resource
      *
      * @return Collection<int, SavingsWithdrawal>
      */
+    /**
+     * **STATUS (2026-09-02): tak ada lagi jalur yang MENULIS `related_loan_id`.**
+     *
+     * Pengembalian otomatis saat pinjaman lunas dicabut — SWP & Tabungan
+     * Berjangka kini tetap jadi simpanan anggota (lihat amandemen D8 di
+     * `docs/adr/2026-06-19-modul-pinjaman-angsuran.md`). Karena itu mesin
+     * pasangan di bawah **selalu mengembalikan pasangan berisi satu**, dan
+     * seluruh pemanggilnya berperilaku seperti pencairan biasa.
+     *
+     * SENGAJA TIDAK DICABUT: ia masih dipanggil dari tiga berkas hidup dan
+     * berperilaku benar sebagai no-op. Mencabutnya berarti mengaduk logika
+     * reversal & transisi status — kode paling berisiko disentuh — untuk nol
+     * keuntungan fungsional. Yang berbahaya adalah membacanya sebagai penjaga
+     * yang masih aktif; catatan ini yang mencegahnya.
+     */
     public static function refundPair(SavingsWithdrawal $record): Collection
     {
         $isLoanRefund = filled($record->related_loan_id)

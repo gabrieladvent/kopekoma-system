@@ -63,6 +63,14 @@ class RolePermissionSeeder extends Seeder
 
     private const CUSTOM_ADMIN_ONLY = [
         'copy_store_client_secret',
+        // Menembus jadwal setahun pencairan Tabungan Berjangka.
+        //
+        // SENGAJA BUKAN milik Pengurus. `disburse_savings::withdrawal` sendiri
+        // sudah Pengurus-only, jadi membebaskan Pengurus membuat aturannya tak
+        // pernah menolak siapa pun — kode yang selalu lolos, memberi rasa aman
+        // palsu. Ditaruh di sini supaya koperasi bisa memberikannya ke orang
+        // tertentu lewat layar Peran, sebagai keputusan yang diambil sadar.
+        'bypass_time_deposit_schedule',
     ];
 
     public function run(): void

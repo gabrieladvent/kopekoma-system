@@ -4,6 +4,7 @@ namespace App\Livewire\Loan;
 
 use App\Enums\InstallmentScheduleStatus;
 use App\Enums\LoanStatus;
+use App\Exceptions\CannotCancelLoan;
 use App\Filament\Resources\LoanResource as Resource;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
@@ -116,32 +117,42 @@ class Loans extends Component
             return;
         }
 
-        DB::transaction(function () use ($record): void {
-            activity()
-                ->performedOn($record)
-                ->causedBy(auth()->id())
-                ->event('koreksi')
-                ->withProperties([
-                    'loan_number' => $record->loan_number,
-                    'member_id' => $record->member_id,
-                    'principal_amount' => $record->principal_amount,
-                ])
-                ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
+        try {
+            DB::transaction(function () use ($record): void {
+                activity()
+                    ->performedOn($record)
+                    ->causedBy(auth()->id())
+                    ->event('koreksi')
+                    ->withProperties([
+                        'loan_number' => $record->loan_number,
+                        'member_id' => $record->member_id,
+                        'principal_amount' => $record->principal_amount,
+                    ])
+                    ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
 
-            // Record DIPERTAHANKAN sebagai histori (status → Dibatalkan); hanya
-            // jadwal proyeksi yang dibuang agar tak terhitung tunggakan.
-            //
-            // Sebelumnya di sini `$record->delete()` — dan Loan TIDAK memakai
-            // SoftDeletes, jadi itu hard-delete. Karena koreksi hanya boleh atas
-            // pinjaman berstatus "Cair", SWP anggota sudah terpotong dan saldo
-            // SWP diturunkan dari SUM(loans.swp_amount) — menghapus baris ini
-            // melenyapkan simpanan yang benar-benar sudah dibayar anggota, tanpa
-            // reversal entry. Nomor pinjaman (dari MAX()) juga jadi terpakai ulang.
-            //
-            // Selaras dgn LoanDetail::performCorrect & LoanResource::performCorrection.
-            InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->update(['status' => LoanStatus::Dibatalkan]);
-        });
+                // Record DIPERTAHANKAN sebagai histori (status → Dibatalkan); hanya
+                // jadwal proyeksi yang dibuang agar tak terhitung tunggakan.
+                //
+                // Sebelumnya di sini `$record->delete()` — dan Loan TIDAK memakai
+                // SoftDeletes, jadi itu hard-delete. Karena koreksi hanya boleh atas
+                // pinjaman berstatus "Cair", SWP anggota sudah terpotong dan saldo
+                // SWP diturunkan dari SUM(loans.swp_amount) — menghapus baris ini
+                // melenyapkan simpanan yang benar-benar sudah dibayar anggota, tanpa
+                // reversal entry. Nomor pinjaman (dari MAX()) juga jadi terpakai ulang.
+                //
+                // Selaras dgn LoanDetail::performCorrect & LoanResource::performCorrection.
+                InstallmentSchedule::where('loan_id', $record->id)->delete();
+                $record->update(['status' => LoanStatus::Dibatalkan]);
+            });
+        } catch (CannotCancelLoan $e) {
+            // Pembatalan menolak diri sendiri bila SWP pinjaman ini sudah
+            // ditarik anggota — saldo simpanannya akan jadi minus. Pesannya
+            // sudah menyebut jalan keluarnya, jadi cukup diteruskan apa adanya.
+            $this->closeCorrect();
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+
+            return;
+        }
 
         $this->closeCorrect();
         $this->dispatch('toast', type: 'success', message: 'Pinjaman dibatalkan — tetap tersimpan sebagai histori, jadwal dibersihkan, tercatat di audit.');

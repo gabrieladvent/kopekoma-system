@@ -48,7 +48,7 @@
 
             $groups = [
                 'Utama' => [['Dashboard', 'home', 'dashboard'], ['Setor Simpanan', 'banknotes', 'savings.deposits', $canDeposit], ['Pinjaman', 'receipt-percent', 'loans.index', $canLoan], ['Saldo Anggota', 'wallet-stack', 'savings.balances', $canBalance]],
-                'Laporan' => [['Laporan Simpanan', 'chart', 'reports.setoran', $canLaporanSetoran], ['Laporan Angsuran', 'receipt', 'reports.angsuran', $canLaporanAngsuran], ['Laporan Titipan Pokok', 'wallet-stack', 'reports.titipan', $canLaporanTitipan]],
+                'Laporan' => [['Laporan Simpanan', 'chart', 'reports.setoran', $canLaporanSetoran], ['Laporan Angsuran', 'receipt', 'reports.angsuran', $canLaporanAngsuran], ['Laporan Titipan Pokok', 'wallet-stack', 'reports.titipan', $canLaporanTitipan], ['Rekonsiliasi Pinjaman', 'shield', 'reports.rekonsiliasi', $canLaporanTitipan]],
                 'Simpanan' => [['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal], ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday], ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping]],
                 'Pinjaman' => [['Angsuran', 'credit-card', 'installments.index', $canInstallment], ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist]],
                 'Master' => [['Nasabah Koperasi', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],

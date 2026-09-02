@@ -64,7 +64,23 @@ class RoleForm extends Component
         'export_laporan_angsuran' => 'Ekspor Laporan Angsuran Pinjaman',
         'manage_settings' => 'Kelola Pengaturan',
         'copy_store_client_secret' => 'Salin Secret Store Client',
+        'reverse_installment' => 'Reversal Angsuran',
+        'reverse_loan' => 'Reversal Pinjaman',
+        'settle_early_installment' => 'Pelunasan Dipercepat',
+        'pay_installment_from_savings' => 'Bayar Angsuran dari Saldo Simpanan',
+        'access_activity_log' => 'Akses Log Aktivitas',
+        'access_laporan_titipan' => 'Akses Laporan Titipan Pokok',
+        'bypass_time_deposit_schedule' => 'Tembus Jadwal Tahunan Tabungan Berjangka',
     ];
+
+    /**
+     * Label satu izin — dipakai layar ini dan layar Pengguna, supaya izin yang
+     * sama tak pernah tampil dengan dua nama berbeda.
+     */
+    public static function labelFor(string $permission): string
+    {
+        return self::CUSTOM_LABELS[$permission] ?? ucfirst(str_replace(['_', '::'], [' ', ' '], $permission));
+    }
 
     public function mount(?Role $role = null): void
     {
@@ -178,7 +194,7 @@ class RoleForm extends Component
             }
 
             if (! $matched) {
-                $custom[$perm] = self::CUSTOM_LABELS[$perm] ?? ucfirst(str_replace(['_', '::'], [' ', ' '], $perm));
+                $custom[$perm] = self::labelFor($perm);
             }
         }
 

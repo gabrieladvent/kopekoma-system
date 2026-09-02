@@ -88,7 +88,12 @@ class Loan extends Model implements HasMedia
                 app(LoanSavingsService::class)->reverseSwp(
                     $loan,
                     "Pembatalan pinjaman {$loan->loan_number}",
-                    $loan->recorded_by,
+                    // Pelakunya yang MEMBATALKAN, bukan yang mencatat. Memakai
+                    // `recorded_by` membuat ini satu-satunya mutasi finansial
+                    // yang causer-nya bukan pelaku: Petugas A mencatat, Pengurus
+                    // B membatalkan, penurunan saldo tercatat atas nama A.
+                    // `recorded_by` hanya dipakai bila tak ada sesi — seeder & test.
+                    auth()->id() ?? $loan->recorded_by,
                 );
             }
         });

@@ -7,6 +7,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 class UserForm extends Component
@@ -23,6 +24,23 @@ class UserForm extends Component
 
     /** @var array<int, string> Nama role yang dipilih. */
     public array $selectedRoles = [];
+
+    /**
+     * Izin yang diberikan LANGSUNG ke pengguna ini, di luar perannya.
+     *
+     * Bukan duplikasi layar Peran. `RolePermissionSeeder` memakai
+     * `syncPermissions()` pada PERAN, jadi izin yang ditambahkan ke sebuah peran
+     * lewat layar Peran & Izin akan **dicabut diam-diam** oleh deploy
+     * berikutnya. Izin per-pengguna tak tersentuh seeder itu — jadi inilah
+     * satu-satunya tempat memberikan wewenang khusus yang bertahan lintas rilis
+     * tanpa mengubah kode.
+     *
+     * Contohnya `bypass_time_deposit_schedule`: sengaja bukan milik peran mana
+     * pun, tapi kadang perlu dipegang satu orang tertentu.
+     *
+     * @var array<int, string>
+     */
+    public array $selectedPermissions = [];
 
     public bool $is_active = true;
 
@@ -43,6 +61,9 @@ class UserForm extends Component
             $this->name = $user->name;
             $this->email = $user->email;
             $this->selectedRoles = $user->roles->pluck('name')->all();
+            // `permissions` = izin langsung saja, tidak termasuk yang diwarisi
+            // dari peran — persis yang boleh diubah di layar ini.
+            $this->selectedPermissions = $user->permissions->pluck('name')->all();
             $this->is_active = (bool) ($user->is_active ?? true);
             $this->email_verified = $user->email_verified_at !== null;
         }
@@ -69,6 +90,8 @@ class UserForm extends Component
                 : ['nullable'],
             'selectedRoles' => ['array'],
             'selectedRoles.*' => ['string', Rule::exists('roles', 'name')],
+            'selectedPermissions' => ['array'],
+            'selectedPermissions.*' => ['string', Rule::exists('permissions', 'name')],
         ];
     }
 
@@ -108,6 +131,7 @@ class UserForm extends Component
             $user->email_verified_at = $this->email_verified ? now() : null;
             $user->save();
             $user->syncRoles($this->selectedRoles);
+            $user->syncPermissions($this->selectedPermissions);
 
             // Dinonaktifkan lewat form edit → akhiri sesinya (langsung ter-logout).
             if (! $isActive) {
@@ -128,6 +152,7 @@ class UserForm extends Component
         $user->email_verified_at = $this->email_verified ? now() : null;
         $user->save();
         $user->syncRoles($this->selectedRoles);
+        $user->syncPermissions($this->selectedPermissions);
 
         $this->generatedPassword = $plainPassword;
         $this->showCredentials = true;
@@ -148,8 +173,27 @@ class UserForm extends Component
     {
         $roles = Role::orderBy('name')->pluck('name')->all();
 
+        // Hanya izin yang BUKAN bawaan peran mana pun yang ditawarkan di sini.
+        // Menawarkan seluruh daftar izin akan mengundang orang menambal peran
+        // lewat pengguna satu per satu — dan itu justru menghilangkan gunanya
+        // peran. Yang tersisa: izin khusus yang sengaja tak dimiliki peran.
+        // super_admin DIKECUALIKAN dari perhitungan: seeder memberinya
+        // `Permission::all()`, jadi memasukkannya membuat daftar ini selalu
+        // kosong — setiap izin akan selalu "sudah dimiliki peran".
+        $roleOwned = Permission::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', '!=', 'super_admin'))
+            ->pluck('name');
+
+        $permissions = Permission::query()
+            ->whereNotIn('name', $roleOwned)
+            ->orderBy('name')
+            ->pluck('name')
+            ->mapWithKeys(fn (string $name): array => [$name => RoleForm::labelFor($name)])
+            ->all();
+
         return view('livewire.system.user-form', [
             'roles' => $roles,
+            'permissions' => $permissions,
         ])->layout('components.layouts.app', [
             'title' => $this->userId ? 'Edit Pengguna' : 'Tambah Pengguna',
         ]);
