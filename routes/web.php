@@ -25,6 +25,7 @@ use App\Livewire\Master\Member\MemberForm;
 use App\Livewire\Master\Member\Members;
 use App\Livewire\Profile\EditProfile;
 use App\Livewire\Reports\LaporanAngsuranPinjaman;
+use App\Livewire\Reports\LaporanRekonsiliasiPinjaman;
 use App\Livewire\Reports\LaporanSetoranSimpanan;
 use App\Livewire\Reports\LaporanTitipanPokok;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
@@ -239,6 +240,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/laporan/titipan-pokok', LaporanTitipanPokok::class)
         ->middleware('can:access_laporan_titipan')
         ->name('reports.titipan');
+
+    Route::get('/laporan/rekonsiliasi-pinjaman', LaporanRekonsiliasiPinjaman::class)
+        ->middleware('can:access_laporan_titipan')
+        ->name('reports.rekonsiliasi');
 
     // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
     // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.

@@ -67,4 +67,18 @@ class CannotReverseTransaction extends RuntimeException
     {
         return new self('Debit angsuran dari saldo simpanan hanya bisa dibalik lewat pembatalan angsurannya, bukan dari menu Pencairan.');
     }
+
+    /**
+     * Setoran SWP / Tabungan Berjangka adalah pasangan dari pencairan pinjaman
+     * dan pembayaran angsuran. Dibalik sendirian, saldo anggota turun sementara
+     * pinjaman & angsurannya tetap berdiri.
+     */
+    public static function loanOwnedDeposit(string $type): self
+    {
+        $where = $type === 'swp'
+            ? 'membatalkan pinjamannya'
+            : 'membatalkan angsuran yang bersangkutan';
+
+        return new self("Setoran {$type} tidak bisa dibatalkan sendiri — ia mengikuti pinjaman. Lakukan lewat {$where}.");
+    }
 }

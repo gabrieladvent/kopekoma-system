@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Filament\Resources\SavingsDepositResource;
 use App\Models\SavingsDeposit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -110,7 +111,24 @@ class DepositReportService
         $basis = $this->basis($filters);
 
         $query = SavingsDeposit::query()
-            ->whereBetween($basis, [$filters['start'], $filters['end']]);
+            ->whereBetween($basis, [$filters['start'], $filters['end']])
+            // SWP & Tabungan Berjangka DIKECUALIKAN dari laporan setoran.
+            //
+            // Keduanya memang baris `savings_deposits`, tapi bukan setoran yang
+            // diterima loket: SWP dipotong dari dana pencairan (uang yang sudah
+            // ada di koperasi), Tabungan Berjangka adalah komponen angsuran yang
+            // SUDAH terhitung di Laporan Angsuran. Menghitungnya di sini
+            // menjumlahkan uang yang sama dua kali di dua laporan.
+            //
+            // Yang paling merusak: `recordTimeDeposit()` menandai barisnya
+            // `deposit_method = 'potong_gaji'` mengikuti angsurannya, jadi ia
+            // muncul di basis "Periode Potong Gaji (rekonsiliasi payroll)" —
+            // total per OPD naik tanpa potongan gaji yang nyata, dan
+            // pencocokan ke slip gaji jadi tak pernah balance.
+            //
+            // Saldonya tetap terlihat: kartu & kolom di layar Saldo Anggota, dan
+            // tiap barisnya di buku mutasi anggota.
+            ->whereNotIn('savings_type', SavingsDepositResource::LOAN_OWNED_TYPES);
 
         // Basis period_month: baris NULL (sukarela/hari_raya) tak punya periode
         // payroll → dikecualikan (peringatan di UI). whereBetween sudah membuang

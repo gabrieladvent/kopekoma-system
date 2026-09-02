@@ -4,6 +4,7 @@ namespace App\Livewire\Loan;
 
 use App\Enums\InstallmentScheduleStatus;
 use App\Enums\LoanStatus;
+use App\Exceptions\CannotCancelLoan;
 use App\Filament\Resources\LoanResource as Resource;
 use App\Filament\Resources\RelationManagers\SchedulesRelationManager;
 use App\Livewire\Concerns\InteractsWithAuditTrail;
@@ -86,21 +87,31 @@ class LoanDetail extends Component
         // Record DIPERTAHANKAN sebagai histori (status → Dibatalkan); hanya jadwal
         // proyeksi yang dibuang agar tak terhitung tunggakan. Selaras dgn
         // LoanResource::performCorrection — bukan hard-delete.
-        DB::transaction(function () use ($record): void {
-            activity()
-                ->performedOn($record)
-                ->causedBy(auth()->id())
-                ->event('koreksi')
-                ->withProperties([
-                    'loan_number' => $record->loan_number,
-                    'member_id' => $record->member_id,
-                    'principal_amount' => $record->principal_amount,
-                ])
-                ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
+        try {
+            DB::transaction(function () use ($record): void {
+                activity()
+                    ->performedOn($record)
+                    ->causedBy(auth()->id())
+                    ->event('koreksi')
+                    ->withProperties([
+                        'loan_number' => $record->loan_number,
+                        'member_id' => $record->member_id,
+                        'principal_amount' => $record->principal_amount,
+                    ])
+                    ->log('Pembatalan salah-input pinjaman: '.$this->correctReason);
 
-            InstallmentSchedule::where('loan_id', $record->id)->delete();
-            $record->update(['status' => LoanStatus::Dibatalkan]);
-        });
+                InstallmentSchedule::where('loan_id', $record->id)->delete();
+                $record->update(['status' => LoanStatus::Dibatalkan]);
+            });
+        } catch (CannotCancelLoan $e) {
+            // Pembatalan menolak diri sendiri bila SWP pinjaman ini sudah
+            // ditarik anggota — saldo simpanannya akan jadi minus. Pesannya
+            // sudah menyebut jalan keluarnya, jadi cukup diteruskan apa adanya.
+            $this->closeCorrect();
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+
+            return null;
+        }
 
         $this->closeCorrect();
         $this->dispatch('toast', type: 'success', message: 'Pinjaman dibatalkan — tetap tersimpan sebagai histori, jadwal dibersihkan, tercatat di audit.');

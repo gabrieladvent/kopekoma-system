@@ -138,7 +138,10 @@ class SavingsDeposits extends Component
 
         return view('livewire.savings.deposit.savings-deposits', [
             'deposits' => $deposits,
-            'savingsTypes' => Resource::SAVINGS_TYPES,
+            // Filter daftar setoran memakai peta LENGKAP: baris SWP & Tabungan
+            // Berjangka ada di tabel ini, jadi harus bisa disaring — beda dengan
+            // form setoran yang hanya boleh menawarkan jenis manual.
+            'savingsTypes' => Resource::TYPE_LABELS,
             'depositMethods' => Resource::DEPOSIT_METHODS,
         ])->layout('components.layouts.app', ['title' => 'Setor Simpanan']);
     }

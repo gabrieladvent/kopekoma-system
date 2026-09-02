@@ -480,7 +480,7 @@ class DemoDataSeeder extends Seeder
         $this->command?->line('  Setoran        : '.SavingsDeposit::count());
         $this->command?->line('  Pinjaman       : '.Loan::count().' (lunas: '.Loan::where('status', 'Lunas')->count().')');
         $this->command?->line('  Angsuran       : '.Installment::count());
-        $this->command?->line('  Pencairan      : '.SavingsWithdrawal::count().' (draft menunggu ACC & refund pelunasan)');
+        $this->command?->line('  Pencairan      : '.SavingsWithdrawal::count().' (draft menunggu ACC)');
         $this->command?->line('');
         $this->command?->line('  Login Pengurus : pengurus@kopekoma.test / password');
         $this->command?->line('  Login Petugas  : petugas@kopekoma.test / password');

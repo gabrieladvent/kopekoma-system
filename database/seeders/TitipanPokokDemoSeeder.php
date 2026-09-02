@@ -203,7 +203,18 @@ class TitipanPokokDemoSeeder extends Seeder
         $this->payExact($loan, 3);
         $this->pay($loan, 4, '2180000');
 
-        $this->note('T6', 'Bagus Prakoso', $loan, 'Titipan 1.090.000, sisa pokok 8.000.000. Payoff di layar batch harus 7.078.000.');
+        $fresh = $loan->fresh();
+
+        // Angkanya DIHITUNG, bukan diketik. Catatan yang dicetak ke terminal
+        // ikut dibaca penguji sebagai hasil yang diharapkan; versi pertama
+        // menyebut 7.078.000 karena lupa memotong titipan penuh, dan itu akan
+        // membuat penguji melaporkan "tidak sesuai" atas sistem yang benar.
+        $this->note('T6', 'Bagus Prakoso', $loan, sprintf(
+            'Titipan %s, sisa pokok %s. Payoff di layar batch harus %s.',
+            $this->rupiah($fresh->overpaymentCredit()),
+            $this->rupiah($fresh->settledPrincipal()),
+            $this->rupiah($fresh->payoffAmount()),
+        ));
     }
 
     // ---------------------------------------------------------------- helper
@@ -348,6 +359,11 @@ class TitipanPokokDemoSeeder extends Seeder
         }
 
         return $user;
+    }
+
+    private function rupiah(string $amount): string
+    {
+        return number_format((float) $amount, 0, ',', '.');
     }
 
     private function note(string $code, string $member, Loan $loan, string $state): void

@@ -219,7 +219,7 @@ class LaporanSetoranSimpanan extends Page implements HasForms
                         Forms\Components\Select::make('savings_type')
                             ->label('Jenis Simpanan')
                             ->multiple()
-                            ->options(SavingsDepositResource::SAVINGS_TYPES)
+                            ->options(SavingsDepositResource::TYPE_LABELS)
                             ->placeholder('Semua jenis'),
                         Forms\Components\Select::make('deposit_method')
                             ->label('Metode Setor')
@@ -283,7 +283,7 @@ class LaporanSetoranSimpanan extends Page implements HasForms
 
     public function savingsTypeLabel(?string $type): string
     {
-        return SavingsDepositResource::SAVINGS_TYPES[$type] ?? (string) $type;
+        return SavingsDepositResource::TYPE_LABELS[$type] ?? (string) $type;
     }
 
     public function depositMethodLabel(?string $method): string

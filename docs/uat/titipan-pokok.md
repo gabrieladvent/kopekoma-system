@@ -16,6 +16,14 @@ php artisan db:seed --class=DemoDataSeeder
 php artisan db:seed --class=TitipanPokokDemoSeeder
 ```
 
+> `migrate:fresh --seed` sudah menjalankan `RolePermissionSeeder`. Kalau kamu
+> menguji di database yang sudah ada, jalankan seeder itu sendiri —
+> `php artisan db:seed --class=RolePermissionSeeder` — kalau tidak, tiga
+> permission baru (`access_activity_log`, `access_laporan_titipan`,
+> `bypass_time_deposit_schedule`) tak ada dan §7 serta §9.4 akan gagal.
+>
+> Di server, `deploy.sh` kini menjalankan seeder ini sendiri (langkah 5c).
+
 Login:
 
 | Peran | Email | Password |
@@ -372,7 +380,7 @@ Cek cepat per pinjaman uji:
 > Ini kebalikan dari perilaku lama, yang menerbitkan dua draft pencairan begitu
 > pinjaman lunas. Kalau draft itu masih muncul, perubahannya belum jalan.
 
-### 9.3 Anggota mengambilnya sendiri
+### 9.3 Penarikan SWP
 
 *Pengurus · Simpanan → Pencairan → Buat*
 
@@ -382,10 +390,72 @@ Cek cepat per pinjaman uji:
 | Ajukan penarikan SWP 120.000 | Tersimpan sebagai **draft** |
 | ACC lalu Cairkan | Saldo SWP jadi **0**; Tab. Berjangka tak tersentuh |
 
-> Gerbang mata-kedua tidak hilang — ia pindah ke sini, ke saat anggota
-> benar-benar meminta uangnya.
+> **Celah yang diketahui, bukan temuan.** Aturan koperasi: SWP dikembalikan
+> setelah anggota **keluar dari keanggotaan**. Itu belum ditegakkan karena jalur
+> penutupan akun belum ada, jadi untuk sementara SWP bisa dicairkan kapan saja
+> seperti di atas. Jangan dilaporkan sebagai bug — tapi ingat bahwa ini harus
+> ditutup sebelum sistem dipakai sungguhan.
 
-### 9.4 Pembalikan harus berpasangan
+### 9.4 Tabungan Berjangka hanya boleh cair 1× setahun
+
+Aturan koperasi: Tabungan Berjangka dikembalikan **satu kali dalam setahun**,
+bersamaan pembagian SHU.
+
+Patokannya bergantung pada **Bulan Pembagian SHU** di *Pengaturan → Pinjaman*:
+
+| Setelan | Aturan yang berlaku |
+|---|---|
+| **Belum ditetapkan** | 12 bulan sejak pencairan terakhir tiap anggota. Longgar, dan waktunya berbeda-beda per orang |
+| **Ditetapkan** (mis. Maret) | Hanya boleh dicairkan **di bulan itu**, dan **sekali per tahun** |
+
+Anggota berstatus **Keluar / Meninggal selalu dikecualikan** — mereka butuh
+haknya sekarang, bukan menunggu bulan SHU.
+
+#### 9.4a Tanpa setelan bulan SHU
+
+*Pengurus · Pengaturan → pastikan Bulan Pembagian SHU = "Belum ditetapkan"*
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Cairkan Tab. Berjangka anggota mana pun (pertama kali) | **Berhasil** — belum pernah cair, tak ada yang menghalangi |
+| Ajukan lagi, lalu ACC & Cairkan | **DITOLAK**: *"…dikembalikan satu kali dalam setahun. Pencairan terakhir …, jadi pencairan berikutnya baru boleh mulai …"* |
+| Cek status pencairan kedua | Masih **acc**, tidak berubah jadi cair |
+
+#### 9.4b Dengan setelan bulan SHU
+
+*Pengurus · Pengaturan → set Bulan Pembagian SHU*
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Set ke **bulan ini**, lalu cairkan Tab. Berjangka | **Berhasil** |
+| Ajukan lagi di bulan yang sama, ACC & Cairkan | **DITOLAK**: *"…sudah dicairkan tahun ini …"* — jendela sebulan tak boleh dipakai dua kali |
+| Set ke **bulan lain**, lalu coba cairkan anggota yang belum pernah cair | **DITOLAK**: *"…hanya dapat dicairkan pada bulan pembagian SHU (…). Jendela berikutnya: …"* |
+| Anggota yang pencairan terakhirnya **13 bulan lalu**, sekarang bukan bulan SHU | **Tetap DITOLAK** — inilah bedanya. Aturan lama meloloskannya, jendela SHU tidak |
+
+#### 9.4c Anggota Keluar / Meninggal
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Ubah status anggota jadi **Keluar**, set bulan SHU ke bulan lain, lalu cairkan Tab. Berjangka-nya | **Berhasil** |
+| Cek Log Aktivitas | **TIDAK ADA** jejak "Pencairan di Luar Jadwal" — ia memang tidak melanggar, bukan menembus |
+
+**Yang paling penting diuji — Pengurus TIDAK boleh lolos begitu saja:**
+
+| Login | Hasil yang diharapkan |
+|---|---|
+| **Pengurus** | Tetap **ditolak**. Kalau Pengurus lolos, aturannya tak mengikat siapa pun — hanya Pengurus yang bisa mencairkan |
+| **super_admin** | **Berhasil**, dan di Log Aktivitas muncul peristiwa **"Pencairan Tabungan Berjangka sebelum genap setahun"** berisi tanggal cair terakhir dan tanggal boleh berikutnya |
+
+| Pemeriksaan lain | Hasil yang diharapkan |
+|---|---|
+| Cairkan **Sukarela** dua kali berturut-turut | **Boleh** — jadwal setahun hanya berlaku untuk Tabungan Berjangka |
+| Batalkan pencairan Tab. Berjangka, lalu ajukan lagi | **Boleh** — uangnya kembali, jadi jadwalnya ikut terbuka lagi |
+
+> Izin tembusnya `bypass_time_deposit_schedule`, bawaannya **super_admin saja**.
+> Bisa diberikan ke orang lain lewat *Sistem → Peran & Izin* — tapi itu keputusan
+> yang diambil sadar, bukan sesuatu yang menempel otomatis pada jabatan.
+
+### 9.5 Pembalikan harus berpasangan
 
 | Langkah | Hasil yang diharapkan |
 |---|---|
@@ -395,6 +465,102 @@ Cek cepat per pinjaman uji:
 
 > Kalau saldo tidak ikut turun, salah ketik petugas menaikkan simpanan anggota
 > secara permanen — pinjamannya tinggal catatan, uangnya tetap jadi saldo.
+
+---
+
+### 9.6 SWP & Tab Berjangka tidak boleh masuk Laporan Setoran
+
+*Pengurus · Laporan → Laporan Simpanan*
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Rentang yang memuat pembayaran angsuran anggota uji, basis **Periode Potong Gaji** | Total **tidak** memuat Tabungan Berjangka. Bandingkan dengan Laporan Angsuran — angka yang sama tak boleh muncul di dua laporan |
+| Filter jenis simpanan | SWP & Tab Berjangka **tidak ditawarkan** — memang bukan bagian laporan ini |
+| Daftar Setoran (Simpanan → Setoran) | Barisnya **ada** dan bisa difilter per jenis, dengan label "SWP (Simpanan Wajib Pinjaman)" dan "Tabungan Berjangka" — bukan tulisan mentah |
+| Buka detail salah satu baris SWP | Tombol **Reversal tidak muncul**. Pembatalannya lewat pembatalan pinjaman |
+
+---
+
+## Bagian 10 — Pengaman hasil security review
+
+### 10.1 Simpanan tak bisa dicetak dari layar setoran
+
+*Petugas · Simpanan → Setoran → Buat*
+
+Layar setoran hanya menawarkan Pokok, Wajib, Sukarela, Hari Raya, Wajib Belanja.
+**SWP dan Tabungan Berjangka tidak ada di daftar** — keduanya hanya lahir dari
+pencairan pinjaman dan pembayaran angsuran.
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Daftar jenis di form setoran | Lima jenis, tanpa SWP & Tab Berjangka |
+
+### 10.2 Setoran SWP/Tab Berjangka tak bisa dibatalkan sendiri
+
+*Simpanan → Setoran → buka baris bertipe SWP*
+
+| Login | Hasil yang diharapkan |
+|---|---|
+| **Petugas** | Tombol **Reversal tidak muncul** |
+| **Pengurus** | Sama — tidak muncul juga |
+
+Pembatalannya lewat jalur yang benar:
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Batalkan **pinjamannya** | Setoran SWP ikut terbalik, saldo turun |
+| Batalkan **angsuran** | Setoran Tab Berjangka bulan itu ikut terbalik |
+
+### 10.3 Pinjaman tak bisa dibatalkan kalau SWP-nya sudah ditarik
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Cairkan SWP anggota sampai saldonya 0, lalu batalkan pinjamannya | **DITOLAK**: *"SWP-nya … sudah ditarik anggota … Batalkan dulu pencairan SWP tersebut, baru pinjamannya."* |
+| Cek saldo SWP anggota | Tetap **0**, tidak minus |
+| Batalkan pencairan SWP-nya dulu, lalu batalkan pinjamannya | Sekarang **berhasil** |
+
+> Tanpa penolakan ini saldo simpanan anggota jadi **minus** — dan total
+> simpanannya ikut minus. Terverifikasi sebelum diperbaiki.
+
+### 10.4 Rekonsiliasi
+
+*Pengurus · Laporan → Rekonsiliasi Pinjaman*
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Setelah seluruh skenario di atas dijalankan | **"Seluruhnya cocok"** — halaman kosong adalah hasil yang benar |
+| Kolom | SWP dan Tab Berjangka, masing-masing *Tercatat / Seharusnya / Selisih* |
+| Login Petugas | **403** |
+
+> Halaman ini membandingkan saldo tercatat dengan hitungan ulang dari data
+> pinjaman. Kalau ia menampilkan baris, ada saldo yang tak bisa dijelaskan oleh
+> pinjaman mana pun — itu yang perlu ditelusuri, apa pun sebabnya.
+
+### 10.5 Jejak bisa dicari
+
+*Pengurus · Sistem → Log Aktivitas → filter Aksi*
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Daftar filter Aksi | Memuat **"Pencairan di Luar Jadwal"**, "Pembatalan Ditolak", "Pembayaran Angsuran", "Batch Angsuran Potong Gaji", "Koreksi / Pembatalan" |
+| Pilih "Pencairan di Luar Jadwal" | Menampilkan bypass yang dilakukan di §9.4 |
+
+> Sebelumnya event-event ini tersimpan tapi tak ada di daftar filter — jejaknya
+> ada, tapi tak bisa dipanggil siapa pun.
+
+### 10.6 Izin khusus per pengguna
+
+*super_admin · Sistem → Pengguna → edit seorang Pengurus*
+
+| Yang diperiksa | Hasil yang diharapkan |
+|---|---|
+| Bagian **Izin Khusus** | Ada, memuat "Tembus Jadwal Tahunan Tabungan Berjangka" |
+| Izin yang sudah jadi bawaan peran | **Tidak ditawarkan** di sini |
+| Centang izin itu, simpan, lalu uji §9.4 sebagai Pengurus tersebut | Sekarang **lolos**, dan tercatat sebagai pencairan di luar jadwal |
+
+> Berikan izin khusus **di sini**, bukan lewat layar Peran & Izin: izin yang
+> ditambahkan ke sebuah peran akan tercabut sendiri saat pembaruan sistem
+> berikutnya (seeder memakai `syncPermissions` pada peran).
 
 ---
 

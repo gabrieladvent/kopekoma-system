@@ -420,7 +420,7 @@ Versi sebelumnya menyebut rollback Phase 2 → 1 "tidak sepenuhnya bersih". **It
   <!-- source: manual -->
 - [x] ~~**Ada baris `amount_paid < total_due` di data lama?**~~ — **GUGUR** bersama premis yang sama. Asumsi "kurang bayar tak pernah ada karena ditolak `belowBill()`" berlaku penuh: seluruh baris angsuran produksi akan dibuat oleh kode yang sudah memuat lantai itu
   <!-- source: manual -->
-- [ ] **Seed permission** setelah deploy: `php artisan db:seed --class=RolePermissionSeeder` — `access_activity_log` (v26) dan `access_laporan_titipan` (v28) tidak muncul sendiri. Tanpa ini Pengurus kena 403 di dua kanal pendeteksian R14 sekaligus. Seeder idempotent (`firstOrCreate` + `syncPermissions`)
+- [ ] **Seed permission** setelah deploy: `php artisan db:seed --class=RolePermissionSeeder` — `access_activity_log` (v26), `access_laporan_titipan` (v28), dan `bypass_time_deposit_schedule` tidak muncul sendiri. Tanpa ini Pengurus kena 403 di dua kanal pendeteksian R14 sekaligus. Seeder idempotent (`firstOrCreate` + `syncPermissions`)
   <!-- source: manual -->
 
 **Phase 2 → 3:**

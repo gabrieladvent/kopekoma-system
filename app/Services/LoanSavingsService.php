@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\ReverseTransaction;
 use App\Enums\LoanStatus;
+use App\Exceptions\CannotCancelLoan;
 use App\Models\Installment;
 use App\Models\Loan;
 use App\Models\SavingsDeposit;
@@ -39,7 +40,10 @@ class LoanSavingsService
 {
     private const SCALE = 2;
 
-    public function __construct(private readonly ReverseTransaction $reverse) {}
+    public function __construct(
+        private readonly ReverseTransaction $reverse,
+        private readonly SavingsBalanceService $balances,
+    ) {}
 
     /**
      * Setoran SWP saat pinjaman cair. Idempotent — dipanggil dua kali untuk
@@ -126,7 +130,58 @@ class LoanSavingsService
      */
     public function reverseSwp(Loan $loan, string $reason, ?int $causerId = null): void
     {
+        $this->assertSwpStillHeld($loan);
+
         $this->reverseDepositsFor($loan->loan_number, 'swp', $reason, $causerId);
+    }
+
+    /**
+     * Tolak pembatalan pinjaman bila SWP-nya sudah ditarik anggota.
+     *
+     * Tanpa ini saldo simpanan anggota jadi MINUS — terverifikasi: pinjaman
+     * cair (SWP 500.000) → anggota menarik 500.000 → petugas membatalkan
+     * pinjaman karena salah input → pembalikan −500.000 → saldo `-500.000`, dan
+     * total simpanan anggota ikut minus. `ReverseTransaction` tak punya penjaga
+     * saldo hasil, dan guard pembatalan pinjaman hanya melihat ada-tidaknya
+     * angsuran terbayak, bukan SWP yang sudah keluar.
+     *
+     * DITOLAK, bukan diizinkan-lalu-dicatat: kalau diizinkan, anggota menyimpan
+     * uang yang bukan haknya dan tak ada yang menagihnya kembali. Pesannya
+     * menyebut jalan keluarnya, sama seperti guard Titipan Pokok — "ditolak"
+     * tanpa arah hanya memindahkan kebuntuan ke petugas.
+     */
+    private function assertSwpStillHeld(Loan $loan): void
+    {
+        $toReverse = $this->activeDepositTotal($loan->loan_number, 'swp');
+
+        if (bccomp($toReverse, '0', self::SCALE) <= 0) {
+            return;
+        }
+
+        $balance = $this->balances->balanceByType($loan->member, 'swp');
+
+        if (bccomp($balance, $toReverse, self::SCALE) >= 0) {
+            return;
+        }
+
+        throw CannotCancelLoan::swpAlreadyWithdrawn($loan->loan_number, $toReverse, $balance);
+    }
+
+    /** Σ setoran non-reversal yang BELUM dibalik untuk referensi & jenis ini. */
+    private function activeDepositTotal(?string $reference, string $type): string
+    {
+        if (blank($reference)) {
+            return '0.00';
+        }
+
+        $total = SavingsDeposit::query()
+            ->where('reference_number', $reference)
+            ->where('savings_type', $type)
+            ->where('is_reversal', false)
+            ->whereDoesntHave('reversal')
+            ->sum('amount');
+
+        return bcadd((string) $total, '0', self::SCALE);
     }
 
     /**
@@ -152,21 +207,28 @@ class LoanSavingsService
             return;
         }
 
-        $reversedIds = SavingsDeposit::query()
-            ->whereNotNull('reversal_of_id')
-            ->pluck('reversal_of_id');
-
+        // `whereDoesntHave`, bukan `whereNotIn(pluck(...))`: bentuk yang kedua
+        // memuat SELURUH id reversal ke memori PHP tiap kali dipanggil, dan
+        // tabel ini tumbuh satu baris per angsuran per anggota per bulan.
         SavingsDeposit::query()
             ->where('reference_number', $reference)
             ->where('savings_type', $type)
             ->where('is_reversal', false)
-            ->whereNotIn('id', $reversedIds)
+            ->whereDoesntHave('reversal')
             ->get()
             // `allowInactiveMember` — membalik SETORAN menurunkan saldo anggota,
             // tapi ia pasangan wajib dari transaksi yang dibatalkan. Menolaknya
             // karena anggota sudah Keluar akan meninggalkan simpanan yatim yang
             // tak bisa dibersihkan siapa pun.
-            ->each(fn (SavingsDeposit $deposit) => ($this->reverse)($deposit, $reason, $causerId, allowInactiveMember: true));
+            ->each(fn (SavingsDeposit $deposit) => ($this->reverse)(
+                $deposit,
+                $reason,
+                $causerId,
+                allowInactiveMember: true,
+                // Satu-satunya pemanggil yang boleh membalik setoran milik
+                // pinjaman — lihat ReverseTransaction::$allowLoanPairedDeposit.
+                allowLoanPairedDeposit: true,
+            ));
     }
 
     private function hasActiveDeposit(?string $reference, string $type): bool

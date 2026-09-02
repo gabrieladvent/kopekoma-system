@@ -25,6 +25,11 @@ class SavingsMutationService
         'sukarela' => 'Sukarela',
         'hari_raya' => 'Hari Raya',
         'wajib_belanja' => 'Wajib Belanja',
+        // Sejak keduanya jadi simpanan sungguhan, barisnya muncul di buku mutasi
+        // anggota. Tanpa label, badge-nya terbaca `swp` mentah di layar yang
+        // dilihat anggota.
+        'swp' => 'SWP',
+        'tabungan_berjangka' => 'Tab. Berjangka',
     ];
 
     /**

@@ -4,6 +4,8 @@ namespace App\Actions;
 
 use App\Contracts\Reversible;
 use App\Exceptions\CannotReverseTransaction;
+use App\Filament\Resources\SavingsDepositResource;
+use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -24,6 +26,10 @@ class ReverseTransaction
      *                                     dana ke anggota (mis. debit angsuran-dari-simpanan,
      *                                     ADR 2026-07-22 item 1d): membalik debit = menaikkan
      *                                     saldo anggota → selalu boleh walau anggota Keluar/Meninggal.
+     * @param  bool  $allowLoanPairedDeposit  `true` HANYA dari `LoanSavingsService`.
+     *                                        Setoran `swp`/`tabungan_berjangka` TAK boleh dibalik
+     *                                        terpisah — kalau lolos, saldo simpanan anggota turun
+     *                                        sementara pinjaman & angsurannya tetap berdiri.
      * @param  bool  $allowPairedInstallmentDebit  `true` HANYA dari `LoanPaymentService::reverse`
      *                                             (konteks `Installment::reverse`). Debit angsuran-dari-simpanan
      *                                             (SavingsWithdrawal ber-`installment_id`) TAK boleh dibalik
@@ -32,7 +38,7 @@ class ReverseTransaction
      *                                             item 1f) mencegah caller baru (command/API/bulk) membocorkannya.
      * @return T baris reversal yang dibuat
      */
-    public function __invoke(Model&Reversible $original, string $reason, int|string|false|null $causerId = false, bool $allowInactiveMember = false, bool $allowPairedInstallmentDebit = false): Model
+    public function __invoke(Model&Reversible $original, string $reason, int|string|false|null $causerId = false, bool $allowInactiveMember = false, bool $allowPairedInstallmentDebit = false, bool $allowLoanPairedDeposit = false): Model
     {
         if ($causerId === false) {
             $causerId = auth()->id();
@@ -48,6 +54,19 @@ class ReverseTransaction
 
         if (! $allowPairedInstallmentDebit && $original instanceof SavingsWithdrawal && $original->installment_id !== null) {
             throw CannotReverseTransaction::pairedInstallmentDebit();
+        }
+
+        // Kembaran aturan di atas, untuk sisi SETORAN. Baris `swp` dan
+        // `tabungan_berjangka` adalah pasangan dari pencairan pinjaman dan
+        // pembayaran angsuran. Dibalik sendirian, saldo simpanan anggota turun
+        // sementara pinjaman & angsurannya tetap berdiri — penghapusan hak
+        // anggota, bukan koreksi, dan cukup dilakukan satu Petugas tanpa mata
+        // kedua. Pembatalannya harus lewat pembatalan pinjaman atau reversal
+        // angsuran, yang memanggil ini dengan flag di bawah.
+        if (! $allowLoanPairedDeposit
+            && $original instanceof SavingsDeposit
+            && in_array($original->savings_type, SavingsDepositResource::LOAN_OWNED_TYPES, true)) {
+            throw CannotReverseTransaction::loanOwnedDeposit((string) $original->savings_type);
         }
 
         if (! $allowInactiveMember && in_array($original->member?->status, self::INACTIVE_STATUSES, true)) {

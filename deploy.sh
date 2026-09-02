@@ -3,11 +3,11 @@
 # KOPEKOMA System — Development Server Deploy Script
 #
 # Update branch `development` di server dengan sekali jalan:
-#   git pull → composer install → npm build → migrate → optimize → reload.
+#   git pull → composer install → npm build → migrate → seed → optimize → reload.
 #
 # Penggunaan:
 #   sudo ./deploy.sh                    # Normal deploy
-#   sudo ./deploy.sh --skip-migration   # Skip migration step
+#   sudo ./deploy.sh --skip-migration   # Skip migration DAN seeder
 #   sudo ./deploy.sh --skip-build       # Skip npm build (kalau tidak ada perubahan frontend)
 #   sudo ./deploy.sh --branch=main      # Override branch (default: development)
 #
@@ -207,13 +207,53 @@ if [ "$SKIP_MIGRATION" = false ]; then
     php artisan migrate --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
     success "Migration selesai"
 
+    # Seeder referensi — WAJIB, dan sengaja di sini: masih di dalam maintenance
+    # window, setelah migrate, sebelum cache di-warm.
+    #
+    # Tanpa langkah ini rilis pertama di database kosong selesai tanpa role,
+    # tanpa permission, tanpa user — tak ada yang bisa login sama sekali. Dan
+    # tiap rilis yang menambah permission (mis. `access_activity_log`,
+    # `access_laporan_titipan`, `bypass_time_deposit_schedule`) akan menghasilkan
+    # 403 diam-diam di layar yang bersangkutan: menunya tampil, kliknya ditolak.
+    #
+    # GradeSeeder + RolePermissionSeeder idempotent terhadap definisinya sendiri
+    # (`firstOrCreate`), jadi aman dijalankan tiap deploy. UserSeeder dipisah —
+    # lihat catatannya di bawah.
+    #
+    # PERINGATAN: `RolePermissionSeeder` memakai `syncPermissions()`, yang
+    # MENCABUT permission yang diberikan ke sebuah ROLE lewat layar Peran & Izin
+    # kalau permission itu tak ada di daftar konstanta seeder. Pemberian izin
+    # khusus yang ingin bertahan lintas deploy harus diberikan ke PENGGUNA,
+    # bukan ke peran — atau dimasukkan ke konstanta seeder.
+    step "5c/9 Seeding reference data (grades, roles, permissions)"
+    php artisan db:seed --class=GradeSeeder --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
+    php artisan db:seed --class=RolePermissionSeeder --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
+
+    # UserSeeder DIPISAH dan bersyarat. Ia MELEMPAR di produksi bila
+    # SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD belum diset — dan dengan `set -e`
+    # itu menggagalkan deploy tepat setelah migrate, meninggalkan aplikasi dalam
+    # maintenance mode. Membuat admin adalah urusan pemasangan pertama, bukan
+    # tiap rilis, jadi ia hanya dijalankan bila kredensialnya memang disiapkan.
+    if grep -qE '^SEED_ADMIN_EMAIL=.+' "$APP_DIR/.env"; then
+        php artisan db:seed --class=UserSeeder --force --no-interaction 2>&1 | tee -a "$LOG_FILE"
+        success "Seeder selesai (termasuk akun admin)"
+    else
+        success "Seeder selesai (akun admin dilewati)"
+        log "  ⚠ SEED_ADMIN_EMAIL belum diset — UserSeeder dilewati."
+        log "     Pada PEMASANGAN PERTAMA ini berarti belum ada satu pun akun."
+        log "     Set SEED_ADMIN_EMAIL & SEED_ADMIN_PASSWORD di .env lalu:"
+        log "     php artisan db:seed --class=UserSeeder --force"
+    fi
+
     # Simpan lokasi backup supaya rollback tahu harus memulihkan dari mana.
     echo "$BACKUP_FILE" > "$APP_DIR/.last-backup"
 
     # Buang backup lama, sisakan yang terbaru.
     ls -1t "$BACKUP_DIR"/pre-deploy-*.sql.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f
 else
-    log "  ⚠ Skip migration (--skip-migration)"
+    log "  ⚠ Skip migration (--skip-migration) — seeder ikut dilewati."
+    log "     Kalau rilis ini menambah permission, jalankan manual setelah deploy:"
+    log "     php artisan db:seed --class=RolePermissionSeeder --force"
 fi
 
 # ─── 6. Optimize Laravel ─────────────────────────────────────────

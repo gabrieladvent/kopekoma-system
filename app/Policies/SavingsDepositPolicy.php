@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Filament\Resources\SavingsDepositResource;
 use App\Models\SavingsDeposit;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
@@ -75,6 +76,14 @@ class SavingsDepositPolicy
      */
     public function reverse(User $user, SavingsDeposit $savingsDeposit): bool
     {
+        // Setoran milik pinjaman (SWP / Tabungan Berjangka) tak bisa dibalik
+        // dari menu Setoran — pembatalannya lewat pembatalan pinjaman atau
+        // reversal angsuran. Ditegakkan juga di ReverseTransaction; di sini
+        // supaya tombolnya tak pernah muncul, bukan muncul lalu gagal.
+        if (in_array($savingsDeposit->savings_type, SavingsDepositResource::LOAN_OWNED_TYPES, true)) {
+            return false;
+        }
+
         return $user->can('reverse_savings::deposit');
     }
 }

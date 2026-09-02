@@ -64,7 +64,7 @@ class DepositReportExport implements FromCollection, ShouldAutoSize, WithHeading
             $row->member?->member_number,
             $row->member?->full_name,
             $row->member?->agency?->agency_name,
-            SavingsDepositResource::SAVINGS_TYPES[$row->savings_type] ?? $row->savings_type,
+            SavingsDepositResource::TYPE_LABELS[$row->savings_type] ?? $row->savings_type,
             SavingsDepositResource::DEPOSIT_METHODS[$row->deposit_method] ?? $row->deposit_method,
             $row->is_reversal ? 'Ya' : 'Tidak',
             $row->signed_amount,

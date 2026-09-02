@@ -2,6 +2,7 @@
 
 namespace App\Settings;
 
+use App\Services\WithdrawalWorkflow;
 use Spatie\LaravelSettings\Settings;
 
 class CooperativeSettings extends Settings
@@ -23,6 +24,19 @@ class CooperativeSettings extends Settings
     public float $loan_time_deposit_rate;
 
     public float $loan_short_term_max;
+
+    /**
+     * Bulan pembagian SHU (1–12), atau NULL bila belum ditetapkan.
+     *
+     * Menjadi JENDELA pencairan Tabungan Berjangka — aturan koperasi
+     * mengembalikannya sekali setahun bersamaan pembagian SHU. NULL membuat
+     * sistem jatuh ke aturan 12 bulan berjalan sejak pencairan terakhir; itu
+     * aturan yang lebih longgar dan melayang per anggota, tapi aman dipakai
+     * sampai koperasi menetapkan bulannya.
+     *
+     * Lihat {@see WithdrawalWorkflow::assertTimeDepositSchedule()}.
+     */
+    public ?int $shu_distribution_month = null;
 
     // Identitas koperasi untuk kop + blok tanda tangan laporan PDF (ADR item 7).
     public ?string $cooperative_address;
