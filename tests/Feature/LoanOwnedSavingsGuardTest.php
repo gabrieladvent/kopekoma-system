@@ -83,7 +83,10 @@ function mintDeposit(string $memberId, string $type, string $amount = '9999999')
         'period_month' => now()->startOfMonth()->toDateString(),
         'deposit_method' => 'setor_sendiri',
         'deposited_by' => 'bendahara',
-    ]], 1);
+        // Causer WAJIB pengguna sungguhan: `savings_deposits.recorded_by` punya
+        // foreign key ke `users`. Id yang dipatok lolos di sqlite dan gagal di
+        // MySQL — dan MySQL yang dipakai menjalankan suite ini.
+    ]], test()->user->id);
 }
 
 it('refuses to mint an swp deposit through the manual deposit engine', function () {
