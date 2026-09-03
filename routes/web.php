@@ -25,7 +25,9 @@ use App\Livewire\Master\Member\MemberForm;
 use App\Livewire\Master\Member\Members;
 use App\Livewire\Profile\EditProfile;
 use App\Livewire\Reports\LaporanAngsuranPinjaman;
+use App\Livewire\Reports\LaporanRekonsiliasiPinjaman;
 use App\Livewire\Reports\LaporanSetoranSimpanan;
+use App\Livewire\Reports\LaporanTitipanPokok;
 use App\Livewire\Savings\Deposit\BatchSalaryDeduction;
 use App\Livewire\Savings\Deposit\SavingsDepositDetail;
 use App\Livewire\Savings\Deposit\SavingsDepositForm;
@@ -235,8 +237,14 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:access_laporan_angsuran')
         ->name('reports.angsuran');
 
-    // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
-    // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.
+    Route::get('/laporan/titipan-pokok', LaporanTitipanPokok::class)
+        ->middleware('can:access_laporan_titipan')
+        ->name('reports.titipan');
+
+    Route::get('/laporan/rekonsiliasi-pinjaman', LaporanRekonsiliasiPinjaman::class)
+        ->middleware('can:access_laporan_titipan')
+        ->name('reports.rekonsiliasi');
+
     Route::get('/pinjaman', Loans::class)
         ->middleware('can:view_any_loan')
         ->name('loans.index');
@@ -245,7 +253,6 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:create_loan')
         ->name('loans.create');
 
-    // Pinjaman — Blacklist (didahulukan sebelum {loan}).
     Route::get('/pinjaman/blacklist', LoanBlacklists::class)
         ->middleware('can:view_any_loan::blacklist')
         ->name('loans.blacklist');
@@ -286,13 +293,17 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage_settings')
         ->name('settings');
 
-    Route::middleware('can:manage-system')->group(function (): void {
-        Route::get('/sistem/log-aktivitas', ActivityLogs::class)->name('system.activity-logs');
+    Route::get('/sistem/log-aktivitas', ActivityLogs::class)
+        ->middleware('can:access_activity_log')
+        ->name('system.activity-logs');
 
+    Route::middleware('can:access_system_roles')->group(function (): void {
         Route::get('/sistem/peran', Roles::class)->name('system.roles');
         Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
         Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
+    });
 
+    Route::middleware('can:access_system_users')->group(function (): void {
         Route::get('/sistem/pengguna', Users::class)->name('system.users');
         Route::get('/sistem/pengguna/create', UserForm::class)->name('system.users.create');
         Route::get('/sistem/pengguna/{user}/edit', UserForm::class)->name('system.users.edit');

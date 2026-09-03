@@ -46,10 +46,20 @@
             <tr><td class="label">Piutang SP</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['principal'], 0, ',', '.') }}</td></tr>
             <tr><td class="label">Bunga SP</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['interest'], 0, ',', '.') }}</td></tr>
             <tr><td class="label">Tabungan Berjangka</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['time_deposit'], 0, ',', '.') }}</td></tr>
-            @if (bccomp($bd['other'], '0', 2) > 0)
-                <tr><td class="label">Kelebihan Bayar</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['other'], 0, ',', '.') }}</td></tr>
+            {{-- Titipan Pokok (ADR 2026-08-28). Persis satu dari kedua baris ini
+                 bisa muncul, dan tanpa keduanya kuitansi tidak berjumlah. --}}
+            @if (bccomp($bd['credit_applied'], '0', 2) > 0)
+                <tr><td class="label">Titipan Pokok dipakai</td><td class="sep">:</td><td>&minus; Rp {{ number_format((float) $bd['credit_applied'], 0, ',', '.') }}</td></tr>
+            @endif
+            @if (bccomp($bd['credit_reserved'], '0', 2) > 0)
+                <tr><td class="label">Titipan Pokok disisihkan</td><td class="sep">:</td><td>+ Rp {{ number_format((float) $bd['credit_reserved'], 0, ',', '.') }}</td></tr>
             @endif
             <tr class="amount-row"><td class="label">Total Dibayar</td><td class="sep">:</td><td class="amount">Rp {{ number_format((float) $installment->amount_paid, 0, ',', '.') }}</td></tr>
+            {{-- Saldo, BUKAN komponen — tidak ikut menjumlah. Ini kanal utama
+                 anggota untuk mengetahui titipannya (ADR §OQ-0). --}}
+            @if (bccomp($bd['credit_applied'], '0', 2) > 0 || bccomp($bd['credit_reserved'], '0', 2) > 0)
+                <tr><td class="label">Sisa Titipan Pokok</td><td class="sep">:</td><td>Rp {{ number_format((float) $bd['credit_balance'], 0, ',', '.') }}</td></tr>
+            @endif
             <tr><td class="label">Sisa Pokok</td><td class="sep">:</td><td>Rp {{ number_format((float) $installment->loan->remainingPrincipal(), 0, ',', '.') }}</td></tr>
         </table>
 

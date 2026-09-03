@@ -20,6 +20,27 @@ class RolePermissionSeeder extends Seeder
         'replicate', 'reorder',
     ];
 
+    /**
+     * Saldo Anggota — layar rekap read-only.
+     *
+     * `MemberBalances::mount()` sudah memeriksa izin ini sejak awal, tapi
+     * izinnya tak pernah dibuat siapa pun: bukan bagian RESOURCES, bukan pula
+     * custom. Permission yang tak ada selalu menjawab "tidak", jadi halamannya
+     * 403 untuk SEMUA ORANG — super_admin sekalipun, karena ia mendapat izin
+     * lewat `Permission::all()` dan baris ini tak pernah ada di sana.
+     *
+     * Dibuat eksplisit, bukan lewat RESOURCES: layar ini read-only, dan
+     * RESOURCES akan ikut melahirkan create/update/delete yang tak punya arti.
+     *
+     * **Pengurus saja**, bukan Petugas — layar ini menampilkan seluruh simpanan
+     * seorang anggota sekaligus, dan pembatasan itu memang yang berlaku selama
+     * ini (lihat `SavingsLivewireSmokeTest`). Yang diperbaiki di sini bukan
+     * siapa yang boleh, melainkan bahwa dulu TAK SEORANG PUN bisa.
+     */
+    private const CUSTOM_BALANCES = [
+        'view_any_member::savings::balance',
+    ];
+
     private const CUSTOM_PETUGAS = [
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
@@ -31,6 +52,7 @@ class RolePermissionSeeder extends Seeder
     ];
 
     private const CUSTOM_PENGURUS = [
+        ...self::CUSTOM_BALANCES,
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
         'reverse_shopping::transaction',
@@ -43,14 +65,43 @@ class RolePermissionSeeder extends Seeder
         'settle_early_installment',
         'pay_installment_from_savings',
         'manage_settings',
+        // Log aktivitas (ADR 2026-08-28 v26). Jejak log adalah salah satu dari
+        // tiga kanal pendeteksian yang jadi syarat diterimanya R14, dan Pengurus
+        // adalah orang yang seharusnya memakainya — sebelumnya rutenya dijaga
+        // gate `manage-system` (= super_admin), sementara menu sidebar-nya sudah
+        // tampil untuk Pengurus. Kanal yang menu-nya ada tapi klik-nya 403
+        // bukan kanal.
+        'access_activity_log',
         'access_laporan_setoran',
         'access_laporan_angsuran',
+        // Laporan agregat Titipan Pokok (ADR 2026-08-28 item 2i). Pengurus-only
+        // dengan sengaja: ini kanal pemeriksaan atas risiko yang pelakunya bisa
+        // Petugas (R14), jadi menaruhnya di tangan yang diperiksa menghapus
+        // gunanya. Bukan soal kerahasiaan — soal siapa yang bertugas memeriksa.
+        'access_laporan_titipan',
         'export_laporan_setoran',
         'export_laporan_angsuran',
     ];
 
     private const CUSTOM_ADMIN_ONLY = [
         'copy_store_client_secret',
+        // Menembus jadwal setahun pencairan Tabungan Berjangka.
+        //
+        // SENGAJA BUKAN milik Pengurus. `disburse_savings::withdrawal` sendiri
+        // sudah Pengurus-only, jadi membebaskan Pengurus membuat aturannya tak
+        // pernah menolak siapa pun — kode yang selalu lolos, memberi rasa aman
+        // palsu. Ditaruh di sini supaya koperasi bisa memberikannya ke orang
+        // tertentu lewat layar Peran, sebagai keputusan yang diambil sadar.
+        'bypass_time_deposit_schedule',
+        // Modul Sistem — Pengguna & Peran.
+        //
+        // Dulu dijaga gate `manage-system` yang memeriksa PERAN super_admin
+        // langsung. Peran yang dipatok di kode tak bisa diberikan koperasi
+        // kepada siapa pun tanpa mengubah kode, dan tak muncul di layar Peran
+        // sehingga tak ada yang tahu ia ada. Bawaannya tetap super_admin saja —
+        // yang berubah cuma: sekarang bisa diberikan, dan terlihat.
+        'access_system_users',
+        'access_system_roles',
     ];
 
     public function run(): void

@@ -64,6 +64,8 @@
                         <th class="px-5 py-3 text-right">Sukarela</th>
                         <th class="px-5 py-3 text-right">Hari Raya</th>
                         <th class="px-5 py-3 text-right">Wajib Belanja</th>
+                        <th class="px-5 py-3 text-right">SWP</th>
+                        <th class="px-5 py-3 text-right">Tab. Berjangka</th>
                         <th class="px-5 py-3 text-right">Total</th>
                         <th class="w-20 px-5 py-3 text-right">Aksi</th>
                     </tr>
@@ -99,6 +101,8 @@
                             <td class="px-5 py-4 text-right tabular-nums text-text">{{ number_format((float) $row['sukarela'], 0, ',', '.') }}</td>
                             <td class="px-5 py-4 text-right tabular-nums text-text">{{ number_format((float) $row['hari_raya'], 0, ',', '.') }}</td>
                             <td class="px-5 py-4 text-right tabular-nums text-text">{{ number_format((float) $row['wajib_belanja'], 0, ',', '.') }}</td>
+                            <td class="px-5 py-4 text-right tabular-nums text-text">{{ number_format((float) $row['swp'], 0, ',', '.') }}</td>
+                            <td class="px-5 py-4 text-right tabular-nums text-text">{{ number_format((float) $row['tabungan_berjangka'], 0, ',', '.') }}</td>
                             <td class="px-5 py-4 text-right font-bold tabular-nums text-success">Rp {{ number_format((float) $row['total'], 0, ',', '.') }}</td>
                             <td class="px-5 py-4 text-right">
                                 <a href="{{ route('savings.balances.show', $member) }}" wire:navigate
@@ -109,7 +113,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-5 py-16">
+                            <td colspan="11" class="px-5 py-16">
                                 <div class="flex flex-col items-center justify-center text-center">
                                     <div class="grid h-14 w-14 place-items-center rounded-2xl bg-secondary/15 text-secondary">
                                         <x-ui.icon name="wallet-stack" class="h-7 w-7" />

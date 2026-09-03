@@ -172,6 +172,118 @@ Catatan: SWP = potongan sekali saat cair → akumulasi dari `loans.swp_amount`. 
 
 #### D8 — Status Lunas otomatis + pengembalian SWP & Tabungan Berjangka
 
+> **AMANDEMEN 2026-09-01 — bagian "pengembalian" DICABUT.** Keputusan di bawah
+> menerbitkan pencairan otomatis (`savings_withdrawals` ber-`related_loan_id`)
+> begitu pinjaman Lunas. Itu tidak lagi berlaku.
+>
+> **Yang berlaku sekarang:** SWP dan Tabungan Berjangka adalah **simpanan
+> sungguhan** — punya baris `savings_deposits` sendiri, bernomor transaksi,
+> bertanggal, muncul di buku mutasi anggota. SWP lahir saat pinjaman cair,
+> Tabungan Berjangka saat tiap angsuran dibayar. Saat pinjaman Lunas **tak ada
+> apa pun yang terbit**: uangnya tetap di jenisnya masing-masing, dan anggota
+> ditariknya lewat alur pencairan biasa (draft → ACC → cair).
+>
+> **Koreksi atas versi pertama amandemen ini:** semula tertulis anggota bisa
+> menarik keduanya *kapan saja*. Itu keliru — disimpulkan dari kode
+> (`WITHDRAWABLE_TYPES` memang memuat keduanya sejak sebelum perubahan ini),
+> bukan dari aturan koperasi. Catatan rapat pengurus menetapkan:
+>
+> - **Tabungan Berjangka** dikembalikan **1× dalam setahun**, bersamaan
+>   pembagian SHU. Ditegakkan di `WithdrawalWorkflow::disburse` — pencairan
+>   kedua di dalam 12 bulan ditolak. Bypass-nya jatuh ke permission tersendiri
+>   (`bypass_time_deposit_schedule`, bawaan super_admin saja), **bukan ke peran
+>   Pengurus**: `disburse` sendiri sudah Pengurus-only, jadi membebaskan Pengurus
+>   membuat aturannya tak pernah menolak siapa pun. Tiap bypass tercatat sebagai
+>   peristiwa `pencairan_di_luar_jadwal`.
+> - **SWP** dikembalikan **setelah anggota keluar dari keanggotaan**. **BELUM
+>   ditegakkan** — jalur penutupan akun belum ada
+>   ([ADR 2026-07-13](2026-07-13-penutupan-akun-anggota.md) masih Draft), jadi
+>   pencairan SWP untuk sementara dibiarkan seperti sedia kala atas keputusan
+>   pemilik produk. **Celah yang diketahui:** hari ini SWP bisa dicairkan tanpa
+>   anggota keluar. Aman selama belum produksi; wajib ditutup bersama ADR itu.
+>
+> **Dikecualikan dari Laporan Setoran Simpanan** (temuan review). Keduanya
+> memang baris `savings_deposits`, tapi bukan setoran yang diterima loket: SWP
+> dipotong dari dana pencairan — uang yang sudah ada di koperasi — dan Tabungan
+> Berjangka adalah komponen angsuran yang **sudah terhitung di Laporan
+> Angsuran**. Menghitungnya di laporan setoran menjumlahkan uang yang sama dua
+> kali di dua laporan. Yang paling merusak: `recordTimeDeposit()` menandai
+> barisnya `deposit_method = 'potong_gaji'` mengikuti angsurannya, jadi ia ikut
+> basis *rekonsiliasi payroll* — total per OPD naik tanpa potongan gaji yang
+> nyata, dan pencocokan ke slip gaji tak pernah balance. Saldonya tetap
+> terlihat: kartu & kolom di layar Saldo Anggota, dan tiap barisnya di buku
+> mutasi anggota.
+>
+> **Dua guard yang menyertai** (temuan `security-reviewer`, keduanya jalur uang):
+> jenis setoran divalidasi daftar-putih di **lapisan mutasi**
+> (`RecordMemberSavingsDeposits`) — dulu enum MySQL jadi jaring terakhirnya, dan
+> migrasi yang melebarkan enum itu menghapusnya, sehingga satu payload bisa
+> mencetak simpanan SWP bernominal bebas lalu mencairkannya; dan setoran
+> `swp`/`tabungan_berjangka` **tak bisa dibalik sendirian**
+> (`ReverseTransaction::$allowLoanPairedDeposit` + `SavingsDepositPolicy`),
+> karena dibalik terpisah ia menurunkan saldo anggota sementara pinjaman &
+> angsurannya tetap berdiri — dan `reverse_savings::deposit` dipegang Petugas.
+> Pembatalannya lewat pembatalan pinjaman atau reversal angsuran, sama seperti
+> debit angsuran-dari-simpanan.
+>
+> **Pengaman lanjutan (2026-09-02).** Saldo kedua jenis kini bisa dilanggar dari
+> arah yang dulu mustahil, karena ia baris tabel biasa dan bukan angka turunan.
+> Yang dipasang: pinjaman **tak bisa dibatalkan bila SWP-nya sudah ditarik**
+> anggota (tanpa itu saldo simpanan jadi minus — terverifikasi); reversal SWP
+> diatribusikan ke **pembatal**, bukan pencatat pinjaman; indeks
+> `(savings_type, reference_number)` untuk jalur pencarian yang kini panas; dan
+> **Laporan Rekonsiliasi Simpanan Pinjaman** yang membandingkan saldo tercatat
+> dengan hitungan ulang dari data pinjaman. Laporan itu mengembalikan sifat yang
+> hilang saat rumus turunan dicabut: dulu selisih apa pun langsung terlihat,
+> sekarang harus dihitung terpisah. Halaman kosong adalah hasil yang benar.
+>
+> Seluruh event kustom modul ini juga didaftarkan di peta label/filter Log
+> Aktivitas. Peta itu bukan sekadar kosmetik — ia menyetir opsi filter, jadi
+> event yang tak terdaftar tak bisa dicari sama sekali. Untuk
+> `pencairan_di_luar_jadwal` itu menghapus seluruh gunanya.
+>
+> **Jendela SHU (2026-09-02).** Patokan jadwalnya kini disetel koperasi lewat
+> *Pengaturan → Bulan Pembagian SHU* (`CooperativeSettings::$shu_distribution_month`):
+>
+> - **Ditetapkan** → Tabungan Berjangka hanya boleh dicairkan pada bulan itu,
+>   dan **sekali per tahun**. Dua bagian, dan keduanya perlu: jendela saja
+>   membolehkan tiga kali pencairan dalam sebulan; sekali-per-tahun saja
+>   mengembalikan masalah di bawah.
+> - **Belum ditetapkan (NULL)** → jatuh ke aturan sebelumnya: 12 bulan berjalan
+>   sejak pencairan terakhir. Aturan itu **melayang per anggota** — satu orang
+>   cair Januari, yang lain Juli, keduanya sah "sekali setahun" tapi tak satu pun
+>   *bersamaan SHU*. Dipakai supaya tak ada yang rusak sebelum koperasi
+>   memutuskan bulannya, bukan karena ia setara.
+>
+> Sengaja **bulan**, bukan tanggal pasti: SHU dibagikan setelah RAT, dan tanggal
+> RAT bergeser tiap tahun.
+>
+> **Anggota Keluar / Meninggal dikecualikan sepenuhnya.** Mereka butuh haknya
+> sekarang, bukan menunggu bulan SHU berikutnya. Memaksa kasus sah ini menempuh
+> izin bypass akan membuat izin itu jadi kebutuhan operasional harian — dan izin
+> yang sering dipakai berhenti berfungsi sebagai kontrol.
+>
+> **Alasannya bukan penyederhanaan.** Bentuk lama membuat uang bisa keluar
+> koperasi sebagai *efek samping* lunasnya pinjaman, bukan karena anggota
+> memintanya. Mata-keduanya tidak hilang — ia pindah ke saat anggota benar-benar
+> meminta uangnya. Dan D7 di bawah ikut gugur: dua rumus saldo khusus
+> (`SUM(loans.swp_amount)` dan `monthly_time_deposit × jumlah angsuran terbayar`)
+> dicabut, keduanya kini memakai formula standar `Σ setoran − Σ penarikan cair`
+> yang sama dengan pokok/wajib/sukarela.
+>
+> **Konsekuensi yang harus disadari:** saldo kedua jenis ini tak pernah turun
+> sendiri lagi; ia menumpuk lintas pinjaman sampai anggota menariknya — dan itu
+> memang perilaku simpanan. Keduanya juga kini **ikut `totalBalance()`**;
+> sebelumnya tidak, sehingga total yang ditampilkan lebih kecil dari simpanan
+> yang benar-benar dimiliki anggota.
+>
+> Dikerjakan tanpa ADR tersendiri atas keputusan pemilik produk — sistem belum
+> naik produksi, jadi tak ada data yang perlu dimigrasikan. Dikunci
+> `LoanSavingsServiceTest`. Yang perlu diketahui pengurus: aturan koperasi
+> berubah, dari "otomatis dikembalikan saat lunas" jadi "tetap jadi simpanan,
+> ditarik bila diminta".
+
+
 **Auto-Lunas:** `loans.status → 'Lunas'` saat **semua `installment_schedules` = 'Terbayar'** (Jangka Panjang) atau pembayaran penuh tercatat (Jangka Pendek). Dievaluasi atomik di akhir setiap pembayaran (D5). Reversal pembayaran terakhir membalik Lunas → Cair.
 
 **Pengembalian saat lunas** ([Dokumentasi §4.6](../Dokumentasi_Sistem_Koperasi_v5.md): anggota terima Tabungan Berjangka + SWP): direkam sebagai **`savings_withdrawals`** bertaut `related_loan_id`, type `swp` & `tabungan_berjangka`, sebesar saldo akumulasi pinjaman tsb. **Mengapa di `savings_withdrawals`, bukan tabel baru:** skema `savings_withdrawals` (kolom `related_loan_id` + enum `swp`/`tabungan_berjangka`) **dirancang persis untuk ini** → reuse penuh idempotency/reversal/audit; saldo D7 otomatis ter-net.

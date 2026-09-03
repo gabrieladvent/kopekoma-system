@@ -189,8 +189,8 @@
                                     @foreach ($diff as $row)
                                         <tr>
                                             <td class="px-4 py-2.5 font-medium text-text">{{ $row['label'] }}</td>
-                                            <td class="px-4 py-2.5 text-muted line-through decoration-danger/40">{{ $row['old'] }}</td>
-                                            <td class="px-4 py-2.5 font-medium text-text">{{ $row['new'] }}</td>
+                                            <td class="px-4 py-2.5 align-top whitespace-pre-line text-muted line-through decoration-danger/40">{{ $row['old'] }}</td>
+                                            <td class="px-4 py-2.5 align-top font-medium whitespace-pre-line text-text">{{ $row['new'] }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

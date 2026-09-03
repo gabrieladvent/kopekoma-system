@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Actions\RecordMemberSavingsDeposits;
 use App\Actions\ReverseTransaction;
 use App\Exceptions\CannotReverseTransaction;
 use App\Filament\Forms\Components\MoneyInput;
@@ -10,6 +11,7 @@ use App\Filament\Resources\SavingsDepositResource\Pages;
 use App\Models\Member;
 use App\Models\MemberHolidaySaving;
 use App\Models\SavingsDeposit;
+use App\Services\LoanSavingsService;
 use App\Settings\CooperativeSettings;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms;
@@ -43,12 +45,37 @@ class SavingsDepositResource extends Resource
 
     protected static ?int $navigationSort = 20;
 
+    /**
+     * Jenis yang boleh DISETOR MANUAL — dan sekaligus daftar putihnya.
+     *
+     * Peta ini menyetir opsi baris di layar setoran ({@see savingsTypeOptions()}),
+     * jadi menambahkan jenis di sini berarti menawarkannya untuk disetor. `swp`
+     * dan `tabungan_berjangka` SENGAJA TIDAK ADA: keduanya hanya lahir dari
+     * pintu pinjaman ({@see LoanSavingsService}). Untuk LABEL,
+     * pakai {@see TYPE_LABELS} yang memuat semuanya.
+     */
     public const SAVINGS_TYPES = [
         'pokok' => 'Simpanan Pokok',
         'wajib' => 'Simpanan Wajib',
         'sukarela' => 'Simpanan Sukarela',
         'hari_raya' => 'Simpanan Hari Raya',
         'wajib_belanja' => 'Wajib Belanja',
+    ];
+
+    /**
+     * Jenis simpanan yang setorannya HANYA lahir dari modul Pinjaman.
+     *
+     * Tak bisa disetor manual (ditolak {@see RecordMemberSavingsDeposits})
+     * dan tak bisa dibalik sendirian (ditolak {@see ReverseTransaction}) —
+     * pembatalannya harus lewat pembatalan pinjaman atau reversal angsuran,
+     * sama seperti debit angsuran-dari-simpanan.
+     */
+    public const LOAN_OWNED_TYPES = ['swp', 'tabungan_berjangka'];
+
+    /** Label SELURUH jenis simpanan — untuk tampilan, bukan untuk pilihan setoran. */
+    public const TYPE_LABELS = self::SAVINGS_TYPES + [
+        'swp' => 'SWP (Simpanan Wajib Pinjaman)',
+        'tabungan_berjangka' => 'Tabungan Berjangka',
     ];
 
     public const DEPOSIT_METHODS = [
@@ -286,7 +313,7 @@ class SavingsDepositResource extends Resource
 
         $pdf = Pdf::loadView('pdf.savings-slip', [
             'deposit' => $deposit,
-            'savingsTypeLabel' => self::SAVINGS_TYPES[$deposit->savings_type] ?? $deposit->savings_type,
+            'savingsTypeLabel' => self::TYPE_LABELS[$deposit->savings_type] ?? $deposit->savings_type,
             'depositMethodLabel' => self::DEPOSIT_METHODS[$deposit->deposit_method] ?? $deposit->deposit_method,
             'depositedByLabel' => self::DEPOSITED_BY[$deposit->deposited_by] ?? $deposit->deposited_by,
             'printedAt' => now()->format('d M Y H:i'),
@@ -435,7 +462,7 @@ class SavingsDepositResource extends Resource
                                     ->label('Jenis')
                                     ->badge()
                                     ->color(fn (string $state): string => static::typeColor($state))
-                                    ->formatStateUsing(fn (string $state): string => self::SAVINGS_TYPES[$state] ?? $state),
+                                    ->formatStateUsing(fn (string $state): string => self::TYPE_LABELS[$state] ?? $state),
                                 Infolists\Components\TextEntry::make('amount')
                                     ->label('Nominal')
                                     ->money('IDR')
@@ -509,7 +536,7 @@ class SavingsDepositResource extends Resource
                     ->label('Jenis')
                     ->badge()
                     ->color(fn (string $state): string => static::typeColor($state))
-                    ->formatStateUsing(fn (string $state): string => self::SAVINGS_TYPES[$state] ?? $state),
+                    ->formatStateUsing(fn (string $state): string => self::TYPE_LABELS[$state] ?? $state),
                 Tables\Columns\TextColumn::make('amount')
                     ->label('Nominal')
                     ->money('IDR')
@@ -531,7 +558,7 @@ class SavingsDepositResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('savings_type')
                     ->label('Jenis Simpanan')
-                    ->options(self::SAVINGS_TYPES),
+                    ->options(self::TYPE_LABELS),
                 Tables\Filters\SelectFilter::make('deposit_method')
                     ->label('Metode')
                     ->options(self::DEPOSIT_METHODS),

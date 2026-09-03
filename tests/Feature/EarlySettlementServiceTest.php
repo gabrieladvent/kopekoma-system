@@ -10,6 +10,7 @@ use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\User;
 use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 
 beforeEach(function () {
     $this->service = app(LoanPaymentService::class);
@@ -61,10 +62,12 @@ it('settles early: pays exact payoff, marks all schedules paid, loan Lunas, crea
     expect(InstallmentSchedule::where('loan_id', $loan->id)
         ->where('status', InstallmentScheduleStatus::BelumBayar)->count())->toBe(0);
 
-    // Refund: SWP 10000 + Tab akrual (2 angsuran normal × 1000 = 2000), bukan 5×.
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)
-        ->where('savings_type', 'tabungan_berjangka')->value('amount');
-    expect((string) $tab)->toBe('2000.00');
+    // Tabungan Berjangka terkumpul = 2 angsuran normal × 1000, bukan 5×: baris
+    // pelunasan tidak mengakru, sama seperti jasa bulan sisa yang dibebaskan.
+    // Uangnya TETAP jadi simpanan anggota — pelunasan tak menerbitkan pencairan.
+    expect(app(SavingsBalanceService::class)->balanceByType($this->member, 'tabungan_berjangka'))->toBe('2000.00')
+        ->and(app(SavingsBalanceService::class)->balanceByType($this->member, 'swp'))->toBe('10000.00')
+        ->and(SavingsWithdrawal::where('member_id', $this->member->id)->count())->toBe(0);
 });
 
 it('rejects settlement below payoff and creates nothing', function () {
@@ -90,6 +93,33 @@ it('routes overpayment above payoff to Sukarela', function () {
     $sukarela = SavingsDeposit::where('member_id', $this->member->id)
         ->where('savings_type', 'sukarela')->value('amount');
     expect((string) $sukarela)->toBe('500000.00');
+});
+
+/**
+ * Item 3c (ADR 2026-08-28) — ditulis ulang untuk Titipan Pokok. Sebelum ADR ini
+ * `payoff` selalu `sisa pokok + 1× jasa`; kini titipan anggota ikut dipotong,
+ * dan potongannya WAJIB tercatat di `credit_applied` baris pelunasan agar jejak
+ * audit tidak putus justru di transaksi terbesar.
+ */
+it('reduces the payoff by the titipan and records it on the settlement row', function () {
+    [$loan, $rows] = settleLoan($this->member->id);
+
+    // Kelebihan bayar di #1 → titipan 1.000.000.
+    $this->service->pay($rows[0], ['amount_paid' => 2007500], $this->user->id);
+
+    // payoff kontraktual 4.006.500 − titipan 1.000.000.
+    $payoff = $loan->fresh()->payoffAmount();
+    expect($payoff)->toBe('3006500.00');
+
+    $settlement = $this->service->settleEarly($loan->fresh(), ['amount_paid' => $payoff], $this->user->id);
+
+    expect($settlement->credit_applied)->toBe('1000000.00')
+        ->and($loan->fresh()->status)->toBe(LoanStatus::Lunas)
+        // Tidak menagih dobel: yang dibayar + yang dipotong = payoff kontraktual.
+        ->and(bcadd($settlement->amount_paid, $settlement->credit_applied, 2))->toBe('4006500.00')
+        // Titipan terpakai seluruhnya, jadi tak ada pelimpahan ke Sukarela.
+        ->and(SavingsDeposit::where('member_id', $this->member->id)
+            ->where('savings_type', 'sukarela')->exists())->toBeFalse();
 });
 
 it('refuses settlement for jangka_pendek and non-Cair loans', function () {

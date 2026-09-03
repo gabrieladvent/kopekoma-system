@@ -105,12 +105,21 @@ class InstallmentResource extends Resource
             return;
         }
 
-        $set('amount_paid', self::rupiah($schedule->total_due));
+        // Tagihan EFEKTIF, yaitu kontrak dikurangi Titipan Pokok anggota
+        // (ADR 2026-08-28 item 2c). Prefill kontrak akan membuat petugas menagih
+        // lebih dari kewajiban riil anggota bertitipan.
+        $set('amount_paid', self::rupiah(self::effectiveBill($schedule)));
     }
 
     private static function rupiah(string|int|float|null $value): string
     {
         return (string) (int) round((float) $value);
+    }
+
+    /** Satu sumber tagihan efektif — dari model, tak dihitung ulang di sini. */
+    private static function effectiveBill(InstallmentSchedule $schedule): string
+    {
+        return $schedule->loan?->effectiveBill($schedule) ?? (string) $schedule->total_due;
     }
 
     public static function scheduleBillDetail(mixed $scheduleId): HtmlString
@@ -127,8 +136,19 @@ class InstallmentResource extends Resource
             ['Pokok', self::idr($schedule->principal_due)],
             ['Jasa / Bunga', self::idr($schedule->interest_due)],
             ['Tabungan Berjangka', self::idr($schedule->time_deposit_due)],
-            ['Total Tagihan', self::idr($schedule->total_due)],
         ];
+
+        // Titipan Pokok (ADR 2026-08-28): tagihan yang berubah-ubah bukan konsep
+        // yang bisa diturunkan petugas sendiri — sistem yang wajib menjelaskannya.
+        $effective = self::effectiveBill($schedule);
+        $applied = bcsub((string) $schedule->total_due, $effective, 2);
+
+        if (bccomp($applied, '0', 2) > 0) {
+            $rows[] = ['Tagihan kontrak', self::idr($schedule->total_due)];
+            $rows[] = ['Titipan Pokok dipakai', '− '.self::idr($applied)];
+        }
+
+        $rows[] = ['Total Tagihan', self::idr($effective)];
 
         $body = collect($rows)->map(function (array $row): string {
             $isTotal = $row[0] === 'Total Tagihan';
@@ -230,11 +250,22 @@ class InstallmentResource extends Resource
                         ->label('Metode Bayar')->options(self::PAYMENT_METHODS)
                         ->default('potong_gaji')->required()->native(false),
                     MoneyInput::make('amount_paid')->label('Nominal Dibayar')->required()
-                        ->helperText('Total uang yang benar-benar diterima. Tidak boleh kurang dari tagihan; kelebihan tampil sebagai "Kelebihan Bayar" di kuitansi dan dikreditkan ke Simpanan Sukarela anggota.')
+                        ->helperText('Total uang yang benar-benar diterima. Tidak boleh kurang dari tagihan bulan ini; kelebihan disimpan sebagai Titipan Pokok dan memotong pokok angsuran berikutnya.')
                         ->rule(fn (Get $get): \Closure => function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
                             $schedule = InstallmentSchedule::find($get('schedule_id'));
-                            if ($schedule !== null && bccomp((string) (int) round((float) $value), (string) $schedule->total_due, 0) < 0) {
-                                $fail('Nominal tidak boleh kurang dari tagihan Rp '.number_format((float) $schedule->total_due, 0, ',', '.').'.');
+
+                            if ($schedule === null) {
+                                return;
+                            }
+
+                            // Lantai bertumpu tagihan EFEKTIF, sama seperti pintu
+                            // Livewire dan mesin. Lantai kontrak di sini akan
+                            // menolak pembayaran yang justru sah bagi anggota
+                            // bertitipan (ADR 2026-08-28 item 2c).
+                            $bill = self::effectiveBill($schedule);
+
+                            if (bccomp((string) (int) round((float) $value), $bill, 0) < 0) {
+                                $fail('Nominal tidak boleh kurang dari tagihan Rp '.number_format((float) $bill, 0, ',', '.').'.');
                             }
                         }),
                     Forms\Components\DatePicker::make('payment_date')->label('Tanggal Bayar')->default(now())->required(),
@@ -261,8 +292,16 @@ class InstallmentResource extends Resource
                     ->state(fn (Installment $record): string => $record->breakdown()['interest']),
                 Infolists\Components\TextEntry::make('breakdown_time_deposit')->label('Tab. Berjangka')->money('IDR')
                     ->state(fn (Installment $record): string => $record->breakdown()['time_deposit']),
-                Infolists\Components\TextEntry::make('breakdown_other')->label('Kelebihan Bayar')->money('IDR')
-                    ->state(fn (Installment $record): string => $record->breakdown()['other']),
+                // Titipan Pokok (ADR 2026-08-28) — persis satu dari kedua baris
+                // ini bisa bukan-nol; tanpa keduanya rincian tidak berjumlah.
+                Infolists\Components\TextEntry::make('breakdown_credit_applied')->label('Titipan Pokok dipakai')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_applied'])
+                    ->visible(fn (Installment $record): bool => bccomp($record->breakdown()['credit_applied'], '0', 2) > 0),
+                Infolists\Components\TextEntry::make('breakdown_credit_reserved')->label('Titipan Pokok disisihkan')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_reserved'])
+                    ->visible(fn (Installment $record): bool => bccomp($record->breakdown()['credit_reserved'], '0', 2) > 0),
+                Infolists\Components\TextEntry::make('breakdown_credit_balance')->label('Sisa Titipan Pokok')->money('IDR')
+                    ->state(fn (Installment $record): string => $record->breakdown()['credit_balance']),
                 Infolists\Components\TextEntry::make('remaining_principal')->label('Sisa Pokok')->money('IDR')
                     ->state(fn (Installment $record): string => $record->loan->remainingPrincipal()),
                 Infolists\Components\TextEntry::make('payment_date')->label('Tgl Bayar')->date('d M Y'),

@@ -20,6 +20,71 @@ class LoanArrearsService
      * Jumlah angsuran terlewat (due_date < hari ini, masih Belum Bayar) untuk
      * sebuah pinjaman — lintas Sebrakan & jangka panjang (keduanya punya schedule).
      */
+    /**
+     * Tagihan efektif tiap jadwal tertunggak — Titipan Pokok dikuras dalam urutan
+     * angsuran (ADR 2026-08-28 item 2f, R13).
+     *
+     * Titipan adalah SATU KANTONG per pinjaman, bukan per jadwal. Menghitungnya
+     * per baris secara terpisah memotong titipan yang sama berkali-kali dan
+     * membuat tunggakan tampak lebih kecil dari kenyataan — arah kesalahan yang
+     * merugikan koperasi. Karena itu saldonya dikuras berurutan di sini.
+     *
+     * @param  iterable<InstallmentSchedule>  $schedules  boleh lintas pinjaman
+     * @return array<int|string, string> tagihan efektif, dikunci id jadwal
+     */
+    public function effectiveBills(iterable $schedules): array
+    {
+        $byLoan = [];
+
+        foreach ($schedules as $schedule) {
+            $byLoan[$schedule->loan_id][] = $schedule;
+        }
+
+        $bills = [];
+
+        foreach ($byLoan as $rows) {
+            $loan = $rows[0]->loan;
+
+            if ($loan === null) {
+                foreach ($rows as $row) {
+                    $bills[$row->getKey()] = (string) $row->total_due;
+                }
+
+                continue;
+            }
+
+            $credit = $loan->overpaymentCredit();
+
+            if (bccomp($credit, '0', 2) < 0) {
+                $credit = '0.00';
+            }
+
+            usort($rows, fn ($a, $b): int => $a->installment_seq <=> $b->installment_seq);
+
+            foreach ($rows as $row) {
+                $bill = $loan->effectiveBillWithCredit($row, $credit);
+
+                $bills[$row->getKey()] = $bill;
+
+                $credit = bcsub($credit, bcsub((string) $row->total_due, $bill, 2), 2);
+            }
+        }
+
+        return $bills;
+    }
+
+    /** Σ tagihan efektif seluruh jadwal tertunggak — angka tunggakan dashboard. */
+    public function overdueAmount(): string
+    {
+        $schedules = InstallmentSchedule::query()->overdue()->with('loan')->get();
+
+        return array_reduce(
+            $this->effectiveBills($schedules),
+            fn (string $carry, string $bill): string => bcadd($carry, $bill, 2),
+            '0.00'
+        );
+    }
+
     public function overdueCount(Loan $loan): int
     {
         return InstallmentSchedule::query()

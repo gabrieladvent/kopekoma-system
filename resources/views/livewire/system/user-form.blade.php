@@ -101,6 +101,30 @@
                 @error('selectedRoles')<p class="text-xs text-danger">{{ $message }}</p>@enderror
             </div>
 
+            @if ($permissions !== [])
+                <div class="mt-5 space-y-2">
+                    <label class="block text-sm font-medium text-text">Izin Khusus</label>
+                    <p class="text-xs text-muted">
+                        Wewenang yang sengaja tidak dimiliki peran mana pun, diberikan ke orang tertentu.
+                        Diberikan di sini — <span class="font-medium text-text">bukan</span> lewat layar Peran &amp; Izin:
+                        izin yang ditambahkan ke sebuah peran akan tercabut sendiri saat pembaruan sistem berikutnya.
+                    </p>
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        @foreach ($permissions as $name => $label)
+                            <label class="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border px-3 py-2.5 text-sm text-text transition hover:bg-bg/60">
+                                <input type="checkbox" value="{{ $name }}" wire:model="selectedPermissions"
+                                       class="mt-0.5 h-4 w-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-primary">
+                                <span>
+                                    <span class="block">{{ $label }}</span>
+                                    <span class="block font-mono text-[11px] text-muted">{{ $name }}</span>
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
+                    @error('selectedPermissions')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+                </div>
+            @endif
+
             <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label class="flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 {{ $self ? 'opacity-60' : 'cursor-pointer' }}">
                     <span>

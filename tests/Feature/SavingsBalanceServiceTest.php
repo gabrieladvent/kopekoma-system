@@ -1,11 +1,13 @@
 <?php
 
-use App\Models\Installment;
+use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\ShoppingTransaction;
+use App\Models\User;
+use App\Services\LoanPaymentService;
 use App\Services\SavingsBalanceService;
 
 /**
@@ -62,12 +64,25 @@ it('computes two-sided shopping balance: deposits minus usage', function () {
         ->and($this->service->balanceByType($this->member, 'wajib_belanja'))->toBe('75000.00');
 });
 
-it('computes swp balance from loans minus refunded withdrawals (ADR D7)', function () {
+/**
+ * SWP & Tabungan Berjangka kini simpanan sungguhan — saldonya `Σ setoran −
+ * Σ penarikan cair`, rumus yang sama dengan pokok/wajib/sukarela. Dua rumus
+ * khusus lama (`SUM(loans.swp_amount)` dan `monthly_time_deposit × jumlah
+ * angsuran terbayar`) sudah dicabut; yang tersisa hanya pintu masuknya.
+ */
+it('computes swp balance like any other savings type', function () {
+    // Pintu masuknya pencairan pinjaman — setorannya lahir bersama pinjamannya.
     Loan::factory()->create(['member_id' => $this->member->id, 'swp_amount' => 120000]);
 
     expect($this->service->balanceByType($this->member, 'swp'))->toBe('120000.00');
 
-    // Refund saat lunas (withdrawal type swp, cair) menetralkan saldo.
+    // Dan riwayatnya ada — bukan cuma angka hasil hitungan.
+    $deposit = SavingsDeposit::where('member_id', $this->member->id)
+        ->where('savings_type', 'swp')->sole();
+
+    expect($deposit->amount)->toBe('120000.00')
+        ->and($deposit->transaction_number)->not->toBeEmpty();
+
     SavingsWithdrawal::factory()->type('swp')->cair()->create([
         'member_id' => $this->member->id, 'amount' => 120000,
     ]);
@@ -75,17 +90,72 @@ it('computes swp balance from loans minus refunded withdrawals (ADR D7)', functi
     expect($this->service->balanceByType($this->member, 'swp'))->toBe('0.00');
 });
 
-it('computes tabungan_berjangka from paid installments × konstanta minus refund (ADR D7 + 2026-06-26 D5)', function () {
-    $loan = Loan::factory()->create(['member_id' => $this->member->id, 'monthly_time_deposit' => 12000]);
-    Installment::factory()->count(3)->create(['loan_id' => $loan->id]);
+it('computes tabungan_berjangka from its own deposit rows', function () {
+    $loan = Loan::factory()->create([
+        'member_id' => $this->member->id,
+        'principal_amount' => 3000000,
+        'term_months' => 3,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 0,
+        'monthly_time_deposit' => 12000,
+        'swp_amount' => 0,
+    ]);
 
-    expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('36000.00');
+    $schedules = collect(range(1, 3))->map(fn (int $seq) => InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => $seq,
+        'principal_due' => 1000000,
+        'interest_due' => 0,
+        'time_deposit_due' => 12000,
+        'total_due' => 1012000,
+    ]));
+
+    $payments = app(LoanPaymentService::class);
+    $user = User::factory()->create();
+
+    foreach ($schedules as $schedule) {
+        $payments->pay($schedule->fresh(), ['amount_paid' => 1012000], $user->id);
+    }
+
+    expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('36000.00')
+        ->and(SavingsDeposit::where('member_id', $this->member->id)
+            ->where('savings_type', 'tabungan_berjangka')->count())->toBe(3);
 
     SavingsWithdrawal::factory()->type('tabungan_berjangka')->cair()->create([
         'member_id' => $this->member->id, 'amount' => 36000,
     ]);
 
     expect($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('0.00');
+});
+
+/** Pinjaman lunas TIDAK lagi mengembalikan apa pun — uangnya tetap di jenisnya. */
+it('keeps swp and tabungan berjangka in place once the loan is paid off', function () {
+    $loan = Loan::factory()->create([
+        'member_id' => $this->member->id,
+        'principal_amount' => 1000000,
+        'term_months' => 1,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 0,
+        'monthly_time_deposit' => 12000,
+        'swp_amount' => 10000,
+    ]);
+
+    $schedule = InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => 1,
+        'principal_due' => 1000000,
+        'interest_due' => 0,
+        'time_deposit_due' => 12000,
+        'total_due' => 1012000,
+    ]);
+
+    app(LoanPaymentService::class)->pay($schedule, ['amount_paid' => 1012000], User::factory()->create()->id);
+
+    expect($loan->fresh()->status->value)->toBe('Lunas')
+        ->and($this->service->balanceByType($this->member, 'swp'))->toBe('10000.00')
+        ->and($this->service->balanceByType($this->member, 'tabungan_berjangka'))->toBe('12000.00')
+        // Tak ada draft pencairan yang terbit sendiri.
+        ->and(SavingsWithdrawal::where('member_id', $this->member->id)->count())->toBe(0);
 });
 
 it('requires a year for hari_raya via balanceByType', function () {

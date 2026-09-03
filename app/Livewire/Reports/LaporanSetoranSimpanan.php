@@ -248,7 +248,7 @@ class LaporanSetoranSimpanan extends Component
 
     public function savingsTypeLabel(?string $type): string
     {
-        return SavingsDepositResource::SAVINGS_TYPES[$type] ?? (string) $type;
+        return SavingsDepositResource::TYPE_LABELS[$type] ?? (string) $type;
     }
 
     public function depositMethodLabel(?string $method): string

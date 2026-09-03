@@ -82,11 +82,6 @@ class MemberBalances extends Component
 
         $service = app(SavingsBalanceService::class);
 
-        // Saldo computed-on-read per anggota. allBalances() dipanggil SEKALI per
-        // baris lalu dijumlahkan lewat sumBalances(); sebelumnya baris ini juga
-        // memanggil totalBalance() yang mengambil ulang seluruh mutasi dari
-        // database — dua kali kerja query untuk angka yang sama, dan halaman ini
-        // di-render ulang tiap ketikan pada kotak pencarian.
         $rows = $members->getCollection()->map(function (Member $member) use ($service) {
             $all = $service->allBalances($member);
             $holiday = array_reduce(
@@ -102,6 +97,8 @@ class MemberBalances extends Component
                 'sukarela' => $all['sukarela'],
                 'hari_raya' => $holiday,
                 'wajib_belanja' => $all['wajib_belanja'],
+                'swp' => $all['swp'],
+                'tabungan_berjangka' => $all['tabungan_berjangka'],
                 'total' => $service->sumBalances($all),
             ];
         });

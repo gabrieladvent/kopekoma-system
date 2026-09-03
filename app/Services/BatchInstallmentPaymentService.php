@@ -9,9 +9,12 @@ use App\Models\Agency;
 use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
+use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
@@ -30,13 +33,16 @@ class BatchInstallmentPaymentService
 {
     public const METHOD = 'potong_gaji';
 
+    /** Pelunasan dipercepat lewat batch — otoritas yang sama dengan jalur loket. */
+    private const SETTLE_PERMISSION = 'settle_early_installment';
+
     private const SCALE = 2;
 
     public function __construct(private readonly LoanPaymentService $payments) {}
 
     /**
      * @param  list<array{schedule_id:string, amount_paid:string|int|float, payment_date?:string, bukti?:?UploadedFile, bukti_path?:?string, bukti_disk?:?string}>  $rows
-     * @return array{created:int, skipped:int}
+     * @return array{created:int, skipped:int, skipped_rows:list<array{schedule_id:?string, loan_number:?string, member:?string, reason:string}>}
      */
     public function run(
         Agency $agency,
@@ -54,6 +60,16 @@ class BatchInstallmentPaymentService
 
         $this->assertRowsValid($rows, $agency);
 
+        // Otorisasi pelunasan ditegakkan DI SINI juga, bukan hanya di entry point
+        // Livewire. Pelunasan sebaris mengubah satu potongan gaji jadi penutupan
+        // seluruh pinjaman; membiarkan penjaganya hidup hanya di satu halaman
+        // berarti pemanggil berikutnya (perintah artisan, job, halaman baru)
+        // mewarisi kewenangan itu tanpa ada yang memutuskannya. Pola yang sama
+        // dengan `pay_installment_from_savings` di LoanPaymentService.
+        if (collect($rows)->contains(fn (array $row): bool => (bool) ($row['settle_early'] ?? false))) {
+            Gate::forUser($this->actingUser($causerId))->authorize(self::SETTLE_PERMISSION);
+        }
+
         return DB::transaction(function () use ($agency, $period, $rows, $causerId): array {
             // Lock per OPD: serialkan batch bersamaan untuk OPD yang sama
             // (pola engine Simpanan). Anti double-bayar per-jadwal ditegakkan
@@ -61,7 +77,17 @@ class BatchInstallmentPaymentService
             Agency::query()->whereKey($agency->getKey())->lockForUpdate()->first();
 
             $created = 0;
-            $skipped = 0;
+
+            /**
+             * Baris yang dilewati, BESERTA sebabnya (ADR 2026-08-28 §Jejak log).
+             * Hitungan telanjang "3 dilewati" tak bisa menjawab pertanyaan yang
+             * benar-benar diajukan setelah potong gaji: gaji SIAPA yang terpotong
+             * tapi angsurannya tak tercatat. Tanpa daftar ini pertanyaan itu tak
+             * punya jawaban di mana pun — barisnya memang tak meninggalkan jejak.
+             *
+             * @var list<array{schedule_id:?string, loan_number:?string, member:?string, reason:string}>
+             */
+            $skippedRows = [];
 
             foreach ($rows as $row) {
                 $schedule = InstallmentSchedule::with('loan.member')->find($row['schedule_id']);
@@ -72,10 +98,20 @@ class BatchInstallmentPaymentService
                 // walau payload Livewire di-utak-atik (page hanya membangun baris
                 // dari anggota OPD terpilih; ini penegakan server-side-nya). pay()
                 // tetap penjaga akhir (lock loan + status + idempotency).
-                if ($schedule === null
-                    || $schedule->status === InstallmentScheduleStatus::Terbayar
-                    || ! $this->belongsToAgency($schedule, $agency)) {
-                    $skipped++;
+                if ($schedule === null) {
+                    $skippedRows[] = $this->skippedRow(null, (string) $row['schedule_id'], 'Jadwal angsuran tidak ditemukan');
+
+                    continue;
+                }
+
+                if ($schedule->status === InstallmentScheduleStatus::Terbayar) {
+                    $skippedRows[] = $this->skippedRow($schedule, (string) $row['schedule_id'], 'Jadwal sudah terbayar');
+
+                    continue;
+                }
+
+                if (! $this->belongsToAgency($schedule, $agency)) {
+                    $skippedRows[] = $this->skippedRow($schedule, (string) $row['schedule_id'], 'Bukan anggota OPD ini');
 
                     continue;
                 }
@@ -102,8 +138,8 @@ class BatchInstallmentPaymentService
                         $this->attachBukti($installment, $row['bukti_path'] ?? null, $row['bukti_disk'] ?? null);
 
                         $created++;
-                    } catch (CannotProcessPayment) {
-                        $skipped++;
+                    } catch (CannotProcessPayment $e) {
+                        $skippedRows[] = $this->skippedRow($schedule, (string) $row['schedule_id'], $e->getMessage());
                     }
 
                     continue;
@@ -120,32 +156,47 @@ class BatchInstallmentPaymentService
                         $causerId,
                         // Livewire: UploadedFile langsung dilampirkan di dalam pay().
                         $row['bukti'] ?? null,
+                        // Penjaga "arahkan ke Pelunasan Dipercepat" DIMATIKAN di
+                        // jalur potong gaji (R23). Nominalnya angka kontrak yang
+                        // ditetapkan bendahara OPD, bukan uang sekaligus yang
+                        // diserahkan anggota di loket — jadi tak ada yang perlu
+                        // dilindungi. Dibiarkan menyala, penjaga itu melempar dan
+                        // batch MENELAN potongannya diam-diam (catch di bawah):
+                        // uang terpotong dari gaji, angsuran tak pernah tercatat.
+                        redirectToSettlement: false,
                     );
 
                     // Filament: file sudah tersimpan di disk (getState) → lampirkan dari path.
                     $this->attachBukti($installment, $row['bukti_path'] ?? null, $row['bukti_disk'] ?? null);
 
                     $created++;
-                } catch (CannotProcessPayment) {
+                } catch (CannotProcessPayment $e) {
                     // Pinjaman tak lagi Cair / jadwal terbayar di tengah jalan.
-                    $skipped++;
+                    $skippedRows[] = $this->skippedRow($schedule, (string) $row['schedule_id'], $e->getMessage());
                 }
             }
 
+            $skipped = count($skippedRows);
+
+            // Dibungkus `attributes` DENGAN SENGAJA (R22): panel audit maupun
+            // ActivityResource hanya merender `properties.attributes`. Properti
+            // datar tersimpan rapi di database lalu tak pernah terlihat siapa pun.
             activity()
                 ->causedBy($causerId)
                 ->event('batch_angsuran_potong_gaji')
-                ->withProperties([
+                ->withProperties(['attributes' => [
                     'agency_id' => $agency->getKey(),
                     'period_month' => $period,
                     'created' => $created,
                     'skipped' => $skipped,
-                ])
+                    'skipped_rows' => $skippedRows,
+                ]])
                 ->log("Batch potong gaji angsuran OPD {$agency->agency_name} periode {$period}: {$created} angsuran, {$skipped} dilewati");
 
             return [
                 'created' => $created,
                 'skipped' => $skipped,
+                'skipped_rows' => $skippedRows,
             ];
         });
     }
@@ -189,7 +240,11 @@ class BatchInstallmentPaymentService
             // (sisa pokok + 1× jasa), bukan tagihan satu jadwal.
             if ($row['settle_early'] ?? false) {
                 $loan = $schedule->loan;
-                $payoff = bcadd($loan->settledPrincipal(), (string) $loan->monthly_interest, self::SCALE);
+
+                // Satu sumber (ADR 2026-08-28 item 1c) — harus angka yang sama
+                // persis dengan yang ditegakkan settleEarly(), termasuk potongan
+                // Titipan Pokok. Rumus lokal di sini dulunya duplikat (R2).
+                $payoff = $loan->payoffAmount();
 
                 if (bccomp($amount, $payoff, self::SCALE) < 0) {
                     throw new InvalidArgumentException(sprintf(
@@ -210,6 +265,38 @@ class BatchInstallmentPaymentService
                 ));
             }
         }
+    }
+
+    /**
+     * Satu entri daftar-dilewati. Nomor pinjaman dan nama anggota ikut dicatat —
+     * `schedule_id` saja memaksa pemeriksa menelusuri balik UUID di database,
+     * dan jejak yang hanya bisa dibaca lewat query bukan jejak yang terpakai.
+     *
+     * @return array{schedule_id:?string, loan_number:?string, member:?string, reason:string}
+     */
+    private function skippedRow(?InstallmentSchedule $schedule, ?string $scheduleId, string $reason): array
+    {
+        return [
+            'schedule_id' => $scheduleId,
+            'loan_number' => $schedule?->loan?->loan_number,
+            'member' => $schedule?->loan?->member?->full_name,
+            'reason' => $reason,
+        ];
+    }
+
+    /**
+     * Pelaku untuk otorisasi pelunasan batch. Pelunasan mengubah nasib seluruh
+     * pinjaman, jadi wajib ada pelaku terautentikasi — tak ada jalur anonim.
+     */
+    private function actingUser(?int $causerId): User
+    {
+        $user = $causerId !== null ? User::find($causerId) : auth()->user();
+
+        if (! $user instanceof User) {
+            throw new AuthorizationException('Pelunasan dipercepat lewat batch memerlukan pengguna terautentikasi.');
+        }
+
+        return $user;
     }
 
     private function belongsToAgency(InstallmentSchedule $schedule, Agency $agency): bool

@@ -8,6 +8,7 @@ use App\Livewire\Concerns\WithMemberPicker;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
 use App\Services\SavingsBalanceService;
+use App\Services\WithdrawalWorkflow;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -295,12 +296,43 @@ class SavingsWithdrawalForm extends Component
         return $this->redirectRoute('savings.withdrawals', navigate: true);
     }
 
+    /**
+     * Halangan jadwal Tabungan Berjangka anggota terpilih — untuk diberitahukan
+     * SEKARANG, di baris tipenya, bukan lewat penolakan di langkah terakhir.
+     *
+     * @return array{pesan:string, bypass:bool}|null
+     */
+    public function timeDepositBlock(): ?array
+    {
+        if (blank($this->member_id)) {
+            return null;
+        }
+
+        $member = Member::find($this->member_id);
+
+        if ($member === null) {
+            return null;
+        }
+
+        $block = app(WithdrawalWorkflow::class)->timeDepositScheduleBlockFor($member);
+
+        if ($block === null) {
+            return null;
+        }
+
+        return [
+            'pesan' => $block['exception']->getMessage(),
+            'bypass' => auth()->user()?->can(WithdrawalWorkflow::BYPASS_SCHEDULE_PERMISSION) ?? false,
+        ];
+    }
+
     public function render(): View
     {
         return view('livewire.savings.withdrawal.savings-withdrawal-form', [
             'total' => $this->totalAmount(),
             'includedCount' => $this->includedCount(),
             'disbursementMethods' => Resource::DISBURSEMENT_METHODS,
+            'timeDepositBlock' => $this->timeDepositBlock(),
         ])->layout('components.layouts.app', ['title' => 'Pencairan Simpanan']);
     }
 }

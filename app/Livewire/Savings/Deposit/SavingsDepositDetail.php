@@ -100,7 +100,7 @@ class SavingsDepositDetail extends Component
 
         return match ($key) {
             'amount' => 'Rp '.number_format((float) $value, 0, ',', '.'),
-            'savings_type' => Resource::SAVINGS_TYPES[$value] ?? (string) $value,
+            'savings_type' => Resource::TYPE_LABELS[$value] ?? (string) $value,
             'deposit_method' => Resource::DEPOSIT_METHODS[$value] ?? (string) $value,
             'deposited_by' => Resource::DEPOSITED_BY[$value] ?? (string) $value,
             default => $this->defaultFormatAuditFieldValue($key, $value),
@@ -119,7 +119,7 @@ class SavingsDepositDetail extends Component
 
         return view('livewire.savings.deposit.savings-deposit-detail', [
             'deposit' => $deposit,
-            'savingsTypeLabel' => Resource::SAVINGS_TYPES[$deposit->savings_type] ?? $deposit->savings_type,
+            'savingsTypeLabel' => Resource::TYPE_LABELS[$deposit->savings_type] ?? $deposit->savings_type,
             'savingsTypeColor' => Resource::typeColor($deposit->savings_type),
             'depositMethodLabel' => Resource::DEPOSIT_METHODS[$deposit->deposit_method] ?? $deposit->deposit_method,
             'depositedByLabel' => Resource::DEPOSITED_BY[$deposit->deposited_by] ?? $deposit->deposited_by,

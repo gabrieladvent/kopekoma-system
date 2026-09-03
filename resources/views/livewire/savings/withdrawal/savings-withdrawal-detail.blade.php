@@ -94,13 +94,15 @@
         </div>
 
         <div class="flex shrink-0 flex-wrap items-center gap-2">
-            @if ($this->canApprove($withdrawal))
-                <x-ui.button wire:click="openConfirm('approve')">
+            {{-- Tombol yang pasti ditolak tidak ditampilkan. Sebabnya dijelaskan
+                 di panel bawah, bukan lewat notifikasi setelah tombol ditekan. --}}
+            @if ($this->canApprove($withdrawal) && (!$scheduleBlock || $canBypassSchedule))
+                <x-ui.button wire:click="openConfirm('approve')" wire:loading.attr="disabled">
                     <x-ui.icon name="check" class="h-4 w-4" /> Setujui (ACC)
                 </x-ui.button>
             @endif
-            @if ($this->canDisburse($withdrawal))
-                <x-ui.button wire:click="openConfirm('disburse')">
+            @if ($this->canDisburse($withdrawal) && (!$scheduleBlock || $canBypassSchedule))
+                <x-ui.button wire:click="openConfirm('disburse')" wire:loading.attr="disabled">
                     <x-ui.icon name="banknotes" class="h-4 w-4" /> Cairkan Dana
                 </x-ui.button>
             @endif
@@ -116,6 +118,46 @@
             @endif
         </div>
     </div>
+
+    {{-- Halangan jadwal Tabungan Berjangka. Menetap di halaman: pengurus yang
+         membukanya seminggu kemudian tetap menemukan alasannya, dan tak perlu
+         menekan tombol untuk mengetahui bahwa ia akan ditolak. --}}
+    @if ($scheduleBlock)
+        <x-ui.card @class([
+            'border-l-4',
+            'border-l-danger' => !$canBypassSchedule,
+            'border-l-warning' => $canBypassSchedule,
+        ])>
+            <div class="flex items-start gap-3">
+                <span @class([
+                    'mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full',
+                    'bg-danger/10 text-danger' => !$canBypassSchedule,
+                    'bg-warning/10 text-warning' => $canBypassSchedule,
+                ])>
+                    <x-ui.icon name="exclamation-triangle" class="h-5 w-5" />
+                </span>
+                <div class="space-y-1">
+                    <p class="font-semibold text-text">
+                        {{ $canBypassSchedule ? 'Di luar jadwal — pencairan akan dicatat sebagai pengecualian' : 'Belum waktunya dicairkan' }}
+                    </p>
+                    <p class="text-sm text-muted">{{ $scheduleBlock['pesan'] }}</p>
+                    @if ($canBypassSchedule)
+                        <p class="text-sm text-muted">
+                            Kamu memegang izin melewati jadwal. Bila diteruskan, pencairan ini tercatat di Log
+                            Aktivitas sebagai <span class="font-medium text-text">Pencairan di Luar Jadwal</span>
+                            beserta alasannya.
+                        </p>
+                    @else
+                        <p class="text-sm text-muted">
+                            Pengajuan ini tidak dapat disetujui maupun dicairkan sampai jadwalnya terbuka. Bila
+                            anggota sudah keluar atau meninggal, perbarui statusnya lebih dulu — keduanya
+                            dikecualikan dari jadwal.
+                        </p>
+                    @endif
+                </div>
+            </div>
+        </x-ui.card>
+    @endif
 
     <div class="grid gap-6 lg:grid-cols-3">
         {{-- KIRI: nominal + rincian --}}

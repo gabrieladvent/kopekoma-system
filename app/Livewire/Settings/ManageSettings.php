@@ -72,6 +72,9 @@ class ManageSettings extends Component
 
     public ?float $loan_short_term_max = null;
 
+    /** Bulan pembagian SHU (1–12); kosong = belum ditetapkan. */
+    public ?int $shu_distribution_month = null;
+
     // --- Identitas Koperasi (kop laporan PDF) ---
     public ?string $cooperative_address = null;
 
@@ -115,6 +118,7 @@ class ManageSettings extends Component
         $this->loan_interest_rate = $coop->loan_interest_rate;
         $this->loan_time_deposit_rate = $coop->loan_time_deposit_rate;
         $this->loan_short_term_max = $coop->loan_short_term_max;
+        $this->shu_distribution_month = $coop->shu_distribution_month;
         $this->cooperative_address = $coop->cooperative_address;
         $this->cooperative_city = $coop->cooperative_city;
         $this->cooperative_phone = $coop->cooperative_phone;
@@ -151,6 +155,9 @@ class ManageSettings extends Component
             'loan_interest_rate' => ['required', 'numeric', 'min:0'],
             'loan_time_deposit_rate' => ['required', 'numeric', 'min:0'],
             'loan_short_term_max' => ['required', 'numeric', 'min:0'],
+            // Nullable dengan sengaja: selama belum ditetapkan, jadwal pencairan
+            // Tabungan Berjangka jatuh ke aturan 12 bulan berjalan.
+            'shu_distribution_month' => ['nullable', 'integer', 'between:1,12'],
             'cooperative_address' => ['nullable', 'string', 'max:255'],
             'cooperative_city' => ['nullable', 'string', 'max:100'],
             'cooperative_phone' => ['nullable', 'string', 'max:50'],
@@ -256,6 +263,7 @@ class ManageSettings extends Component
         $coop->loan_interest_rate = (float) $this->loan_interest_rate;
         $coop->loan_time_deposit_rate = (float) $this->loan_time_deposit_rate;
         $coop->loan_short_term_max = (float) $this->loan_short_term_max;
+        $coop->shu_distribution_month = $this->shu_distribution_month ?: null;
         $coop->cooperative_address = $this->cooperative_address ?: null;
         $coop->cooperative_city = $this->cooperative_city ?: null;
         $coop->cooperative_phone = $this->cooperative_phone ?: null;
@@ -303,6 +311,7 @@ class ManageSettings extends Component
             'Rasio Jasa' => (string) $coop->loan_interest_rate,
             'Rasio Tabungan Berjangka' => (string) $coop->loan_time_deposit_rate,
             'Batas Pinjaman Jangka Pendek' => (string) $coop->loan_short_term_max,
+            'Bulan Pembagian SHU' => (string) ($coop->shu_distribution_month ?? '—'),
             'Alamat Koperasi' => (string) $coop->cooperative_address,
             'Kota Koperasi' => (string) $coop->cooperative_city,
             'Telepon Koperasi' => (string) $coop->cooperative_phone,

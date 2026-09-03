@@ -87,7 +87,7 @@ it('breakdown of a settlement row shows real principal (not 0), 1x interest, 0 t
     expect($b['principal'])->toBe('3000000.00')
         ->and($b['interest'])->toBe('6500.00')
         ->and($b['time_deposit'])->toBe('0.00')
-        ->and($b['other'])->toBe('500000.00')
+        ->and($b['credit_reserved'])->toBe('500000.00')
         ->and($b['total'])->toBe('3506500.00');
 });
 

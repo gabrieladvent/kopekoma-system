@@ -16,6 +16,7 @@ use App\Services\SavingsBalanceService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -40,6 +41,47 @@ class InstallmentForm extends Component
 
     /** Toggle pelunasan dipercepat (ADR 2026-07-22) — lunasi seluruh sisa sekaligus. */
     public bool $settle_early = false;
+
+    /**
+     * Mode alokasi kelebihan bayar (ADR 2026-08-28) — bawaan Titipan Pokok.
+     *
+     * `#[Locked]` bersama {@see $modeConfirmed}: keduanya HANYA boleh bergerak
+     * lewat `chooseMode()`, jalur yang menampilkan akibat kedua pilihan dalam
+     * rupiah lebih dulu. Sebagai properti publik biasa, klien tinggal mengirim
+     * `modeConfirmed = true` untuk melewati dialog dan langsung menutup beberapa
+     * angsuran sekaligus — dialog itu adalah SATU-SATUNYA tempat anggota
+     * diperlihatkan bahwa uangnya menutup lebih dari satu bulan, jadi
+     * melewatinya berarti keputusan berakibat-uang diambil tanpa dia tahu.
+     */
+    #[Locked]
+    public string $mode = LoanPaymentService::MODE_TITIPAN;
+
+    public bool $showAllocationDialog = false;
+
+    /** Petugas sudah memilih mode untuk nominal ini. */
+    #[Locked]
+    public bool $modeConfirmed = false;
+
+    public bool $showSettlementChoice = false;
+
+    /**
+     * Anggota memilih TETAP MENCICIL walau uangnya cukup melunasi.
+     *
+     * Dulu keadaan ini ditolak mentah: "Gunakan Pelunasan Dipercepat". Penjaga
+     * itu dipasang supaya anggota tak diam-diam membayar penuh sementara jasa
+     * bulan sisa yang seharusnya dibebaskan tetap ditagih — niatnya melindungi.
+     * Tapi ia melarang keadaan yang sah: anggota yang membawa uang lebih dan
+     * memang ingin pinjamannya berjalan terus. Ditolak begitu, petugas tak punya
+     * jalan lain selain menyuruhnya pulang atau melunasi sesuatu yang tak ia
+     * minta.
+     *
+     * Sekarang ditawarkan, bukan dilarang: kedua akibatnya disajikan dalam
+     * rupiah, lalu petugas memilih. `#[Locked]` karena melewatinya berarti
+     * anggota membayar lebih tanpa pernah diberi tahu bahwa ada yang lebih
+     * ringan — sama persis alasan {@see $modeConfirmed} dikunci.
+     */
+    #[Locked]
+    public bool $keepInstalling = false;
 
     public function mount(): void
     {
@@ -66,9 +108,16 @@ class InstallmentForm extends Component
         $this->dispatchAmounts();
     }
 
+    public function updatedAmountPaid(): void
+    {
+        // Nominal berubah → pilihan mode sebelumnya tak lagi berlaku.
+        $this->modeConfirmed = false;
+        $this->mode = LoanPaymentService::MODE_TITIPAN;
+    }
+
     public function updatedLoanId(): void
     {
-        $this->reset('schedule_id', 'amount_paid', 'settle_early');
+        $this->reset('schedule_id', 'amount_paid', 'settle_early', 'mode', 'modeConfirmed');
         $this->loadSchedule();
         $this->dispatchAmounts();
     }
@@ -87,7 +136,7 @@ class InstallmentForm extends Component
             $this->amount_paid = $preview ? (int) round((float) $preview['payoff']) : $this->amount_paid;
         } else {
             $schedule = $this->selectedSchedule();
-            $this->amount_paid = $schedule ? (int) round((float) $schedule->total_due) : null;
+            $this->amount_paid = $schedule ? (int) round((float) $this->effectiveBill($schedule)) : null;
         }
 
         $this->dispatchAmounts();
@@ -101,7 +150,7 @@ class InstallmentForm extends Component
     {
         if ($this->fromSavings()) {
             $schedule = $this->selectedSchedule();
-            $this->amount_paid = $schedule ? (int) round((float) $schedule->total_due) : $this->amount_paid;
+            $this->amount_paid = $schedule ? (int) round((float) $this->effectiveBill($schedule)) : $this->amount_paid;
         }
 
         $this->dispatchAmounts();
@@ -153,7 +202,7 @@ class InstallmentForm extends Component
             $bill = $preview ? (int) round((float) $preview['payoff']) : 0;
         } else {
             $schedule = $this->selectedSchedule();
-            $bill = $schedule ? (int) round((float) $schedule->total_due) : 0;
+            $bill = $schedule ? (int) round((float) $this->effectiveBill($schedule)) : 0;
         }
 
         $this->dispatch(
@@ -207,7 +256,11 @@ class InstallmentForm extends Component
 
         $settledPrincipal = $loan->settledPrincipal();
         $interest = bcadd((string) $loan->monthly_interest, '0', 2);
-        $payoff = bcadd($settledPrincipal, $interest, 2);
+        // Satu sumber (item 1c) — pratinjau WAJIB memakai angka yang sama dengan
+        // yang ditegakkan settleEarly(), termasuk potongan Titipan Pokok. Rumus
+        // lokal di sini akan menampilkan jumlah pelunasan yang salah bagi anggota
+        // bertitipan: persis bentuk R2.
+        $payoff = $loan->payoffAmount();
 
         $tab = bcadd((string) (Installment::query()
             ->where('installments.loan_id', $loan->id)
@@ -245,10 +298,29 @@ class InstallmentForm extends Component
             return;
         }
 
-        // Prefill nominal diterima = tagihan bulan ini (Σ konstanta). Boleh
-        // dinaikkan; kelebihan jadi "Kelebihan Bayar" (dikredit ke Sukarela).
+        // Prefill nominal diterima = tagihan EFEKTIF bulan ini, yaitu tagihan
+        // kontrak dikurangi Titipan Pokok anggota (ADR 2026-08-28 item 2a). Boleh
+        // dinaikkan; kelebihannya mengendap jadi titipan untuk bulan berikutnya.
         $this->schedule_id = $schedule->id;
-        $this->amount_paid = (int) round((float) $schedule->total_due);
+        $this->amount_paid = (int) round((float) $this->effectiveBill($schedule));
+    }
+
+    /** Tagihan efektif jadwal ini — satu sumber, dari model (item 1b). */
+    public function effectiveBill(?InstallmentSchedule $schedule = null): string
+    {
+        $schedule ??= $this->selectedSchedule();
+
+        if ($schedule === null || $schedule->loan === null) {
+            return '0.00';
+        }
+
+        return $schedule->loan->effectiveBill($schedule);
+    }
+
+    /** Saldo Titipan Pokok pinjaman terpilih — juga dikirim balik sebagai versi. */
+    public function creditBalance(): string
+    {
+        return $this->selectedSchedule()?->loan?->overpaymentCredit() ?? '0.00';
     }
 
     public function activeLoanOptions(): array
@@ -295,7 +367,12 @@ class InstallmentForm extends Component
             'payment_method' => ['required', 'in:'.implode(',', array_keys($this->paymentMethodOptions()))],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
             // Consent WAJIB saat sumber = saldo simpanan (defense-in-depth; service juga menolak).
-            'bukti' => [Rule::requiredIf($this->fromSavings()), 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            // `nullable` WAJIB: tanpa itu aturan `file` ikut dijalankan atas nilai
+            // null, sehingga pembayaran tunai tanpa unggahan — kasus paling lazim
+            // di loket — selalu ditolak dengan error "bukti". Bug lama; jalur
+            // settle() di bawah sudah benar, jalur ini terlewat. Semua test lama
+            // kebetulan selalu mengisi bukti, jadi tak pernah ketahuan.
+            'bukti' => [Rule::requiredIf($this->fromSavings()), 'nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ];
     }
 
@@ -310,6 +387,206 @@ class InstallmentForm extends Component
             'payment_date' => 'tanggal bayar',
             'bukti' => 'bukti pembayaran',
         ];
+    }
+
+    /**
+     * Rincian akibat kedua mode, DALAM ANGKA (ADR 2026-08-28 item 2a).
+     *
+     * Dialog dua-tombol tanpa angka memang lebih murah dibuat, tapi tagihan yang
+     * berubah-ubah ("bulan ini 50.000, bulan depan 1.000.000") bukan konsep
+     * koperasi yang bisa diturunkan petugas dari pengetahuan mereka — itu akibat
+     * keputusan desain ADR ini, jadi sistem yang wajib menjelaskannya. Rincian ini
+     * juga satu-satunya penjelasan yang petugas punya di depan anggota, sekaligus
+     * pengaman yang jadi dasar penerimaan R14.
+     *
+     * @return array{titipan:array{closed:list<int>, credit_after:string, next:list<array{seq:int, bill:string}>}, tutup_sekalian:array{closed:list<int>, credit_after:string, next:list<array{seq:int, bill:string}>}}|null
+     */
+    public function allocationPreview(): ?array
+    {
+        $schedule = $this->selectedSchedule();
+
+        if ($schedule === null || $schedule->loan === null || blank($this->amount_paid)) {
+            return null;
+        }
+
+        $service = app(LoanPaymentService::class);
+        $preview = [];
+
+        foreach ([LoanPaymentService::MODE_TITIPAN, LoanPaymentService::MODE_TUTUP_SEKALIAN] as $mode) {
+            try {
+                $plan = $service->allocate($schedule->loan, $schedule, (string) (int) $this->amount_paid, $mode);
+            } catch (CannotProcessPayment) {
+                // Nominal di bawah tagihan atau justru cukup melunasi — kedua
+                // keadaan itu ditangani jalur lain, bukan dialog ini.
+                return null;
+            }
+
+            $preview[$mode] = [
+                'closed' => array_map(fn (array $row): int => (int) $row['schedule']->installment_seq, $plan['rows']),
+                'credit_after' => $plan['credit_after'],
+                'next' => $this->upcomingBills($schedule, $plan),
+            ];
+        }
+
+        return $preview;
+    }
+
+    /**
+     * Tagihan bulan-bulan berikutnya bila rencana ini disimpan — inilah "akibat
+     * dalam angka". Berhenti setelah titipan habis; sesudah itu tagihannya kembali
+     * penuh dan tak menjelaskan apa pun.
+     *
+     * @param  array{rows:list<array{schedule:InstallmentSchedule, ...}>, credit_after:string}  $plan
+     * @return list<array{seq:int, bill:string}>
+     */
+    private function upcomingBills(InstallmentSchedule $schedule, array $plan): array
+    {
+        $loan = $schedule->loan;
+        $closed = array_map(fn (array $row): int => (int) $row['schedule']->installment_seq, $plan['rows']);
+
+        $credit = $plan['credit_after'];
+        $rows = [];
+
+        $upcoming = InstallmentSchedule::query()
+            ->where('loan_id', $loan->id)
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
+            ->whereNotIn('installment_seq', $closed)
+            ->orderBy('installment_seq')
+            ->limit(3)
+            ->get();
+
+        foreach ($upcoming as $next) {
+            $bill = $loan->effectiveBillWithCredit($next, $credit);
+
+            $rows[] = ['seq' => (int) $next->installment_seq, 'bill' => $bill];
+
+            $credit = bcsub($credit, bcsub((string) $next->total_due, $bill, 2), 2);
+
+            if (bccomp($credit, '0', 2) <= 0) {
+                break;
+            }
+        }
+
+        return $rows;
+    }
+
+    /** Dialog hanya muncul bila sisa uang cukup menutup angsuran berikutnya. */
+    public function needsAllocationChoice(): bool
+    {
+        $preview = $this->allocationPreview();
+
+        return $preview !== null
+            && count($preview[LoanPaymentService::MODE_TUTUP_SEKALIAN]['closed']) > 1;
+    }
+
+    /**
+     * Tawaran Pelunasan Dipercepat — null bila tak berlaku untuk nominal ini.
+     *
+     * Syaratnya persis syarat penjaga di `LoanPaymentService::allocate()`:
+     * jangka panjang, bukan dari saldo simpanan, masih ada minimal dua jadwal
+     * (dengan satu jadwal tersisa "pelunasan" tak membebaskan jasa apa pun), dan
+     * nominalnya sudah cukup melunasi. Angkanya dari `payoffAmount()` — satu
+     * sumber; menulis ulang rumusnya di sini adalah bentuk R2 dan akan
+     * menampilkan jumlah yang salah bagi anggota bertitipan.
+     *
+     * @return array{payoff:string, amount:string, selisih:string, sisa_bulan:int, jasa_dibebaskan:string, titipan_setelah:string}|null
+     */
+    public function settlementOffer(): ?array
+    {
+        if ($this->fromSavings() || $this->settle_early || blank($this->amount_paid)) {
+            return null;
+        }
+
+        $loan = $this->selectedLoan();
+
+        if ($loan === null || $loan->loan_type !== 'jangka_panjang') {
+            return null;
+        }
+
+        $unpaid = InstallmentSchedule::query()
+            ->where('loan_id', $loan->id)
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
+            ->count();
+
+        if ($unpaid < 2) {
+            return null;
+        }
+
+        $amount = (string) (int) $this->amount_paid;
+        $payoff = $loan->payoffAmount();
+
+        if (bccomp($amount, $payoff, 2) < 0) {
+            return null;
+        }
+
+        // Jasa bulan sisa yang HANGUS bila ia tetap mencicil. Pelunasan menagih
+        // 1× jasa; sisanya dibebaskan. Angka inilah yang membuat pilihan ini
+        // bukan sekadar selera.
+        $waived = bcmul((string) $loan->monthly_interest, (string) max(0, $unpaid - 1), 2);
+
+        // Titipan setelah angsuran berjalan tertutup, bila ia tetap mencicil.
+        $schedule = InstallmentSchedule::find($this->schedule_id);
+        $titipanAfter = $schedule === null
+            ? '0.00'
+            : bcadd($loan->overpaymentCredit(), bcsub($amount, (string) $schedule->total_due, 2), 2);
+
+        return [
+            'payoff' => $payoff,
+            'amount' => $amount,
+            'selisih' => bcsub($amount, $payoff, 2),
+            'sisa_bulan' => $unpaid,
+            'jasa_dibebaskan' => $waived,
+            'titipan_setelah' => bccomp($titipanAfter, '0', 2) < 0 ? '0.00' : $titipanAfter,
+        ];
+    }
+
+    /** Anggota memilih melunasi — jalur pelunasan dipercepat yang sudah ada. */
+    public function chooseSettlement()
+    {
+        $this->showSettlementChoice = false;
+
+        if (! $this->canSettleEarly()) {
+            $this->dispatch('toast', type: 'error', message: 'Kamu tidak punya izin melakukan Pelunasan Dipercepat.');
+
+            return null;
+        }
+
+        $this->settle_early = true;
+
+        return $this->settle();
+    }
+
+    /** Anggota memilih tetap mencicil — kelebihannya jadi Titipan Pokok. */
+    public function chooseKeepInstalling()
+    {
+        $this->keepInstalling = true;
+        $this->showSettlementChoice = false;
+
+        return $this->pay();
+    }
+
+    public function closeSettlementChoice(): void
+    {
+        $this->showSettlementChoice = false;
+    }
+
+    /** Memilih akibat = menyetujuinya; langsung disimpan, tanpa klik kedua. */
+    public function chooseMode(string $mode)
+    {
+        if (! in_array($mode, [LoanPaymentService::MODE_TITIPAN, LoanPaymentService::MODE_TUTUP_SEKALIAN], true)) {
+            return null;
+        }
+
+        $this->mode = $mode;
+        $this->modeConfirmed = true;
+        $this->showAllocationDialog = false;
+
+        return $this->pay();
+    }
+
+    public function closeAllocationDialog(): void
+    {
+        $this->showAllocationDialog = false;
     }
 
     public function pay()
@@ -330,13 +607,34 @@ class InstallmentForm extends Component
             return null;
         }
 
-        // Anti-korupsi total-level (ADR 2026-06-26 D4): nominal diterima tak boleh
-        // kurang dari tagihan bulan ini. Kelebihan = "Kelebihan Bayar" (kredit Sukarela).
-        $bill = (int) round((float) $schedule->total_due);
+        // Anti-korupsi total-level (ADR 2026-06-26 D4), kini bertumpu tagihan
+        // EFEKTIF (ADR 2026-08-28): lantainya turun tepat sebesar Titipan Pokok
+        // anggota. Risiko yang dibuka lantai yang turun ini DITERIMA sadar (OQ-0);
+        // penggantinya kuitansi, panel riwayat, dan jejak log.
+        $bill = (int) round((float) $this->effectiveBill($schedule));
         if ((int) $this->amount_paid < $bill) {
             throw ValidationException::withMessages([
                 'amount_paid' => 'Nominal tidak boleh kurang dari tagihan Rp '.number_format($bill, 0, ',', '.').'.',
             ]);
+        }
+
+        // Uangnya cukup melunasi → tawarkan, jangan tolak. Anggota berhak tetap
+        // mencicil, tapi tak boleh memilihnya tanpa tahu ada jalan yang lebih
+        // ringan. Ditaruh SEBELUM dialog alokasi: pertanyaan "lunas atau tidak"
+        // mendahului pertanyaan "kelebihannya dikemanakan".
+        if (! $this->keepInstalling && $this->settlementOffer() !== null) {
+            $this->showSettlementChoice = true;
+
+            return null;
+        }
+
+        // Sisa uang cukup menutup angsuran berikutnya → petugas WAJIB memilih,
+        // dengan akibat kedua pilihan tersaji dalam angka. Pembulatan biasa tak
+        // memunculkan apa pun.
+        if (! $this->modeConfirmed && ! $this->fromSavings() && $this->needsAllocationChoice()) {
+            $this->showAllocationDialog = true;
+
+            return null;
         }
 
         // Sumber = saldo simpanan (ADR 2026-07-22): dikunci tepat-tagihan (tak boleh
@@ -347,6 +645,9 @@ class InstallmentForm extends Component
                     'amount_paid' => 'Pembayaran dari saldo simpanan harus tepat sebesar tagihan Rp '.number_format($bill, 0, ',', '.').'.',
                 ]);
             }
+
+            // Bayar-dari-simpanan tetap satu angsuran, tak pernah tutup-sekalian:
+            // nominalnya dikunci tepat tagihan, jadi tak ada sisa untuk dialokasikan.
 
             $available = $this->availableSukarela() ?? '0';
             if (bccomp((string) (int) $this->amount_paid, $available, 2) > 0) {
@@ -360,6 +661,11 @@ class InstallmentForm extends Component
             'amount_paid' => (string) (int) $this->amount_paid,
             'payment_method' => $this->payment_method,
             'payment_date' => $this->payment_date,
+            'mode' => $this->fromSavings() ? LoanPaymentService::MODE_TITIPAN : $this->mode,
+            // Versi yang dipakai saat rincian dihitung. Service menolak bila saldo
+            // sudah bergeser di dalam lock — ditolak, bukan disimpan diam-diam
+            // dengan hasil berbeda dari yang dikonfirmasi (item 1f).
+            'expected_credit' => $this->creditBalance(),
         ];
 
         try {
@@ -368,6 +674,11 @@ class InstallmentForm extends Component
                 $input,
                 auth()->id(),
                 $this->bukti?->getRealPath() ? $this->bukti : null,
+                // Penjaga dimatikan HANYA setelah petugas memilih "tetap
+                // mencicil" di dialog — bukan sebagai bawaan. Tanpa syarat itu,
+                // penjaga yang melindungi anggota dari membayar lebih hilang
+                // diam-diam.
+                redirectToSettlement: ! $this->keepInstalling,
             );
         } catch (CannotProcessPayment $e) {
             throw ValidationException::withMessages(['amount_paid' => $e->getMessage()]);
@@ -416,6 +727,11 @@ class InstallmentForm extends Component
             'amount_paid' => (string) (int) $this->amount_paid,
             'payment_method' => $this->payment_method,
             'payment_date' => $this->payment_date,
+            'mode' => $this->fromSavings() ? LoanPaymentService::MODE_TITIPAN : $this->mode,
+            // Versi yang dipakai saat rincian dihitung. Service menolak bila saldo
+            // sudah bergeser di dalam lock — ditolak, bukan disimpan diam-diam
+            // dengan hasil berbeda dari yang dikonfirmasi (item 1f).
+            'expected_credit' => $this->creditBalance(),
         ];
 
         try {

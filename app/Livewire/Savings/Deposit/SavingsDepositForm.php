@@ -127,6 +127,13 @@ class SavingsDepositForm extends Component
             'deposited_by' => ['required', 'in:'.implode(',', array_keys(Resource::DEPOSITED_BY))],
             'reference_number' => ['nullable', 'string', 'max:50'],
             'notes' => ['nullable', 'string', 'max:65535'],
+            // `lines` properti publik yang dikendalikan klien. Tanpa aturan ini
+            // jenis setoran apa pun bisa disisipkan — termasuk `swp` dan
+            // `tabungan_berjangka` yang seharusnya hanya lahir dari pintu
+            // pinjaman. Lapisan mutasi tetap menolaknya (penjaga sebenarnya);
+            // aturan di sini yang membuat penolakannya berupa pesan, bukan
+            // exception mentah di layar petugas.
+            'lines.*.savings_type' => ['required', 'in:'.implode(',', array_keys(Resource::SAVINGS_TYPES))],
         ];
     }
 

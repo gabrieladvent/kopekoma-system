@@ -311,17 +311,108 @@
             </x-ui.card>
         </div>
 
-        {{-- Audit Trail --}}
-        <div>
-            <x-ui.card>
-                <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-text">Audit Trail</h3>
-                    <span class="text-xs text-muted">Klik untuk detail</span>
+        {{-- Kolom kanan. Pembungkus ini WAJIB: tanpanya panel-panel di bawah jadi
+             anak langsung `lg:grid-cols-3`, dan setelah kolom kiri memakan 2 kolom
+             di baris pertama, panel kedua dan seterusnya jatuh ke BARIS BERIKUTNYA
+             kolom pertama — bukan menumpuk di kanan. Itu yang membuat Audit Trail
+             terdampar di bawah kiri sementara kolom kanan menyisakan ruang kosong. --}}
+        <div class="space-y-6">
+            {{-- Riwayat Titipan Pokok (ADR 2026-08-28 item 2e). Kanal utama pengurus
+                 untuk menjawab: kapan titipan masuk, kapan dipotong dan berapa, kapan
+                 habis. Disembunyikan bila pinjaman ini memang tak pernah bertitipan. --}}
+            @if (count($creditHistory) > 0 || bccomp($creditBalance, '0', 2) !== 0)
+                <div>
+                    <x-ui.card class="p-0">
+                        <div class="border-b border-border p-5">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+                                        <x-ui.icon name="wallet" class="h-4 w-4" />
+                                    </span>
+                                    <h3 class="text-sm font-semibold text-text">Riwayat Titipan Pokok</h3>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs text-muted">Saldo</div>
+                                    <div class="text-base font-semibold tabular-nums text-text">Rp
+                                        {{ number_format((float) $creditBalance, 0, ',', '.') }}</div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-muted">
+                                Titipan Pokok memotong <strong>pokok</strong> angsuran berikutnya. Jasa dan Tabungan
+                                Berjangka tetap tertagih, jumlah angsuran tidak berubah.
+                            </p>
+                        </div>
+
+                        {{-- Tanggal ditumpuk di bawah nomor transaksi, bukan jadi
+                             kolom sendiri: di kolom kanan yang lebarnya sepertiga
+                             layar, lima kolom membuat SALDO terdorong keluar dan
+                             harus di-scroll — padahal justru kolom itu yang
+                             menjawab "kapan titipan habis". --}}
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="border-b border-border bg-bg/50 text-xs uppercase tracking-wide text-muted">
+                                    <tr>
+                                        <th class="px-4 py-2.5 text-left font-medium">Transaksi</th>
+                                        <th class="px-2 py-2.5 text-right font-medium">Masuk</th>
+                                        <th class="px-2 py-2.5 text-right font-medium">Dipakai</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Saldo</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border">
+                                    @forelse ($creditHistory as $row)
+                                        <tr class="transition hover:bg-bg/50">
+                                            {{-- Nowrap HANYA pada nomor dan tanggal. Bila dipasang di
+                                                 <td>, catatan penutup ("Dilimpahkan ke Simpanan Sukarela
+                                                 saat pinjaman ditutup") ikut tak boleh patah, kolom ini
+                                                 melar sepanjang kalimat itu, dan SALDO terdorong keluar
+                                                 lagi — persis masalah yang hendak diperbaiki. --}}
+                                            <td class="px-4 py-2.5 align-top">
+                                                <span class="whitespace-nowrap font-medium text-text">{{ $row['number'] }}</span>
+                                                @if ($row['reversal'])
+                                                    <span class="ml-1.5 text-xs text-danger">pembatalan</span>
+                                                @endif
+                                                <div class="text-xs whitespace-nowrap text-muted">{{ $row['date'] ?? '—' }}</div>
+                                                @if ($row['note'])
+                                                    <div class="text-xs text-muted">{{ $row['note'] }}</div>
+                                                @endif
+                                            </td>
+                                            <td class="px-2 py-2.5 text-right align-top tabular-nums whitespace-nowrap text-text">
+                                                {{ bccomp($row['in'], '0', 2) > 0 ? number_format((float) $row['in'], 0, ',', '.') : '—' }}
+                                            </td>
+                                            <td class="px-2 py-2.5 text-right align-top tabular-nums whitespace-nowrap text-text">
+                                                {{ bccomp($row['used'], '0', 2) > 0 ? number_format((float) $row['used'], 0, ',', '.') : '—' }}
+                                            </td>
+                                            <td
+                                                class="px-4 py-2.5 text-right align-top font-medium tabular-nums whitespace-nowrap {{ bccomp($row['balance'], '0', 2) === 0 ? 'text-muted' : 'text-text' }}">
+                                                {{ number_format((float) $row['balance'], 0, ',', '.') }}
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="4" class="px-4 py-6 text-center text-sm text-muted">
+                                                Belum ada pergerakan Titipan Pokok.
+                                            </td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </x-ui.card>
                 </div>
-                <div class="mt-4">
-                    @include('livewire.master.partials.audit-trail')
-                </div>
-            </x-ui.card>
+            @endif
+
+            {{-- Audit Trail --}}
+            <div>
+                <x-ui.card>
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-text">Audit Trail</h3>
+                        <span class="text-xs text-muted">Klik untuk detail</span>
+                    </div>
+                    <div class="mt-4">
+                        @include('livewire.master.partials.audit-trail')
+                    </div>
+                </x-ui.card>
+            </div>
         </div>
     </div>
 

@@ -10,6 +10,8 @@ use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SavingsWithdrawal;
+use App\Services\LoanPaymentService;
+use App\Services\SavingsBalanceService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -54,7 +56,9 @@ it('records a payment through the service, settles the loan and refunds (final i
     expect(Installment::where('loan_id', $this->loan->id)->where('is_reversal', false)->count())->toBe(1)
         ->and($this->schedule->fresh()->status)->toBe(InstallmentScheduleStatus::Terbayar)
         ->and($this->loan->fresh()->status)->toBe(LoanStatus::Lunas)
-        ->and(SavingsWithdrawal::where('related_loan_id', $this->loan->id)->where('savings_type', 'swp')->where('amount', '120000.00')->exists())->toBeTrue();
+        // SWP tetap jadi simpanan anggota — pelunasan tak menerbitkan pencairan.
+        ->and(app(SavingsBalanceService::class)->balanceByType($this->loan->member, 'swp'))->toBe('120000.00')
+        ->and(SavingsWithdrawal::where('member_id', $this->loan->member_id)->count())->toBe(0);
 });
 
 it('prefills the total bill as integer rupiah, not scaled by decimals', function () {
@@ -117,11 +121,23 @@ it('streams a kuitansi angsuran PDF', function () {
     expect(InstallmentResource::printReceipt($inst))->toBeInstanceOf(StreamedResponse::class);
 });
 
-it('labels the overpayment breakdown line as Kelebihan Bayar (not Lain-lain)', function () {
-    $inst = Installment::factory()->create(['loan_id' => $this->loan->id]);
+/**
+ * R12 (ADR 2026-08-28): nama lama "Kelebihan Bayar" dipakai untuk arti yang
+ * berbeda — uangnya tidak lagi berangkat ke Simpanan Sukarela, ia mengendap di
+ * pinjaman sebagai Titipan Pokok. Memakai nama lama menyesatkan pengurus.
+ */
+it('labels the set-aside breakdown line as Titipan Pokok', function () {
+    $inst = Installment::factory()->create([
+        'loan_id' => $this->loan->id,
+        'schedule_id' => $this->schedule->id,
+        'amount_paid' => 1190000, // tagihan 1.090.000 → disisihkan 100.000
+        'credit_applied' => '0.00',
+    ]);
 
     Livewire::test(ViewInstallment::class, ['record' => $inst->getRouteKey()])
-        ->assertSee('Kelebihan Bayar')
+        ->assertSee('Titipan Pokok disisihkan')
+        ->assertSee('Sisa Titipan Pokok')
+        ->assertDontSee('Kelebihan Bayar')
         ->assertDontSee('Lain-lain');
 });
 
@@ -139,4 +155,74 @@ it('rejects a below-bill payment (no installment created)', function () {
 
     expect(Installment::where('loan_id', $this->loan->id)->exists())->toBeFalse()
         ->and($this->loan->fresh()->status)->toBe(LoanStatus::Cair);
+});
+
+/**
+ * Item 2c (ADR 2026-08-28) — pintu manual KEDUA. Aturan kebenaran uang ditegakkan
+ * di mesin, tapi pintu yang lupa diperbaiki tetap menagih anggota bertitipan
+ * melebihi kewajiban riilnya lewat prefill dan lantai validasinya sendiri.
+ */
+it('prefills the titipan-reduced bill', function () {
+    // Jadwal kedua supaya titipan punya tempat mengalir.
+    $second = InstallmentSchedule::factory()->create([
+        'loan_id' => $this->loan->id,
+        'installment_seq' => 2,
+        'principal_due' => 1000000,
+        'interest_due' => 78000,
+        'time_deposit_due' => 12000,
+        'total_due' => 1090000,
+    ]);
+    $this->loan->update(['principal_amount' => 2000000, 'term_months' => 2]);
+
+    // 2.000.000 — di bawah jumlah pelunasan (2.078.000), jadi tak dibelokkan.
+    app(LoanPaymentService::class)->pay($this->schedule, ['amount_paid' => 2000000], auth()->id());
+
+    Livewire::test(CreateInstallment::class)
+        ->fillForm([
+            'member_id' => $this->member->id,
+            'loan_id' => $this->loan->id,
+            'schedule_id' => $second->id,
+        ])
+        // Tagihan efektif = 1.090.000 − min(titipan 910.000, pokok 1.000.000).
+        ->assertFormSet(['amount_paid' => '180000'])
+        ->assertSee('Titipan Pokok dipakai');
+});
+
+it('accepts the titipan-reduced amount that the contract floor would reject', function () {
+    $second = InstallmentSchedule::factory()->create([
+        'loan_id' => $this->loan->id,
+        'installment_seq' => 2,
+        'principal_due' => 1000000,
+        'interest_due' => 78000,
+        'time_deposit_due' => 12000,
+        'total_due' => 1090000,
+    ]);
+    $this->loan->update(['principal_amount' => 2000000, 'term_months' => 2]);
+
+    app(LoanPaymentService::class)->pay($this->schedule, ['amount_paid' => 2000000], auth()->id());
+
+    Livewire::test(CreateInstallment::class)
+        ->fillForm([
+            'member_id' => $this->member->id,
+            'loan_id' => $this->loan->id,
+            'schedule_id' => $second->id,
+            'payment_method' => 'manual',
+            'amount_paid' => '180000',
+            'payment_date' => now()->toDateString(),
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect($this->loan->fresh()->overpaymentCredit())->toBe('0.00');
+});
+
+it('no longer offers the overpayment to sukarela in its helper text', function () {
+    Livewire::test(CreateInstallment::class)
+        ->fillForm([
+            'member_id' => $this->member->id,
+            'loan_id' => $this->loan->id,
+            'schedule_id' => $this->schedule->id,
+        ])
+        ->assertSee('Titipan Pokok')
+        ->assertDontSee('dikreditkan ke Simpanan Sukarela');
 });

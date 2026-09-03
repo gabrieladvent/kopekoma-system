@@ -352,6 +352,27 @@
                     wire:model="loan_time_deposit_rate" :error="$errors->first('loan_time_deposit_rate')" />
                 <x-ui.money-input label="Batas Pinjaman Jangka Pendek" model="loan_short_term_max"
                     :error="$errors->first('loan_short_term_max')" hint="Nominal maksimal pinjaman jangka pendek." />
+
+                <div class="sm:col-span-2">
+                    <label for="shu_distribution_month" class="mb-1.5 block text-sm font-medium text-text">
+                        Bulan Pembagian SHU
+                    </label>
+                    <select id="shu_distribution_month" wire:model="shu_distribution_month"
+                            class="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
+                        <option value="">Belum ditetapkan</option>
+                        @foreach ([1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'] as $num => $label)
+                            <option value="{{ $num }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1.5 text-xs text-muted">
+                        Menjadi <span class="font-medium text-text">jendela pencairan Tabungan Berjangka</span>:
+                        hanya boleh dicairkan pada bulan ini, dan maksimal sekali per tahun.
+                        Selama <span class="font-medium text-text">belum ditetapkan</span>, sistem memakai aturan
+                        12 bulan sejak pencairan terakhir tiap anggota — lebih longgar, dan waktunya berbeda-beda
+                        per orang. Anggota berstatus Keluar/Meninggal selalu dikecualikan.
+                    </p>
+                    @error('shu_distribution_month')<p class="mt-1 text-xs text-danger">{{ $message }}</p>@enderror
+                </div>
             </div>
         </x-ui.card>
         <x-ui.card title="Identitas Koperasi (Kop Laporan)"

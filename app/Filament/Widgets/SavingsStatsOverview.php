@@ -10,11 +10,20 @@ use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
 use App\Models\ShoppingTransaction;
+use App\Services\LoanArrearsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class SavingsStatsOverview extends StatsOverviewWidget
 {
+    /**
+     * Polling dimatikan (ADR 2026-08-28). Bawaan Filament 5 detik, dan angka
+     * tunggakan kini menghitung tagihan efektif per pinjaman — satu tab dashboard
+     * yang dibiarkan terbuka mengulang seluruh rangkaian itu setiap 5 detik.
+     * Angka tunggakan tak pernah berubah secepat itu; refresh halaman sudah cukup.
+     */
+    protected static ?string $pollingInterval = null;
+
     protected static ?int $sort = 1;
 
     protected function getColumns(): int
@@ -76,9 +85,11 @@ class SavingsStatsOverview extends StatsOverviewWidget
             ->value('outstanding');
 
         // Tunggakan: jadwal angsuran yang jatuh tempo namun belum terbayar.
-        $overdue = InstallmentSchedule::query()->overdue();
-        $overdueCount = (clone $overdue)->count();
-        $overdueAmount = (float) (clone $overdue)->sum('total_due');
+        // Nominalnya memakai tagihan EFEKTIF (ADR 2026-08-28 item 2f, R13) —
+        // `total_due` kontraktual melaporkan anggota bertitipan menunggak lebih
+        // besar dari kewajiban riilnya.
+        $overdueCount = InstallmentSchedule::query()->overdue()->count();
+        $overdueAmount = (float) app(LoanArrearsService::class)->overdueAmount();
 
         return [
             Stat::make('Total Simpanan', 'Rp '.number_format($totalSavings, 0, ',', '.'))

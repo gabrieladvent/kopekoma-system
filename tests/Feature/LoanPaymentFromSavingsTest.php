@@ -28,13 +28,20 @@ use Spatie\Permission\Models\Permission;
  * consent WAJIB, tepat-tagihan, canWithdraw, debit berpasangan ber-atribusi.
  */
 
-/** Pinjaman jangka panjang + N jadwal identik (tagihan 1.007.500/jadwal). */
+/**
+ * Pinjaman jangka panjang + N jadwal identik (tagihan 1.007.500/jadwal).
+ *
+ * `principal_amount` = `1.000.000 × N` seperti hasil `buildSchedule()`. Versi
+ * lama mematoknya 1.000.000 apa pun N-nya, sehingga sisa pokok pinjaman lebih
+ * kecil daripada tagihan satu jadwal — mustahil di data nyata, dan menyalakan
+ * penjaga Pelunasan Dipercepat pada pembayaran biasa (ADR 2026-08-28 item 1d).
+ */
 function savingsTestLoan(string $memberId, int $schedules = 1, float $swp = 10000): array
 {
     $loan = Loan::factory()->create([
         'member_id' => $memberId,
         'loan_type' => 'jangka_panjang',
-        'principal_amount' => 1000000,
+        'principal_amount' => 1000000 * $schedules,
         'swp_amount' => $swp,
         'term_months' => $schedules,
         'monthly_principal' => 1000000,
@@ -276,9 +283,14 @@ it('does not double-refund the debit when reversal is attempted twice (exclude a
         ->and(SavingsWithdrawal::where('installment_id', $inst->id)->where('is_reversal', true)->count())->toBe(1);
 });
 
-it('does NOT treat the paired debit as a pelunasan refund: final payment still creates SWP + Tab refunds', function () {
-    // Bayar angsuran terakhir dari sukarela → pinjaman Lunas. Refund SWP/Tab
-    // (via related_loan_id) tetap dibuat; debit (via installment_id) tak ter-hasActiveRefund.
+/**
+ * Angsuran terakhir dibayar dari saldo sukarela → pinjaman Lunas. Yang dijaga:
+ * debit berpasangannya (`installment_id`) adalah SATU-SATUNYA pencairan yang
+ * terbit, dan ia tak pernah menyamar jadi pengembalian pelunasan
+ * (`related_loan_id` tetap null). Pengembalian otomatis sendiri sudah dicabut —
+ * SWP dan Tabungan Berjangka tetap jadi simpanan anggota.
+ */
+it('creates only the paired savings debit on the final payment, never a refund', function () {
     [$loan, $rows] = savingsTestLoan($this->member->id, schedules: 1, swp: 10000);
     fundSukarela($this->member->id, 2_000_000);
 
@@ -286,13 +298,15 @@ it('does NOT treat the paired debit as a pelunasan refund: final payment still c
 
     expect($loan->fresh()->status)->toBe(LoanStatus::Lunas);
 
-    $swp = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'swp')->first();
-    $tab = SavingsWithdrawal::where('related_loan_id', $loan->id)->where('savings_type', 'tabungan_berjangka')->first();
-    $debit = SavingsWithdrawal::where('installment_id', $inst->id)->first();
+    $withdrawals = SavingsWithdrawal::where('member_id', $this->member->id)->get();
 
-    expect($swp)->not->toBeNull()
-        ->and($swp->status)->toBe(WithdrawalStatus::Draft)
-        ->and($tab)->not->toBeNull()
-        ->and($debit)->not->toBeNull()
-        ->and($debit->related_loan_id)->toBeNull();
+    expect($withdrawals)->toHaveCount(1)
+        ->and($withdrawals->first()->installment_id)->toBe($inst->id)
+        ->and($withdrawals->first()->related_loan_id)->toBeNull()
+        ->and($withdrawals->first()->savings_type)->toBe('sukarela');
+
+    $balances = app(SavingsBalanceService::class);
+
+    expect($balances->balanceByType($this->member, 'swp'))->toBe('10000.00')
+        ->and($balances->balanceByType($this->member, 'tabungan_berjangka'))->toBe('1000.00');
 });

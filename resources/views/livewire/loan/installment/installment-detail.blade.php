@@ -80,13 +80,33 @@
                         <dd class="mt-1 text-sm tabular-nums text-text">Rp
                             {{ number_format((float) $breakdown['time_deposit'], 0, ',', '.') }}</dd>
                     </div>
-                    <div>
-                        <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
-                            <x-ui.icon name="plus" class="h-3.5 w-3.5" /> Kelebihan Bayar
-                        </dt>
-                        <dd class="mt-1 text-sm tabular-nums text-text">Rp
-                            {{ number_format((float) $breakdown['other'], 0, ',', '.') }}</dd>
-                    </div>
+                    @if (bccomp($breakdown['credit_applied'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="minus" class="h-3.5 w-3.5" /> Titipan Pokok dipakai
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">&minus; Rp
+                                {{ number_format((float) $breakdown['credit_applied'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
+                    @if (bccomp($breakdown['credit_reserved'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="plus" class="h-3.5 w-3.5" /> Titipan Pokok disisihkan
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">+ Rp
+                                {{ number_format((float) $breakdown['credit_reserved'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
+                    @if (bccomp($breakdown['credit_applied'], '0', 2) > 0 || bccomp($breakdown['credit_reserved'], '0', 2) > 0)
+                        <div>
+                            <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                                <x-ui.icon name="wallet" class="h-3.5 w-3.5" /> Sisa Titipan Pokok
+                            </dt>
+                            <dd class="mt-1 text-sm tabular-nums text-text">Rp
+                                {{ number_format((float) $breakdown['credit_balance'], 0, ',', '.') }}</dd>
+                        </div>
+                    @endif
                     <div>
                         <dt class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
                             <x-ui.icon name="wallet" class="h-3.5 w-3.5" /> Sisa Pokok
@@ -245,6 +265,19 @@
                         &amp; Tab. Berjangka ikut dibatalkan.</p>
                 </div>
             </div>
+
+            {{-- Keterkaitan sesi (ADR 2026-08-28 item 2d). Memberi tahu, bukan
+                 memaksa: pembatalan tetap per-transaksi, tapi petugas berhak tahu
+                 bahwa ini separuh dari satu penerimaan tunai. --}}
+            @if (count($sessionSiblings) > 0)
+                <div class="mt-4 rounded-xl border border-warning/25 bg-warning/5 p-3">
+                    <p class="text-xs leading-relaxed text-text">
+                        <span class="font-semibold">{{ 'Satu setoran bersama '.implode(', ', $sessionSiblings).'.' }}</span>
+                        Membatalkan yang ini saja menyisakan pasangannya tetap terbayar — sah, tapi pastikan itu memang
+                        yang kamu maksud.
+                    </p>
+                </div>
+            @endif
 
             <form wire:submit="performReverse" class="mt-5 space-y-4">
                 <div class="space-y-1">

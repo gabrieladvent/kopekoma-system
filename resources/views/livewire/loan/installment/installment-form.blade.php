@@ -110,10 +110,33 @@
                                         <p class="mt-0.5 font-medium tabular-nums text-text">Rp {{ number_format((float) $schedule->loan->monthly_time_deposit, 0, ',', '.') }}</p>
                                     </div>
                                 </div>
-                                <div class="mt-3 flex items-center justify-between border-t border-secondary/15 pt-3 text-sm">
-                                    <span class="font-semibold text-secondary">Total Tagihan</span>
-                                    <span class="font-bold tabular-nums text-text">Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}</span>
-                                </div>
+                                @php($titipan = $this->creditBalance())
+                                @if (bccomp($titipan, '0', 2) > 0)
+                                    {{-- Titipan Pokok (ADR 2026-08-28). Tagihan yang berubah-ubah bukan
+                                         konsep yang bisa diturunkan petugas dari pengetahuan mereka —
+                                         itu akibat keputusan desain, jadi sistem yang menjelaskannya. --}}
+                                    <div class="mt-3 flex items-center justify-between border-t border-secondary/15 pt-3 text-sm">
+                                        <span class="text-muted">Tagihan kontrak</span>
+                                        <span class="tabular-nums text-muted">Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span class="text-muted">Titipan Pokok dipakai</span>
+                                        <span class="tabular-nums text-muted">&minus; Rp {{ number_format((float) bcsub((string) $schedule->total_due, $this->effectiveBill($schedule), 2), 0, ',', '.') }}</span>
+                                    </div>
+                                    <div class="mt-2 flex items-center justify-between border-t border-secondary/15 pt-3 text-sm">
+                                        <span class="font-semibold text-secondary">Tagihan Bulan Ini</span>
+                                        <span class="font-bold tabular-nums text-text">Rp {{ number_format((float) $this->effectiveBill($schedule), 0, ',', '.') }}</span>
+                                    </div>
+                                    <p class="mt-2 text-[11px] leading-relaxed text-muted">
+                                        Sisa Titipan Pokok anggota Rp {{ number_format((float) $titipan, 0, ',', '.') }}.
+                                        Titipan hanya memotong <strong>pokok</strong>; jasa dan Tab. Berjangka tetap tertagih.
+                                    </p>
+                                @else
+                                    <div class="mt-3 flex items-center justify-between border-t border-secondary/15 pt-3 text-sm">
+                                        <span class="font-semibold text-secondary">Total Tagihan</span>
+                                        <span class="font-bold tabular-nums text-text">Rp {{ number_format((float) $schedule->total_due, 0, ',', '.') }}</span>
+                                    </div>
+                                @endif
                             </div>
                             @error('schedule_id')<p class="text-xs text-danger">{{ $message }}</p>@enderror
                         @else
@@ -171,7 +194,7 @@
                     @if ($fromSavings)
                         <p class="mt-3 text-xs text-muted">Dibayar dengan mendebit <span class="font-medium text-text">Simpanan Sukarela</span> anggota. Nominal dikunci tepat sebesar tagihan — tidak boleh lebih.</p>
                     @else
-                        <p class="mt-3 text-xs text-muted">Total uang yang benar-benar diterima. Sudah diisi sesuai tagihan; boleh dinaikkan, tidak boleh kurang dari tagihan. Kelebihan jadi <span class="font-medium text-text">Kelebihan Bayar</span> (dikreditkan ke Simpanan Sukarela).</p>
+                        <p class="mt-3 text-xs text-muted">Total uang yang benar-benar diterima. Sudah diisi sesuai tagihan; boleh dinaikkan, tidak boleh kurang dari tagihan. Kelebihan disimpan sebagai <span class="font-medium text-text">Titipan Pokok</span> dan memotong pokok angsuran berikutnya.</p>
                     @endif
 
                     <div class="mt-4">
@@ -348,6 +371,172 @@
             </x-ui.card>
         </div>
     </form>
+
+    {{-- Dialog alokasi kelebihan bayar (ADR 2026-08-28 item 2a).
+
+         Akibat WAJIB ditampilkan dalam angka, bukan hanya nama pilihan. Dialog
+         dua-tombol tanpa angka memang lebih murah dibuat — tapi mencabutnya
+         berarti mencabut satu-satunya penjelasan yang petugas punya di depan
+         anggota, sekaligus melemahkan pengaman yang jadi dasar penerimaan R14. --}}
+    @if ($showAllocationDialog)
+        @php($preview = $this->allocationPreview())
+        @if ($preview)
+            <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" wire:key="alloc-dialog">
+                <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+                    {{-- Kepala berpembatas: memisahkan pertanyaan dari pilihan, dan
+                         memberi dialog tepi yang terlihat di atas latar gelap. --}}
+                    <div class="border-b border-border bg-bg/40 p-6 shadow-sm">
+                        <h3 class="text-base font-semibold text-text">
+                            Uang diterima Rp {{ number_format((float) $amount_paid, 0, ',', '.') }} — melebihi tagihan bulan ini
+                            (Rp {{ number_format((float) $this->effectiveBill(), 0, ',', '.') }}).
+                        </h3>
+                        <p class="mt-1 text-xs text-muted">Pilih bagaimana kelebihannya diperlakukan.</p>
+                    </div>
+
+                    <div class="space-y-3 p-6">
+                        @foreach ([\App\Services\LoanPaymentService::MODE_TITIPAN, \App\Services\LoanPaymentService::MODE_TUTUP_SEKALIAN] as $option)
+                            @php($p = $preview[$option])
+                            {{-- Memilih = langsung menyimpan, tanpa klik kedua. Karena itu
+                                 tombolnya HARUS menunjukkan bahwa ia sedang bekerja: tanpa
+                                 penanda, jeda simpan terbaca sebagai klik yang tak masuk dan
+                                 petugas menekannya lagi. --}}
+                            <button type="button" wire:click="chooseMode('{{ $option }}')"
+                                wire:loading.attr="disabled" wire:target="chooseMode"
+                                class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-semibold text-text">
+                                        {{ \App\Services\LoanPaymentService::MODE_LABELS[$option] }}
+                                    </span>
+                                    <svg wire:loading wire:target="chooseMode('{{ $option }}')"
+                                        class="h-3.5 w-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
+                                    @if ($option === \App\Services\LoanPaymentService::MODE_TITIPAN)
+                                        <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">bawaan</span>
+                                    @endif
+                                </div>
+
+                                <p class="mt-1.5 text-xs leading-relaxed text-muted">
+                                    Angsuran
+                                    <span class="font-medium text-text">
+                                        #{{ implode(' dan #', $p['closed']) }}
+                                    </span>
+                                    lunas.
+                                    @if (bccomp($p['credit_after'], '0', 2) > 0)
+                                        Sisa Rp {{ number_format((float) $p['credit_after'], 0, ',', '.') }} memotong pokok bulan berikutnya:
+                                        @foreach ($p['next'] as $next)
+                                            angsuran #{{ $next['seq'] }} &rarr;
+                                            <span class="font-medium text-text">Rp {{ number_format((float) $next['bill'], 0, ',', '.') }}</span>{{ $loop->last ? '.' : ',' }}
+                                        @endforeach
+                                    @else
+                                        Tidak ada sisa.
+                                        @if (count($p['next']) > 0)
+                                            Bulan depan: angsuran #{{ $p['next'][0]['seq'] }},
+                                            <span class="font-medium text-text">Rp {{ number_format((float) $p['next'][0]['bill'], 0, ',', '.') }}</span>.
+                                        @endif
+                                    @endif
+                                </p>
+                            </button>
+                        @endforeach
+
+                        {{-- Batal diberi warna: sebagai teks abu-abu ia terbaca sebagai
+                             keterangan, bukan tombol, dan petugas yang ingin mundur tak
+                             menemukan jalan keluarnya. --}}
+                        <button type="button" wire:click="closeAllocationDialog"
+                            wire:loading.attr="disabled" wire:target="chooseMode"
+                            class="mt-1 w-full rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5 text-xs font-semibold text-danger transition hover:border-danger hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none disabled:opacity-50">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
+
+    {{-- Dialog pilihan: melunasi atau tetap mencicil.
+         Dulu keadaan ini ditolak mentah ("Gunakan Pelunasan Dipercepat").
+         Penolakan itu melarang keadaan yang sah — anggota yang membawa uang
+         lebih dan memang ingin pinjamannya berjalan terus — dan menyisakan
+         petugas tanpa jalan selain menyuruhnya pulang. Sekarang ditawarkan,
+         dengan akibat kedua pilihan tersaji dalam rupiah. --}}
+    @if ($showSettlementChoice)
+        @php($offer = $this->settlementOffer())
+        @if ($offer)
+            <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" wire:key="settle-choice">
+                <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+                    <div class="border-b border-border bg-bg/40 p-6 shadow-sm">
+                        <h3 class="text-base font-semibold text-text">
+                            Uang diterima Rp {{ number_format((float) $offer['amount'], 0, ',', '.') }} — cukup untuk melunasi
+                            seluruh sisa pinjaman.
+                        </h3>
+                        <p class="mt-1 text-xs text-muted">Pilih yang diminta anggota. Keduanya sah.</p>
+                    </div>
+
+                    <div class="space-y-3 p-6">
+                        @if ($this->canSettleEarly())
+                            <button type="button" wire:click="chooseSettlement"
+                                wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                                class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-semibold text-text">Pelunasan Dipercepat</span>
+                                    <span class="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">lebih ringan</span>
+                                    <svg wire:loading wire:target="chooseSettlement" class="h-3.5 w-3.5 animate-spin text-primary"
+                                        viewBox="0 0 24 24" fill="none">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
+                                </div>
+                                <p class="mt-1.5 text-xs leading-relaxed text-muted">
+                                    Bayar <span class="font-medium text-text">Rp {{ number_format((float) $offer['payoff'], 0, ',', '.') }}</span>,
+                                    pinjaman <span class="font-medium text-text">LUNAS</span> hari ini.
+                                    @if (bccomp($offer['jasa_dibebaskan'], '0', 2) > 0)
+                                        Jasa {{ $offer['sisa_bulan'] - 1 }} bulan sisa dibebaskan —
+                                        <span class="font-medium text-text">Rp {{ number_format((float) $offer['jasa_dibebaskan'], 0, ',', '.') }}</span>
+                                        tak jadi ditagih.
+                                    @endif
+                                    @if (bccomp($offer['selisih'], '0', 2) > 0)
+                                        Kembalian Rp {{ number_format((float) $offer['selisih'], 0, ',', '.') }} masuk Simpanan Sukarela.
+                                    @endif
+                                </p>
+                            </button>
+                        @endif
+
+                        <button type="button" wire:click="chooseKeepInstalling"
+                            wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                            class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-semibold text-text">Tetap mencicil</span>
+                                <svg wire:loading wire:target="chooseKeepInstalling" class="h-3.5 w-3.5 animate-spin text-primary"
+                                    viewBox="0 0 24 24" fill="none">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                </svg>
+                            </div>
+                            <p class="mt-1.5 text-xs leading-relaxed text-muted">
+                                Angsuran bulan ini lunas, sisanya jadi
+                                <span class="font-medium text-text">Titipan Pokok Rp {{ number_format((float) $offer['titipan_setelah'], 0, ',', '.') }}</span>
+                                yang memotong pokok bulan-bulan berikutnya. Pinjaman tetap berjalan
+                                @if (bccomp($offer['jasa_dibebaskan'], '0', 2) > 0)
+                                    dan jasa {{ $offer['sisa_bulan'] - 1 }} bulan sisa
+                                    (<span class="font-medium text-text">Rp {{ number_format((float) $offer['jasa_dibebaskan'], 0, ',', '.') }}</span>)
+                                    <span class="font-medium text-text">tetap tertagih</span>.
+                                @else
+                                    .
+                                @endif
+                            </p>
+                        </button>
+
+                        <button type="button" wire:click="closeSettlementChoice"
+                            wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                            class="mt-1 w-full rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5 text-xs font-semibold text-danger transition hover:border-danger hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none disabled:opacity-50">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
 
     <x-ui.toast-host />
 </div>

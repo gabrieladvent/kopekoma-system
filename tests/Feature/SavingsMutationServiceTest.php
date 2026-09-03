@@ -88,10 +88,16 @@ it('shows the ending total balance in the ledger table footer (Total row)', func
         ->assertViewHas('totalSaldo', $total);
 });
 
+/**
+ * Item 3b (ADR 2026-08-28) — ditulis ulang. Setoran sukarela ber-referensi nomor
+ * angsuran DULU lahir dari setiap kelebihan bayar; sejak ADR ini ia hanya lahir
+ * saat pinjaman DITUTUP, yaitu pelimpahan sisa Titipan Pokok. Labelnya tetap,
+ * artinya yang berubah — dan itu yang perlu dipahami pengurus saat membaca buku.
+ */
 it('labels an overpayment-transfer sukarela deposit as "Pengalihan kelebihan dana" in the ledger', function () {
     $member = Member::factory()->create();
 
-    // Setoran sukarela hasil pengalihan kelebihan bayar angsuran (ref = no. angsuran).
+    // Pelimpahan sisa Titipan Pokok saat pinjaman lunas (ref = no. angsuran penutup).
     SavingsDeposit::factory()->type('sukarela')->create([
         'member_id' => $member->id, 'amount' => '50000', 'reference_number' => 'ANG-2026-000001',
     ]);
