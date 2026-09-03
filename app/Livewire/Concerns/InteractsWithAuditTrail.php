@@ -17,6 +17,18 @@ trait InteractsWithAuditTrail
         'restored' => 'Dipulihkan',
     ];
 
+    /**
+     * Urutan tampil bagian dari satu baris array (mis. `skipped_rows`).
+     *
+     * MySQL menyimpan `properties` sebagai kolom JSON dan MENORMALKAN urutan
+     * kunci objek (panjang kunci dulu, baru leksikografis), jadi urutan kunci
+     * pada payload tak bisa dipercaya: `schedule_id · reason` berbalik jadi
+     * `reason · schedule_id` begitu log dibaca kembali dari MySQL. Urutan
+     * dipatok di sini supaya panel audit terbaca sama di sqlite (test) maupun
+     * MySQL (produksi).
+     */
+    public const AUDIT_PART_ORDER = ['schedule_id', 'loan_number', 'member', 'reason'];
+
     public const AUDIT_EVENT_COLORS = [
         'created' => 'success',
         'updated' => 'warning',
@@ -135,7 +147,7 @@ trait InteractsWithAuditTrail
     {
         $parts = [];
 
-        foreach ($item as $key => $sub) {
+        foreach ($this->orderAuditParts($item) as $key => $sub) {
             $text = is_array($sub)
                 ? $this->joinAuditParts($sub)
                 : $this->defaultFormatAuditFieldValue((string) $key, $sub);
@@ -148,5 +160,43 @@ trait InteractsWithAuditTrail
         }
 
         return implode(' · ', $parts);
+    }
+
+    /**
+     * Susun ulang bagian baris mengikuti AUDIT_PART_ORDER; kunci di luar daftar
+     * menyusul di belakang dengan urutan aslinya. List (array berindeks) sudah
+     * punya urutan sendiri dan dibiarkan apa adanya.
+     */
+    private function orderAuditParts(array $item): array
+    {
+        if (array_is_list($item)) {
+            return $item;
+        }
+
+        $priority = array_flip(self::AUDIT_PART_ORDER);
+
+        $known = [];
+
+        $rest = [];
+
+        foreach ($item as $key => $sub) {
+            if (array_key_exists($key, $priority)) {
+                $known[$priority[$key]] = [$key, $sub];
+
+                continue;
+            }
+
+            $rest[] = [$key, $sub];
+        }
+
+        ksort($known);
+
+        $ordered = [];
+
+        foreach ([...array_values($known), ...$rest] as [$key, $sub]) {
+            $ordered[$key] = $sub;
+        }
+
+        return $ordered;
     }
 }

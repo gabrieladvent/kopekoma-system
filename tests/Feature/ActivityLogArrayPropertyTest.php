@@ -107,3 +107,28 @@ it('shows a dash when nothing was skipped', function () {
 
     expect($diff['Skipped rows']['new'])->toBe('—');
 });
+
+/**
+ * MySQL menyimpan `properties` sebagai kolom JSON dan menormalkan urutan kunci
+ * objek (panjang kunci dulu, baru leksikografis), jadi payload yang ditulis
+ * schedule_id → reason terbaca kembali sebagai reason → schedule_id. Urutan
+ * tampil harus datang dari panel, bukan dari urutan kunci payload.
+ */
+it('keeps a stable part order no matter how the payload is keyed', function () {
+    asPengurus();
+
+    $id = batchActivity([[
+        'member' => 'Rahayu Kusumaningrum',
+        'reason' => 'Jadwal sudah terbayar',
+        'loan_number' => 'PJM-2026-000011',
+        'schedule_id' => '9c1f',
+    ]]);
+
+    $diff = collect(
+        Livewire::test(ActivityLogs::class)->instance()
+            ->auditDiff(Activity::find($id))
+    )->keyBy('label');
+
+    expect($diff['Skipped rows']['new'])
+        ->toBe('9c1f · PJM-2026-000011 · Rahayu Kusumaningrum · Jadwal sudah terbayar');
+});
