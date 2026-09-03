@@ -101,6 +101,52 @@ trait InteractsWithAuditTrail
             return $value ? 'Ya' : 'Tidak';
         }
 
+        if (is_array($value)) {
+            return $this->flattenAuditArray($value);
+        }
+
         return (string) $value;
+    }
+
+    private function flattenAuditArray(array $value): string
+    {
+        if ($value === []) {
+            return '—';
+        }
+
+        $lines = [];
+
+        foreach ($value as $key => $item) {
+            $text = is_array($item)
+                ? $this->joinAuditParts($item)
+                : $this->defaultFormatAuditFieldValue((string) $key, $item);
+
+            if ($text === '' || $text === '—') {
+                continue;
+            }
+
+            $lines[] = array_is_list($value) ? $text : $this->defaultAuditFieldLabel((string) $key).': '.$text;
+        }
+
+        return $lines === [] ? '—' : implode("\n", $lines);
+    }
+
+    private function joinAuditParts(array $item): string
+    {
+        $parts = [];
+
+        foreach ($item as $key => $sub) {
+            $text = is_array($sub)
+                ? $this->joinAuditParts($sub)
+                : $this->defaultFormatAuditFieldValue((string) $key, $sub);
+
+            if ($text === '' || $text === '—') {
+                continue;
+            }
+
+            $parts[] = $text;
+        }
+
+        return implode(' · ', $parts);
     }
 }

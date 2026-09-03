@@ -162,6 +162,28 @@
                 @else
                     <p class="mt-4 text-xs text-muted">Ketuk kartu untuk memilih sumber yang dicairkan, lalu isi nominal (tak boleh melebihi saldo).</p>
 
+                    {{-- Halangan jadwal disampaikan SEKARANG, sebelum petugas mengetik
+                         nominal dan mengajukan sesuatu yang sejak awal tak bisa cair. --}}
+                    @if ($timeDepositBlock)
+                        <div @class([
+                            'mt-4 flex items-start gap-3 rounded-2xl border p-4',
+                            'border-danger/30 bg-danger/5' => !$timeDepositBlock['bypass'],
+                            'border-warning/30 bg-warning/5' => $timeDepositBlock['bypass'],
+                        ])>
+                            <x-ui.icon name="exclamation-triangle"
+                                class="mt-0.5 h-5 w-5 shrink-0 {{ $timeDepositBlock['bypass'] ? 'text-warning' : 'text-danger' }}" />
+                            <div class="space-y-1 text-sm">
+                                <p class="font-semibold text-text">Tabungan Berjangka belum waktunya</p>
+                                <p class="text-muted">{{ $timeDepositBlock['pesan'] }}</p>
+                                <p class="text-muted">
+                                    {{ $timeDepositBlock['bypass']
+                                        ? 'Kamu memegang izin melewati jadwal — bila diteruskan, pencairannya tercatat sebagai pengecualian di Log Aktivitas.'
+                                        : 'Pengajuan boleh disimpan, tapi tidak akan bisa disetujui maupun dicairkan sampai jadwalnya terbuka.' }}
+                                </p>
+                            </div>
+                        </div>
+                    @endif
+
                     <div class="mt-4 grid gap-3 sm:grid-cols-2">
                         @foreach ($lines as $i => $line)
                             @php($type = $line['savings_type'])

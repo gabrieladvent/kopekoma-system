@@ -382,22 +382,36 @@
         @php($preview = $this->allocationPreview())
         @if ($preview)
             <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" wire:key="alloc-dialog">
-                <div class="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
-                    <h3 class="text-base font-semibold text-text">
-                        Uang diterima Rp {{ number_format((float) $amount_paid, 0, ',', '.') }} — melebihi tagihan bulan ini
-                        (Rp {{ number_format((float) $this->effectiveBill(), 0, ',', '.') }}).
-                    </h3>
-                    <p class="mt-1 text-xs text-muted">Pilih bagaimana kelebihannya diperlakukan.</p>
+                <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+                    {{-- Kepala berpembatas: memisahkan pertanyaan dari pilihan, dan
+                         memberi dialog tepi yang terlihat di atas latar gelap. --}}
+                    <div class="border-b border-border bg-bg/40 p-6 shadow-sm">
+                        <h3 class="text-base font-semibold text-text">
+                            Uang diterima Rp {{ number_format((float) $amount_paid, 0, ',', '.') }} — melebihi tagihan bulan ini
+                            (Rp {{ number_format((float) $this->effectiveBill(), 0, ',', '.') }}).
+                        </h3>
+                        <p class="mt-1 text-xs text-muted">Pilih bagaimana kelebihannya diperlakukan.</p>
+                    </div>
 
-                    <div class="mt-5 space-y-3">
+                    <div class="space-y-3 p-6">
                         @foreach ([\App\Services\LoanPaymentService::MODE_TITIPAN, \App\Services\LoanPaymentService::MODE_TUTUP_SEKALIAN] as $option)
                             @php($p = $preview[$option])
+                            {{-- Memilih = langsung menyimpan, tanpa klik kedua. Karena itu
+                                 tombolnya HARUS menunjukkan bahwa ia sedang bekerja: tanpa
+                                 penanda, jeda simpan terbaca sebagai klik yang tak masuk dan
+                                 petugas menekannya lagi. --}}
                             <button type="button" wire:click="chooseMode('{{ $option }}')"
-                                class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">
+                                wire:loading.attr="disabled" wire:target="chooseMode"
+                                class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
                                 <div class="flex items-center gap-2">
                                     <span class="text-sm font-semibold text-text">
                                         {{ \App\Services\LoanPaymentService::MODE_LABELS[$option] }}
                                     </span>
+                                    <svg wire:loading wire:target="chooseMode('{{ $option }}')"
+                                        class="h-3.5 w-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
                                     @if ($option === \App\Services\LoanPaymentService::MODE_TITIPAN)
                                         <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">bawaan</span>
                                     @endif
@@ -425,12 +439,100 @@
                                 </p>
                             </button>
                         @endforeach
+
+                        {{-- Batal diberi warna: sebagai teks abu-abu ia terbaca sebagai
+                             keterangan, bukan tombol, dan petugas yang ingin mundur tak
+                             menemukan jalan keluarnya. --}}
+                        <button type="button" wire:click="closeAllocationDialog"
+                            wire:loading.attr="disabled" wire:target="chooseMode"
+                            class="mt-1 w-full rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5 text-xs font-semibold text-danger transition hover:border-danger hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none disabled:opacity-50">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
+
+    {{-- Dialog pilihan: melunasi atau tetap mencicil.
+         Dulu keadaan ini ditolak mentah ("Gunakan Pelunasan Dipercepat").
+         Penolakan itu melarang keadaan yang sah — anggota yang membawa uang
+         lebih dan memang ingin pinjamannya berjalan terus — dan menyisakan
+         petugas tanpa jalan selain menyuruhnya pulang. Sekarang ditawarkan,
+         dengan akibat kedua pilihan tersaji dalam rupiah. --}}
+    @if ($showSettlementChoice)
+        @php($offer = $this->settlementOffer())
+        @if ($offer)
+            <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" wire:key="settle-choice">
+                <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+                    <div class="border-b border-border bg-bg/40 p-6 shadow-sm">
+                        <h3 class="text-base font-semibold text-text">
+                            Uang diterima Rp {{ number_format((float) $offer['amount'], 0, ',', '.') }} — cukup untuk melunasi
+                            seluruh sisa pinjaman.
+                        </h3>
+                        <p class="mt-1 text-xs text-muted">Pilih yang diminta anggota. Keduanya sah.</p>
                     </div>
 
-                    <button type="button" wire:click="closeAllocationDialog"
-                        class="mt-4 w-full rounded-lg px-3 py-2 text-xs font-medium text-muted transition hover:text-text">
-                        Batal
-                    </button>
+                    <div class="space-y-3 p-6">
+                        @if ($this->canSettleEarly())
+                            <button type="button" wire:click="chooseSettlement"
+                                wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                                class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-semibold text-text">Pelunasan Dipercepat</span>
+                                    <span class="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">lebih ringan</span>
+                                    <svg wire:loading wire:target="chooseSettlement" class="h-3.5 w-3.5 animate-spin text-primary"
+                                        viewBox="0 0 24 24" fill="none">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
+                                </div>
+                                <p class="mt-1.5 text-xs leading-relaxed text-muted">
+                                    Bayar <span class="font-medium text-text">Rp {{ number_format((float) $offer['payoff'], 0, ',', '.') }}</span>,
+                                    pinjaman <span class="font-medium text-text">LUNAS</span> hari ini.
+                                    @if (bccomp($offer['jasa_dibebaskan'], '0', 2) > 0)
+                                        Jasa {{ $offer['sisa_bulan'] - 1 }} bulan sisa dibebaskan —
+                                        <span class="font-medium text-text">Rp {{ number_format((float) $offer['jasa_dibebaskan'], 0, ',', '.') }}</span>
+                                        tak jadi ditagih.
+                                    @endif
+                                    @if (bccomp($offer['selisih'], '0', 2) > 0)
+                                        Kembalian Rp {{ number_format((float) $offer['selisih'], 0, ',', '.') }} masuk Simpanan Sukarela.
+                                    @endif
+                                </p>
+                            </button>
+                        @endif
+
+                        <button type="button" wire:click="chooseKeepInstalling"
+                            wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                            class="w-full rounded-xl border border-border p-4 text-left transition hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-wait disabled:opacity-60">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-semibold text-text">Tetap mencicil</span>
+                                <svg wire:loading wire:target="chooseKeepInstalling" class="h-3.5 w-3.5 animate-spin text-primary"
+                                    viewBox="0 0 24 24" fill="none">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                </svg>
+                            </div>
+                            <p class="mt-1.5 text-xs leading-relaxed text-muted">
+                                Angsuran bulan ini lunas, sisanya jadi
+                                <span class="font-medium text-text">Titipan Pokok Rp {{ number_format((float) $offer['titipan_setelah'], 0, ',', '.') }}</span>
+                                yang memotong pokok bulan-bulan berikutnya. Pinjaman tetap berjalan
+                                @if (bccomp($offer['jasa_dibebaskan'], '0', 2) > 0)
+                                    dan jasa {{ $offer['sisa_bulan'] - 1 }} bulan sisa
+                                    (<span class="font-medium text-text">Rp {{ number_format((float) $offer['jasa_dibebaskan'], 0, ',', '.') }}</span>)
+                                    <span class="font-medium text-text">tetap tertagih</span>.
+                                @else
+                                    .
+                                @endif
+                            </p>
+                        </button>
+
+                        <button type="button" wire:click="closeSettlementChoice"
+                            wire:loading.attr="disabled" wire:target="chooseSettlement,chooseKeepInstalling"
+                            class="mt-1 w-full rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5 text-xs font-semibold text-danger transition hover:border-danger hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none disabled:opacity-50">
+                            Batal
+                        </button>
+                    </div>
                 </div>
             </div>
         @endif

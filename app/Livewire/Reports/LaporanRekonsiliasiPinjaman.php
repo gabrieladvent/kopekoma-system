@@ -34,9 +34,31 @@ class LaporanRekonsiliasiPinjaman extends Component
     /** Pengurus-only — ini kanal pemeriksaan, bukan layar operasional. */
     public const PERMISSION = 'access_laporan_titipan';
 
+    /** Kapan angka di layar ini diambil — halaman diam tak boleh terbaca segar. */
+    public ?string $checkedAt = null;
+
     public function mount(): void
     {
         abort_unless(auth()->user()?->can(self::PERMISSION) ?? false, 403);
+
+        $this->checkedAt = now()->toDateTimeString();
+    }
+
+    /**
+     * Periksa ulang sekarang.
+     *
+     * Halaman yang benar isinya kosong, dan halaman kosong tak bisa dibedakan
+     * dari halaman basi. Tanpa tombol ini, pengurus yang baru saja memperbaiki
+     * sesuatu tak punya cara menyatakan "sudah, kan?" selain menebak-nebak
+     * apakah yang ia lihat masih hasil pemuatan setengah jam lalu.
+     */
+    public function recheck(): void
+    {
+        abort_unless(auth()->user()?->can(self::PERMISSION) ?? false, 403);
+
+        $this->checkedAt = now()->toDateTimeString();
+
+        $this->dispatch('toast', type: 'success', message: 'Rekonsiliasi diperiksa ulang.');
     }
 
     /**
@@ -143,6 +165,7 @@ class LaporanRekonsiliasiPinjaman extends Component
         return view('livewire.reports.laporan-rekonsiliasi-pinjaman', [
             'rows' => $rows,
             'memberCount' => Member::query()->count(),
+            'checkedAt' => $this->checkedAt,
         ])->layout('components.layouts.app', ['title' => 'Rekonsiliasi Simpanan Pinjaman']);
     }
 }

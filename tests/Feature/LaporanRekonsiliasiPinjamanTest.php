@@ -154,3 +154,58 @@ it('stays clean after an installment reversal', function () {
 
     expect(Livewire::test(LaporanRekonsiliasiPinjaman::class)->viewData('rows'))->toBe([]);
 });
+
+/**
+ * Halaman yang benar isinya kosong — dan halaman kosong tak bisa dibedakan dari
+ * halaman basi. Waktu periksa + tombol periksa ulang yang membedakannya.
+ */
+it('lets pengurus recheck and stamps when it last ran', function () {
+    asPengurus();
+
+    $page = Livewire::test(LaporanRekonsiliasiPinjaman::class);
+
+    $first = $page->get('checkedAt');
+    expect($first)->not->toBeNull();
+
+    $member = Member::factory()->create();
+    SavingsDeposit::factory()->create([
+        'member_id' => $member->id,
+        'savings_type' => 'swp',
+        'amount' => 500000,
+        'is_reversal' => false,
+        'idempotency_key' => (string) Str::uuid(),
+    ]);
+
+    // Sebelum diperiksa ulang halaman masih memakai hasil pemuatan lama.
+    $page->call('recheck');
+
+    expect($page->viewData('rows'))->toHaveCount(1)
+        ->and($page->get('checkedAt'))->not->toBeNull();
+});
+
+/**
+ * Konfirmasinya harus benar-benar sampai.
+ *
+ * `dispatch('toast', …)` ke halaman yang tak memasang `<x-ui.toast-host />`
+ * terkirim ke ruang kosong: tombol Periksa Ulang jadi tombol yang tak pernah
+ * menjawab apa pun, dan penguji tak bisa membedakan "sudah diperiksa" dari
+ * "kliknya tidak masuk".
+ */
+it('confirms the recheck out loud', function () {
+    asPengurus();
+
+    Livewire::test(LaporanRekonsiliasiPinjaman::class)
+        ->call('recheck')
+        ->assertDispatched('toast', type: 'success', message: 'Rekonsiliasi diperiksa ulang.')
+        // Penampungnya benar-benar terpasang di halaman ini, bukan cuma event
+        // yang terkirim ke ruang kosong.
+        ->assertSeeHtml('push(e)');
+});
+
+it('refuses a recheck from petugas', function () {
+    asPengurus();
+    $page = Livewire::test(LaporanRekonsiliasiPinjaman::class);
+
+    asPetugas();
+    $page->call('recheck')->assertStatus(403);
+});

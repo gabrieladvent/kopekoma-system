@@ -248,8 +248,19 @@ class SavingsWithdrawalDetail extends Component
         // tampilkan rincian per komponen + total gabungan di detail.
         $isRefund = Resource::isLoanRefund($withdrawal);
 
+        // Halangan jadwal dijelaskan DI HALAMAN, bukan lewat notifikasi yang
+        // muncul setelah tombol ditekan lalu hilang. Pengurus harus tahu apa
+        // yang salah sebelum ia menekan apa pun — dan tetap bisa membacanya
+        // setelah me-refresh.
+        $scheduleBlock = app(WithdrawalWorkflow::class)->timeDepositScheduleBlock($withdrawal);
+
         return view('livewire.savings.withdrawal.savings-withdrawal-detail', [
             'withdrawal' => $withdrawal,
+            'scheduleBlock' => $scheduleBlock === null ? null : [
+                'pesan' => $scheduleBlock['exception']->getMessage(),
+                'alasan' => $scheduleBlock['alasan'],
+            ],
+            'canBypassSchedule' => auth()->user()?->can(WithdrawalWorkflow::BYPASS_SCHEDULE_PERMISSION) ?? false,
             'typeLabel' => $isRefund ? 'Pengembalian Pelunasan' : (Resource::WITHDRAWAL_TYPES[$withdrawal->savings_type] ?? $withdrawal->savings_type),
             'typeColor' => $isRefund ? 'warning' : Resource::typeColor($withdrawal->savings_type),
             'statusLabel' => $withdrawal->status->label(),

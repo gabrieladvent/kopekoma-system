@@ -6,6 +6,7 @@ use App\Models\Installment;
 use App\Models\InstallmentSchedule;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Services\LoanPaymentService;
 use Livewire\Livewire;
 use Spatie\Activitylog\Models\Activity;
 
@@ -79,4 +80,95 @@ it('refuses to cancel a loan that already has a recorded installment', function 
         ->assertStatus(403);
 
     expect($loan->fresh()->status)->toBe(LoanStatus::Cair);
+});
+
+/**
+ * Sisa pokok di panel Progres Angsuran.
+ *
+ * Dulu dibaca dari `installments.remaining_principal` — kolom yang tak pernah
+ * ada di tabelnya. Atribut yang tak ada bernilai null, jadi fallback `??`
+ * selalu menang dan angkanya membeku di pokok awal: anggota yang sudah
+ * menyicil setahun tetap terlihat berutang penuh oleh pengurus.
+ */
+it('counts down sisa pokok as installments are paid', function () {
+    asSuperAdmin();
+
+    $member = Member::factory()->create();
+    $loan = Loan::factory()->create([
+        'member_id' => $member->id,
+        'status' => 'Cair',
+        'loan_type' => 'jangka_panjang',
+        'principal_amount' => 12000000,
+        'term_months' => 12,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 78000,
+        'monthly_time_deposit' => 12000,
+    ]);
+
+    $schedules = collect(range(1, 12))->map(fn (int $seq) => InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => $seq,
+        'principal_due' => 1000000,
+        'interest_due' => 78000,
+        'time_deposit_due' => 12000,
+        'total_due' => 1090000,
+    ]));
+
+    $remaining = fn () => Livewire::test(LoanDetail::class, ['loan' => $loan])
+        ->viewData('progress')['remaining'];
+
+    expect($remaining())->toBe('12000000.00');
+
+    $service = app(LoanPaymentService::class);
+    $user = auth()->id();
+
+    // Bayar pas.
+    $service->pay($schedules[0], ['amount_paid' => 1090000], $user);
+    expect($remaining())->toBe('11000000.00');
+
+    // Kelebihan bayar: pokoknya tetap turun satu angsuran, tidak dua. Titipan
+    // memotong tagihan BULAN BERIKUTNYA, bukan sisa pokok bulan ini.
+    $service->pay($schedules[1], ['amount_paid' => 2180000], $user);
+    expect($remaining())->toBe('10000000.00');
+
+    // Tagihan efektif 90.000 (titipan menutup pokoknya) — tetap satu angsuran.
+    $service->pay($schedules[2], ['amount_paid' => 90000], $user);
+    expect($remaining())->toBe('9000000.00');
+});
+
+/** Pembatalan angsuran harus MENAIKKAN kembali sisa pokok. */
+it('restores sisa pokok after an installment is reversed', function () {
+    asSuperAdmin();
+
+    $loan = Loan::factory()->create([
+        'member_id' => Member::factory()->create()->id,
+        'status' => 'Cair',
+        'loan_type' => 'jangka_panjang',
+        'principal_amount' => 3000000,
+        'term_months' => 3,
+        'monthly_principal' => 1000000,
+        'monthly_interest' => 20000,
+        'monthly_time_deposit' => 5000,
+    ]);
+
+    $schedule = InstallmentSchedule::factory()->create([
+        'loan_id' => $loan->id,
+        'installment_seq' => 1,
+        'principal_due' => 1000000,
+        'interest_due' => 20000,
+        'time_deposit_due' => 5000,
+        'total_due' => 1025000,
+    ]);
+
+    $service = app(LoanPaymentService::class);
+    $installment = $service->pay($schedule, ['amount_paid' => 1025000], auth()->id());
+
+    $remaining = fn () => Livewire::test(LoanDetail::class, ['loan' => $loan->fresh()])
+        ->viewData('progress')['remaining'];
+
+    expect($remaining())->toBe('2000000.00');
+
+    $service->reverse($installment, 'salah input', auth()->id());
+
+    expect($remaining())->toBe('3000000.00');
 });

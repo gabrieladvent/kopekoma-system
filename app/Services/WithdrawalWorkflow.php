@@ -56,6 +56,16 @@ class WithdrawalWorkflow
         $this->assertTransition($withdrawal, WithdrawalStatus::Acc);
         $this->assertSufficientBalance($withdrawal);
 
+        // Jadwal Tabungan Berjangka ditegakkan SEJAK ACC, bukan hanya saat
+        // pencairan. Menyetujui dulu lalu menolak di langkah terakhir membuat
+        // pengurus mengerjakan persetujuan yang sejak awal mustahil dicairkan,
+        // dan meninggalkan pengajuan berstatus "acc" yang menggantung selamanya.
+        // Penjaga di disburse() tetap ada — di sanalah uang benar-benar keluar.
+        // Pemakaian bypass TIDAK dicatat di sini: satu pencairan harus
+        // meninggalkan satu jejak, dan jejaknya milik langkah yang memindahkan
+        // uang.
+        $this->assertTimeDepositSchedule($withdrawal, $causerId, logBypass: false);
+
         return DB::transaction(function () use ($withdrawal, $causerId): SavingsWithdrawal {
             $locked = SavingsWithdrawal::query()->lockForUpdate()->findOrFail($withdrawal->getKey());
 
@@ -180,21 +190,58 @@ class WithdrawalWorkflow
      * meninggalkan jejak tersendiri: pertanyaan "kenapa Tab Berjangka anggota ini
      * cair di luar jadwal" selalu punya jawaban tertulis.
      */
-    private function assertTimeDepositSchedule(SavingsWithdrawal $withdrawal, ?int $causerId): void
+    /**
+     * Halangan jadwal Tabungan Berjangka — **tanpa melempar**.
+     *
+     * Penjaga yang hanya melempar saat tombol terakhir ditekan memaksa pengurus
+     * menemukan aturannya lewat penolakan: ia mengisi formulir, menyetujui, lalu
+     * baru diberi tahu bahwa sejak awal tak mungkin. Layar memanggil metode ini
+     * untuk mengatakannya di muka, di tempat, bukan lewat notifikasi sekejap
+     * yang hilang begitu halaman berpindah.
+     *
+     * Satu sumber dengan `assertTimeDepositSchedule()` — layar dan penjaga tak
+     * boleh berbeda pendapat tentang apa yang boleh.
+     *
+     * @return array{exception:CannotProcessWithdrawal, alasan:string, last_disbursed_at:?string, next_eligible_at:string}|null
+     */
+    public function timeDepositScheduleBlock(SavingsWithdrawal $withdrawal): ?array
     {
         if ($withdrawal->savings_type !== self::TIME_DEPOSIT_TYPE) {
-            return;
+            return null;
         }
 
         if (in_array($withdrawal->member?->status, self::EXEMPT_MEMBER_STATUSES, true)) {
-            return;
+            return null;
         }
 
         $shuMonth = app(CooperativeSettings::class)->shu_distribution_month;
 
-        $violation = $shuMonth === null
+        return $shuMonth === null
             ? $this->rollingYearViolation($withdrawal)
             : $this->shuWindowViolation($withdrawal, (int) $shuMonth);
+    }
+
+    /**
+     * Varian untuk pengajuan yang BELUM ada barisnya — dipakai formulir supaya
+     * anggota yang belum waktunya ketahuan sebelum petugas mengetik nominal.
+     *
+     * @return array{exception:CannotProcessWithdrawal, alasan:string, last_disbursed_at:?string, next_eligible_at:string}|null
+     */
+    public function timeDepositScheduleBlockFor(Member $member): ?array
+    {
+        $probe = new SavingsWithdrawal([
+            'member_id' => $member->getKey(),
+            'savings_type' => self::TIME_DEPOSIT_TYPE,
+        ]);
+
+        $probe->setRelation('member', $member);
+
+        return $this->timeDepositScheduleBlock($probe);
+    }
+
+    private function assertTimeDepositSchedule(SavingsWithdrawal $withdrawal, ?int $causerId, bool $logBypass = true): void
+    {
+        $violation = $this->timeDepositScheduleBlock($withdrawal);
 
         if ($violation === null) {
             return;
@@ -204,6 +251,10 @@ class WithdrawalWorkflow
 
         if ($user?->can(self::BYPASS_SCHEDULE_PERMISSION) !== true) {
             throw $violation['exception'];
+        }
+
+        if (! $logBypass) {
+            return;
         }
 
         activity()
@@ -234,7 +285,11 @@ class WithdrawalWorkflow
             ->where('savings_type', self::TIME_DEPOSIT_TYPE)
             ->where('status', WithdrawalStatus::Cair)
             ->where('is_reversal', false)
-            ->whereKeyNot($withdrawal->getKey())
+            // Pengajuan yang belum tersimpan belum punya id. `whereKeyNot(null)`
+            // menghasilkan `id != NULL` yang di SQL selalu NULL — seluruh baris
+            // tersaring habis dan halangannya lenyap. Kondisinya dipasang hanya
+            // bila id-nya memang ada.
+            ->when($withdrawal->getKey() !== null, fn ($q) => $q->whereKeyNot($withdrawal->getKey()))
             ->whereDoesntHave('reversal')
             ->whereYear('disbursed_at', $now->year)
             ->orderByDesc('disbursed_at')
@@ -295,7 +350,11 @@ class WithdrawalWorkflow
             ->where('savings_type', self::TIME_DEPOSIT_TYPE)
             ->where('status', WithdrawalStatus::Cair)
             ->where('is_reversal', false)
-            ->whereKeyNot($withdrawal->getKey())
+            // Pengajuan yang belum tersimpan belum punya id. `whereKeyNot(null)`
+            // menghasilkan `id != NULL` yang di SQL selalu NULL — seluruh baris
+            // tersaring habis dan halangannya lenyap. Kondisinya dipasang hanya
+            // bila id-nya memang ada.
+            ->when($withdrawal->getKey() !== null, fn ($q) => $q->whereKeyNot($withdrawal->getKey()))
             ->whereDoesntHave('reversal')
             ->orderByDesc('disbursed_at')
             ->first();

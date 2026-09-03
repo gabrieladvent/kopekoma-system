@@ -245,8 +245,6 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:access_laporan_titipan')
         ->name('reports.rekonsiliasi');
 
-    // Pinjaman — pencatatan akad (immutable; koreksi salah-input via reversal record).
-    // Rute statis (create) & sub-modul didahulukan sebelum {loan} agar tak tertangkap UUID.
     Route::get('/pinjaman', Loans::class)
         ->middleware('can:view_any_loan')
         ->name('loans.index');
@@ -255,7 +253,6 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:create_loan')
         ->name('loans.create');
 
-    // Pinjaman — Blacklist (didahulukan sebelum {loan}).
     Route::get('/pinjaman/blacklist', LoanBlacklists::class)
         ->middleware('can:view_any_loan::blacklist')
         ->name('loans.blacklist');
@@ -296,18 +293,17 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage_settings')
         ->name('settings');
 
-    // Log aktivitas dipisah dari modul Sistem: ia dijaga permission tersendiri
-    // (`access_activity_log`, dipegang Pengurus) — MEMBACA jejak bukan
-    // MENGELOLA sistem. Pengguna & Peran tetap di balik `manage-system`.
     Route::get('/sistem/log-aktivitas', ActivityLogs::class)
         ->middleware('can:access_activity_log')
         ->name('system.activity-logs');
 
-    Route::middleware('can:manage-system')->group(function (): void {
+    Route::middleware('can:access_system_roles')->group(function (): void {
         Route::get('/sistem/peran', Roles::class)->name('system.roles');
         Route::get('/sistem/peran/create', RoleForm::class)->name('system.roles.create');
         Route::get('/sistem/peran/{role}/edit', RoleForm::class)->name('system.roles.edit');
+    });
 
+    Route::middleware('can:access_system_users')->group(function (): void {
         Route::get('/sistem/pengguna', Users::class)->name('system.users');
         Route::get('/sistem/pengguna/create', UserForm::class)->name('system.users.create');
         Route::get('/sistem/pengguna/{user}/edit', UserForm::class)->name('system.users.edit');
