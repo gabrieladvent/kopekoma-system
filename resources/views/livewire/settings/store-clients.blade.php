@@ -169,4 +169,9 @@
 
     {{-- Popup konfirmasi reusable (Reset Secret / Hapus) --}}
     <x-ui.confirm-modal />
+
+    {{-- Penampung toast. Halaman ini mengirim `toast` dari dua tempat — "Klien
+         toko dihapus" dan peringatan secret yang belum tersedia — dan tanpa
+         baris ini keduanya terkirim ke ruang kosong. --}}
+    <x-ui.toast-host />
 </div>

@@ -62,6 +62,27 @@ class InstallmentForm extends Component
     #[Locked]
     public bool $modeConfirmed = false;
 
+    public bool $showSettlementChoice = false;
+
+    /**
+     * Anggota memilih TETAP MENCICIL walau uangnya cukup melunasi.
+     *
+     * Dulu keadaan ini ditolak mentah: "Gunakan Pelunasan Dipercepat". Penjaga
+     * itu dipasang supaya anggota tak diam-diam membayar penuh sementara jasa
+     * bulan sisa yang seharusnya dibebaskan tetap ditagih — niatnya melindungi.
+     * Tapi ia melarang keadaan yang sah: anggota yang membawa uang lebih dan
+     * memang ingin pinjamannya berjalan terus. Ditolak begitu, petugas tak punya
+     * jalan lain selain menyuruhnya pulang atau melunasi sesuatu yang tak ia
+     * minta.
+     *
+     * Sekarang ditawarkan, bukan dilarang: kedua akibatnya disajikan dalam
+     * rupiah, lalu petugas memilih. `#[Locked]` karena melewatinya berarti
+     * anggota membayar lebih tanpa pernah diberi tahu bahwa ada yang lebih
+     * ringan — sama persis alasan {@see $modeConfirmed} dikunci.
+     */
+    #[Locked]
+    public bool $keepInstalling = false;
+
     public function mount(): void
     {
         $this->authorize('create', Installment::class);
@@ -458,6 +479,97 @@ class InstallmentForm extends Component
             && count($preview[LoanPaymentService::MODE_TUTUP_SEKALIAN]['closed']) > 1;
     }
 
+    /**
+     * Tawaran Pelunasan Dipercepat — null bila tak berlaku untuk nominal ini.
+     *
+     * Syaratnya persis syarat penjaga di `LoanPaymentService::allocate()`:
+     * jangka panjang, bukan dari saldo simpanan, masih ada minimal dua jadwal
+     * (dengan satu jadwal tersisa "pelunasan" tak membebaskan jasa apa pun), dan
+     * nominalnya sudah cukup melunasi. Angkanya dari `payoffAmount()` — satu
+     * sumber; menulis ulang rumusnya di sini adalah bentuk R2 dan akan
+     * menampilkan jumlah yang salah bagi anggota bertitipan.
+     *
+     * @return array{payoff:string, amount:string, selisih:string, sisa_bulan:int, jasa_dibebaskan:string, titipan_setelah:string}|null
+     */
+    public function settlementOffer(): ?array
+    {
+        if ($this->fromSavings() || $this->settle_early || blank($this->amount_paid)) {
+            return null;
+        }
+
+        $loan = $this->selectedLoan();
+
+        if ($loan === null || $loan->loan_type !== 'jangka_panjang') {
+            return null;
+        }
+
+        $unpaid = InstallmentSchedule::query()
+            ->where('loan_id', $loan->id)
+            ->where('status', InstallmentScheduleStatus::BelumBayar)
+            ->count();
+
+        if ($unpaid < 2) {
+            return null;
+        }
+
+        $amount = (string) (int) $this->amount_paid;
+        $payoff = $loan->payoffAmount();
+
+        if (bccomp($amount, $payoff, 2) < 0) {
+            return null;
+        }
+
+        // Jasa bulan sisa yang HANGUS bila ia tetap mencicil. Pelunasan menagih
+        // 1× jasa; sisanya dibebaskan. Angka inilah yang membuat pilihan ini
+        // bukan sekadar selera.
+        $waived = bcmul((string) $loan->monthly_interest, (string) max(0, $unpaid - 1), 2);
+
+        // Titipan setelah angsuran berjalan tertutup, bila ia tetap mencicil.
+        $schedule = InstallmentSchedule::find($this->schedule_id);
+        $titipanAfter = $schedule === null
+            ? '0.00'
+            : bcadd($loan->overpaymentCredit(), bcsub($amount, (string) $schedule->total_due, 2), 2);
+
+        return [
+            'payoff' => $payoff,
+            'amount' => $amount,
+            'selisih' => bcsub($amount, $payoff, 2),
+            'sisa_bulan' => $unpaid,
+            'jasa_dibebaskan' => $waived,
+            'titipan_setelah' => bccomp($titipanAfter, '0', 2) < 0 ? '0.00' : $titipanAfter,
+        ];
+    }
+
+    /** Anggota memilih melunasi — jalur pelunasan dipercepat yang sudah ada. */
+    public function chooseSettlement()
+    {
+        $this->showSettlementChoice = false;
+
+        if (! $this->canSettleEarly()) {
+            $this->dispatch('toast', type: 'error', message: 'Kamu tidak punya izin melakukan Pelunasan Dipercepat.');
+
+            return null;
+        }
+
+        $this->settle_early = true;
+
+        return $this->settle();
+    }
+
+    /** Anggota memilih tetap mencicil — kelebihannya jadi Titipan Pokok. */
+    public function chooseKeepInstalling()
+    {
+        $this->keepInstalling = true;
+        $this->showSettlementChoice = false;
+
+        return $this->pay();
+    }
+
+    public function closeSettlementChoice(): void
+    {
+        $this->showSettlementChoice = false;
+    }
+
     /** Memilih akibat = menyetujuinya; langsung disimpan, tanpa klik kedua. */
     public function chooseMode(string $mode)
     {
@@ -506,6 +618,16 @@ class InstallmentForm extends Component
             ]);
         }
 
+        // Uangnya cukup melunasi → tawarkan, jangan tolak. Anggota berhak tetap
+        // mencicil, tapi tak boleh memilihnya tanpa tahu ada jalan yang lebih
+        // ringan. Ditaruh SEBELUM dialog alokasi: pertanyaan "lunas atau tidak"
+        // mendahului pertanyaan "kelebihannya dikemanakan".
+        if (! $this->keepInstalling && $this->settlementOffer() !== null) {
+            $this->showSettlementChoice = true;
+
+            return null;
+        }
+
         // Sisa uang cukup menutup angsuran berikutnya → petugas WAJIB memilih,
         // dengan akibat kedua pilihan tersaji dalam angka. Pembulatan biasa tak
         // memunculkan apa pun.
@@ -552,6 +674,11 @@ class InstallmentForm extends Component
                 $input,
                 auth()->id(),
                 $this->bukti?->getRealPath() ? $this->bukti : null,
+                // Penjaga dimatikan HANYA setelah petugas memilih "tetap
+                // mencicil" di dialog — bukan sebagai bawaan. Tanpa syarat itu,
+                // penjaga yang melindungi anggota dari membayar lebih hilang
+                // diam-diam.
+                redirectToSettlement: ! $this->keepInstalling,
             );
         } catch (CannotProcessPayment $e) {
             throw ValidationException::withMessages(['amount_paid' => $e->getMessage()]);

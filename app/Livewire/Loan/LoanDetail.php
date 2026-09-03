@@ -302,11 +302,7 @@ class LoanDetail extends Component
             ->orderBy('installment_seq')
             ->paginate(10, ['*'], 'schedulePage');
 
-        $latestPayment = $loan->installments()
-            ->where('is_reversal', false)
-            ->latest()
-            ->first();
-        $remaining = (string) ($latestPayment?->remaining_principal ?? $loan->principal_amount);
+        $remaining = $loan->remainingPrincipal();
 
         $activities = $loan->activities()->with('causer')->latest()->paginate(8);
         $selectedActivity = $this->auditId

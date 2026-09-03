@@ -20,6 +20,27 @@ class RolePermissionSeeder extends Seeder
         'replicate', 'reorder',
     ];
 
+    /**
+     * Saldo Anggota — layar rekap read-only.
+     *
+     * `MemberBalances::mount()` sudah memeriksa izin ini sejak awal, tapi
+     * izinnya tak pernah dibuat siapa pun: bukan bagian RESOURCES, bukan pula
+     * custom. Permission yang tak ada selalu menjawab "tidak", jadi halamannya
+     * 403 untuk SEMUA ORANG — super_admin sekalipun, karena ia mendapat izin
+     * lewat `Permission::all()` dan baris ini tak pernah ada di sana.
+     *
+     * Dibuat eksplisit, bukan lewat RESOURCES: layar ini read-only, dan
+     * RESOURCES akan ikut melahirkan create/update/delete yang tak punya arti.
+     *
+     * **Pengurus saja**, bukan Petugas — layar ini menampilkan seluruh simpanan
+     * seorang anggota sekaligus, dan pembatasan itu memang yang berlaku selama
+     * ini (lihat `SavingsLivewireSmokeTest`). Yang diperbaiki di sini bukan
+     * siapa yang boleh, melainkan bahwa dulu TAK SEORANG PUN bisa.
+     */
+    private const CUSTOM_BALANCES = [
+        'view_any_member::savings::balance',
+    ];
+
     private const CUSTOM_PETUGAS = [
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
@@ -31,6 +52,7 @@ class RolePermissionSeeder extends Seeder
     ];
 
     private const CUSTOM_PENGURUS = [
+        ...self::CUSTOM_BALANCES,
         'reverse_savings::deposit',
         'reverse_savings::withdrawal',
         'reverse_shopping::transaction',
@@ -71,6 +93,15 @@ class RolePermissionSeeder extends Seeder
         // palsu. Ditaruh di sini supaya koperasi bisa memberikannya ke orang
         // tertentu lewat layar Peran, sebagai keputusan yang diambil sadar.
         'bypass_time_deposit_schedule',
+        // Modul Sistem — Pengguna & Peran.
+        //
+        // Dulu dijaga gate `manage-system` yang memeriksa PERAN super_admin
+        // langsung. Peran yang dipatok di kode tak bisa diberikan koperasi
+        // kepada siapa pun tanpa mengubah kode, dan tak muncul di layar Peran
+        // sehingga tak ada yang tahu ia ada. Bawaannya tetap super_admin saja —
+        // yang berubah cuma: sekarang bisa diberikan, dan terlihat.
+        'access_system_users',
+        'access_system_roles',
     ];
 
     public function run(): void

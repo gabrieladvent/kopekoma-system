@@ -28,7 +28,10 @@ class Users extends Component
 
     private function canManage(): bool
     {
-        return auth()->user()?->hasRole('super_admin') ?? false;
+        // IZIN, bukan peran. Peran yang dipatok di kode tak bisa diberikan
+        // koperasi kepada siapa pun tanpa mengubah kode; bawaannya tetap
+        // super_admin saja, yang berubah hanya: sekarang bisa diberikan.
+        return auth()->user()?->can('access_system_users') ?? false;
     }
 
     public function updatingSearch(): void

@@ -3,6 +3,7 @@
 use App\Actions\ReverseTransaction;
 use App\Enums\WithdrawalStatus;
 use App\Exceptions\CannotProcessWithdrawal;
+use App\Livewire\Savings\Withdrawal\SavingsWithdrawalDetail;
 use App\Models\Member;
 use App\Models\SavingsDeposit;
 use App\Models\SavingsWithdrawal;
@@ -316,4 +317,114 @@ it('keeps active members bound by the window', function () {
 
     expect(fn () => $this->workflow->disburse(timeDepositWithdrawal($this->member->id), $pengurus->id))
         ->toThrow(CannotProcessWithdrawal::class);
+});
+
+// ---------------------------------------------------------------------------
+// Ditolak SEJAK AWAL, dan sebabnya dijelaskan di halaman
+//
+// Penjaga yang hanya berbunyi di tombol terakhir memaksa pengurus menemukan
+// aturannya lewat penolakan: ia menyetujui dulu, lalu baru diberi tahu bahwa
+// sejak awal mustahil — dan meninggalkan pengajuan ber-status "acc" yang
+// menggantung selamanya.
+// ---------------------------------------------------------------------------
+
+it('refuses to approve a request that is outside the schedule', function () {
+    $pengurus = asPengurus();
+
+    disbursedTimeDeposit($this->member->id, now()->subMonths(3)->toDateString());
+
+    $draft = SavingsWithdrawal::factory()->type('tabungan_berjangka')->status('draft')->create([
+        'member_id' => $this->member->id,
+        'amount' => 100000,
+        'is_reversal' => false,
+    ]);
+
+    expect(fn () => $this->workflow->approve($draft, $pengurus->id))
+        ->toThrow(CannotProcessWithdrawal::class);
+
+    expect($draft->fresh()->status)->toBe(WithdrawalStatus::Draft);
+});
+
+/** Satu pencairan = satu jejak. Bypass dicatat di langkah yang memindahkan uang. */
+it('does not log the bypass twice when approving then disbursing', function () {
+    $super = asSuperAdmin();
+
+    disbursedTimeDeposit($this->member->id, now()->subMonths(3)->toDateString());
+
+    $draft = SavingsWithdrawal::factory()->type('tabungan_berjangka')->status('draft')->create([
+        'member_id' => $this->member->id,
+        'amount' => 100000,
+        'is_reversal' => false,
+    ]);
+
+    $this->workflow->approve($draft, $super->id);
+
+    expect(Activity::query()->where('event', 'pencairan_di_luar_jadwal')->count())->toBe(0);
+
+    $this->workflow->disburse($draft->fresh(), $super->id);
+
+    expect(Activity::query()->where('event', 'pencairan_di_luar_jadwal')->count())->toBe(1);
+});
+
+/** Inspektur baca-saja: sama jawabannya dengan penjaga, tanpa melempar. */
+it('reports the block for a member who has no request yet', function () {
+    asPengurus();
+
+    expect($this->workflow->timeDepositScheduleBlockFor($this->member))->toBeNull();
+
+    disbursedTimeDeposit($this->member->id, now()->subMonths(3)->toDateString());
+
+    $block = $this->workflow->timeDepositScheduleBlockFor($this->member->fresh());
+
+    expect($block)->not->toBeNull()
+        ->and($block['alasan'])->toBe('belum genap 12 bulan sejak pencairan terakhir')
+        ->and($block['exception'])->toBeInstanceOf(CannotProcessWithdrawal::class);
+});
+
+/**
+ * Pengajuan yang belum tersimpan belum punya id. `whereKeyNot(null)` jadi
+ * `id != NULL` yang di SQL selalu NULL — seluruh baris tersaring dan
+ * halangannya lenyap tepat di layar yang tugasnya memperingatkan.
+ */
+it('does not lose the block on an unsaved request', function () {
+    asPengurus();
+
+    app(CooperativeSettings::class)->fill(['shu_distribution_month' => now()->month])->save();
+
+    disbursedTimeDeposit($this->member->id, now()->subDays(5)->toDateString());
+
+    expect($this->workflow->timeDepositScheduleBlockFor($this->member->fresh()))->not->toBeNull();
+});
+
+it('explains the block on the detail page instead of hiding it in a toast', function () {
+    asPengurus();
+
+    disbursedTimeDeposit($this->member->id, now()->subMonths(3)->toDateString());
+
+    $blocked = timeDepositWithdrawal($this->member->id);
+
+    $page = Livewire\Livewire::test(SavingsWithdrawalDetail::class, [
+        'withdrawal' => $blocked,
+    ]);
+
+    expect($page->viewData('scheduleBlock'))->not->toBeNull()
+        ->and($page->viewData('canBypassSchedule'))->toBeFalse();
+
+    // Tombol yang pasti ditolak tidak ditampilkan.
+    $page->assertDontSee('Cairkan Dana')->assertSee('Belum waktunya dicairkan');
+});
+
+it('keeps the disburse button for a holder of the bypass permission', function () {
+    asSuperAdmin();
+
+    disbursedTimeDeposit($this->member->id, now()->subMonths(3)->toDateString());
+
+    $page = Livewire\Livewire::test(SavingsWithdrawalDetail::class, [
+        'withdrawal' => timeDepositWithdrawal($this->member->id),
+    ]);
+
+    expect($page->viewData('canBypassSchedule'))->toBeTrue();
+
+    $page->assertSee('Cairkan Dana')
+        ->assertSee('Di luar jadwal — pencairan akan dicatat sebagai pengecualian');
 });

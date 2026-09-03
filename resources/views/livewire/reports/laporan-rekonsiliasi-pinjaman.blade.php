@@ -1,15 +1,37 @@
 <div class="space-y-6">
     {{-- Header --}}
-    <div class="flex items-start gap-3">
-        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-secondary/15 text-secondary">
-            <x-ui.icon name="shield" class="h-6 w-6" />
-        </span>
-        <div>
-            <h2 class="text-2xl font-bold tracking-tight text-text">Rekonsiliasi Simpanan Pinjaman</h2>
-            <p class="mt-0.5 text-sm text-muted">
-                Membandingkan saldo SWP &amp; Tabungan Berjangka yang tercatat dengan yang seharusnya menurut data
-                pinjaman. Hanya menampilkan yang tidak cocok.
-            </p>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="flex items-start gap-3">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-secondary/15 text-secondary">
+                <x-ui.icon name="shield" class="h-6 w-6" />
+            </span>
+            <div>
+                <h2 class="text-2xl font-bold tracking-tight text-text">Rekonsiliasi Simpanan Pinjaman</h2>
+                <p class="mt-0.5 text-sm text-muted">
+                    Membandingkan saldo SWP &amp; Tabungan Berjangka yang tercatat dengan yang seharusnya menurut data
+                    pinjaman. Hanya menampilkan yang tidak cocok.
+                </p>
+            </div>
+        </div>
+
+        {{-- Halaman yang benar isinya kosong, dan halaman kosong tak bisa
+             dibedakan dari halaman basi. Waktu periksa + tombol periksa ulang
+             yang membedakannya. --}}
+        <div class="flex shrink-0 flex-col items-end gap-1.5">
+            <x-ui.button type="button" variant="ghost" wire:click="recheck" wire:loading.attr="disabled"
+                wire:target="recheck">
+                <svg wire:loading wire:target="recheck" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <x-ui.icon wire:loading.remove wire:target="recheck" name="arrow-path" class="h-4 w-4" />
+                Periksa Ulang
+            </x-ui.button>
+            @if ($checkedAt)
+                <p class="text-[11px] text-muted">
+                    Diperiksa {{ \Illuminate\Support\Carbon::parse($checkedAt)->translatedFormat('d M Y · H:i') }}
+                </p>
+            @endif
         </div>
     </div>
 
@@ -95,6 +117,12 @@
         dipalsukan. Sekarang saldonya baris setoran biasa, jadi pembandingnya harus
         dihitung terpisah. Halaman kosong adalah hasil yang benar.
     --}}
+    {{-- Penampung toast. Tanpa baris ini `dispatch('toast', …)` terkirim ke
+         halaman yang tak mendengarkannya: konfirmasi "sudah diperiksa ulang"
+         hilang tanpa jejak, dan tombol Periksa Ulang jadi tombol yang tak
+         pernah menjawab apa pun. --}}
+    <x-ui.toast-host />
+
     <p class="text-xs text-muted">
         <span class="font-medium text-text">Seharusnya</span> dihitung ulang dari data pinjaman: SWP = jumlah
         <code>swp_amount</code> seluruh pinjaman yang tidak dibatalkan; Tabungan Berjangka = tarif bulanan × jumlah

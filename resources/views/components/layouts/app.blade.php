@@ -32,7 +32,12 @@
              kebenaran untuk sidebar & breadcrumb. --}}
         @php
             $navUser = auth()->user();
-            $isSuper = $navUser?->hasRole('super_admin') ?? false;
+            // Menu Sistem mengikuti IZIN, bukan peran. Menu yang digantung pada
+            // peran akan tetap tersembunyi dari orang yang izinnya sudah
+            // diberikan — menu dan rute berbeda pendapat, dan yang kalah selalu
+            // penggunanya.
+            $canUsers = $navUser?->can('access_system_users') ?? false;
+            $canRoles = $navUser?->can('access_system_roles') ?? false;
             $canAudit = $navUser?->can('access_activity_log') ?? false;
             $canHoliday = $navUser?->can('view_any_member::holiday::saving') ?? false;
             $canShopping = $navUser?->can('view_any_shopping::transaction') ?? false;
@@ -52,7 +57,7 @@
                 'Simpanan' => [['Pencairan Simpanan', 'arrow-up-tray', 'savings.withdrawals', $canWithdrawal], ['Pendaftaran Hari Raya', 'gift', 'savings.holiday', $canHoliday], ['Belanja Toko', 'shopping-cart', 'savings.shopping', $canShopping]],
                 'Pinjaman' => [['Angsuran', 'credit-card', 'installments.index', $canInstallment], ['Blacklist Pinjaman', 'no-symbol', 'loans.blacklist', $canBlacklist]],
                 'Master' => [['Nasabah Koperasi', 'users', 'master.members'], ['Golongan', 'academic-cap', 'master.grades'], ['OPD / Instansi', 'building-office', 'master.agencies']],
-                'Sistem' => [['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit], ['Pengguna', 'users', 'system.users', $isSuper], ['Peran & Izin', 'shield', 'system.roles', $isSuper], ['Pengaturan', 'cog', 'settings', $navUser?->can('manage_settings') ?? false]],
+                'Sistem' => [['Log Aktivitas', 'bolt', 'system.activity-logs', $canAudit], ['Pengguna', 'users', 'system.users', $canUsers], ['Peran & Izin', 'shield', 'system.roles', $canRoles], ['Pengaturan', 'cog', 'settings', $navUser?->can('manage_settings') ?? false]],
             ];
 
             // Breadcrumb diturunkan dari $groups (route → grup + label), tanpa deklarasi per-halaman.

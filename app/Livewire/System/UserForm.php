@@ -54,7 +54,7 @@ class UserForm extends Component
 
     public function mount(?User $user = null): void
     {
-        abort_unless(auth()->user()?->hasRole('super_admin'), 403);
+        abort_unless(auth()->user()?->can('access_system_users') ?? false, 403);
 
         if ($user && $user->exists) {
             $this->userId = $user->id;
@@ -107,7 +107,7 @@ class UserForm extends Component
 
     public function save()
     {
-        abort_unless(auth()->user()?->hasRole('super_admin'), 403);
+        abort_unless(auth()->user()?->can('access_system_users') ?? false, 403);
 
         $validated = $this->validate();
 

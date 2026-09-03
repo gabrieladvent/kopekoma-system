@@ -82,6 +82,8 @@ lanjut ke 1.2 — atau pakai anggota lain.
 | Langkah | Hasil yang diharapkan |
 |---|---|
 | Nominal **2.180.000**, Simpan | **Dialog muncul. Belum ada yang tersimpan.** |
+| Tampilan dialog | Kepalanya berpembatas **garis + bayangan**, memisahkan pertanyaan dari pilihan |
+| Tombol **Batal** | Berbingkai dan berlatar **merah** — terbaca sebagai tombol, bukan keterangan |
 
 Dialog harus menyajikan **kedua pilihan dalam rupiah**, bukan sekadar namanya:
 
@@ -99,8 +101,11 @@ Dialog harus menyajikan **kedua pilihan dalam rupiah**, bukan sekadar namanya:
 
 | Langkah | Hasil yang diharapkan |
 |---|---|
-| Klik **Simpan sebagai Titipan Pokok** | Langsung tersimpan, **tanpa klik konfirmasi kedua**. 1 baris angsuran dibuat |
+| Klik **Simpan sebagai Titipan Pokok** | Tombolnya menampilkan **spinner** dan seluruh pilihan mengunci selama proses, lalu langsung tersimpan **tanpa klik konfirmasi kedua**. 1 baris angsuran dibuat |
 | Buka detail pinjaman | Saldo Titipan Pokok **1.090.000** |
+
+> Spinner-nya bukan hiasan: karena memilih = langsung menyimpan, jeda tanpa
+> penanda terbaca sebagai klik yang tak masuk — dan petugas menekannya lagi.
 
 **Yang HARUS gagal:** klik salah satu mode lalu tekan tombol kembali browser dan
 simpan ulang — tidak boleh menghasilkan baris angsuran kedua.
@@ -117,11 +122,14 @@ simpan ulang — tidak boleh menghasilkan baris angsuran kedua.
 | Panel tagihan | Menampilkan **Tagihan kontrak 1.090.000**, **Titipan Pokok dipakai 1.000.000**, **Tagihan Bulan Ini 90.000** |
 | Cari kalimat "dikreditkan ke Simpanan Sukarela" | **Tidak ada.** Sudah dicabut dari layar loket |
 | Isi **89.999**, Simpan | **Ditolak** — "Nominal tidak boleh kurang dari tagihan Rp 90.000" |
-| Isi **90.000**, Simpan | Tersimpan. Titipan jadi **0** |
+| Isi **90.000**, Simpan | Tersimpan. Titipan **sisa 90.000** — titipan hanya memotong pokok (maks. 1.000.000), jasa & tab. berjangka tetap tertagih |
 
 ### 2.1 Kuitansi harus berjumlah
 
-Buka kuitansi baris **ANG-2026-000004** (setoran 2.180.000 milik Yusuf):
+Buka **menu Angsuran** → cari *Yusuf* → baris ber-**Dibayar 2.180.000** (angsuran ke-2) → **Cetak Kuitansi**.
+
+> Nomor angsuran (`ANG-…`) tidak disebut di dokumen ini: penomorannya ikut isi
+> database, jadi di setiap lingkungan berbeda. Kenali barisnya dari nominalnya.
 
 | Baris | Nilai |
 |---|---|
@@ -129,7 +137,7 @@ Buka kuitansi baris **ANG-2026-000004** (setoran 2.180.000 milik Yusuf):
 | Jasa | 78.000 |
 | Tabungan Berjangka | 12.000 |
 | **Titipan Pokok disisihkan** | **1.090.000** |
-| **Total** | **2.180.000** |
+| **Total Dibayar** | **2.180.000** |
 | Sisa Titipan Pokok | 1.090.000 |
 
 > Σ komponen **wajib** sama dengan total. Kuitansi yang tak berjumlah adalah
@@ -141,10 +149,18 @@ Buka **Detail Pinjaman** T2 → panel *Riwayat Titipan Pokok*:
 
 | Tanggal | Angsuran | Masuk | Dipakai | Saldo |
 |---|---|---|---|---|
-| … | ANG-…04 | 1.090.000 | — | 1.090.000 |
+| … | angsuran ke-2 (dibayar 2.180.000) | 1.090.000 | — | 1.090.000 |
 
 Baris yang tidak menggerakkan saldo (pembayaran pas) **tidak boleh muncul** —
 panel ini menjelaskan pergerakan, bukan mendaftar transaksi.
+
+Cara membuktikan ketiadaan: **hitung barisnya**. Angsuran terbayar di *Progres
+Angsuran* ada 2, panel Titipan hanya berisi 1. Selisih satu itulah pembayaran
+pas (angsuran ke-1, dibayar tepat 1.090.000) — dan ia memang tidak ikut.
+
+> **Kerjakan §2.2 sebelum §2.** Setelah pembayaran 90.000, panel berisi dua
+> baris: `Masuk 1.090.000 → saldo 1.090.000`, lalu `Dipakai 1.000.000 → saldo
+> 90.000`. Yang tetap berlaku: angsuran ke-1 tak boleh muncul.
 
 ---
 
@@ -199,20 +215,39 @@ panel ini menjelaskan pergerakan, bukan mendaftar transaksi.
 
 ## Bagian 5 — Pelunasan Dipercepat bertitipan (pakai **T5** dan **T6**)
 
-### 5.1 Penjaga: setoran yang cukup melunasi diarahkan, bukan diproses diam-diam
+### 5.1 Setoran yang cukup melunasi: ditawarkan, bukan diproses diam-diam
 
 *Petugas · Catat Pembayaran · anggota Bagus Prakoso (T6)*
 
 | Langkah | Hasil yang diharapkan |
 |---|---|
-| Isi nominal **7.000.000**, Simpan | **Ditolak dengan arahan:** *"Nominal ini cukup untuk melunasi seluruh sisa pinjaman. Gunakan Pelunasan Dipercepat — jumlahnya Rp 6.988.000, lebih ringan bagi anggota karena jasa bulan sisa dibebaskan."* |
+| Isi nominal **7.000.000**, Simpan | **Dialog pilihan muncul.** Belum ada yang tersimpan |
+| Pilihan **Pelunasan Dipercepat** | Bayar **Rp 6.988.000**, pinjaman LUNAS. Menyebut jasa bulan sisa yang dibebaskan, dan kembalian yang masuk Simpanan Sukarela |
+| Pilihan **Tetap mencicil** | Angsuran bulan ini lunas, sisanya jadi **Titipan Pokok**; menyebut bahwa jasa bulan sisa **tetap tertagih** |
+| Pilih **Tetap mencicil** | Tersimpan. Pinjaman tetap **Cair**, tak ada baris pelunasan |
+
+> Dulu keadaan ini **ditolak mentah**. Penolakan itu melindungi anggota dari
+> membayar penuh sementara jasa bulan sisa yang seharusnya dibebaskan tetap
+> ditagih — tapi ia juga melarang keadaan yang sah: anggota yang membawa uang
+> lebih dan memang ingin pinjamannya berjalan terus. Petugas tak punya jalan
+> selain menyuruhnya pulang. Sekarang **ditawarkan**, dengan akibat kedua pilihan
+> tersaji dalam rupiah — sehingga anggota tak pernah memilih yang lebih mahal
+> tanpa tahu ada yang lebih ringan.
 
 Periksa angkanya: sisa pokok 8.000.000 + jasa 78.000 − titipan 1.090.000 =
 **6.988.000**. Bila layar menyebut 8.078.000, potongan titipannya hilang.
 
+**Yang HARUS gagal:** dialog ini tak boleh bisa dilewati. Kelebihan bayar yang
+cukup melunasi tidak boleh tersimpan tanpa pilihan pernah ditampilkan.
+
 ### 5.2 Hasil pelunasan bertitipan (**T5**, sudah lunas di data uji)
 
-*Detail pinjaman Hesti Prabaningrum*
+*Petugas · anggota Hesti Prabaningrum. Hanya dilihat, tak ada yang diinput.*
+
+> **Baris pelunasan tidak ada di tabel Progres Angsuran.** Ia dibuat tanpa
+> jadwal (`schedule_id` null), sedangkan tabel itu digerakkan oleh jadwal —
+> karena itu jadwal terakhir tampil *Terbayar* dengan kolom Dibayar `—`.
+> Bukanya lewat **menu Angsuran** → cari *Hesti* → baris ber-**Dibayar 78.000**.
 
 | Yang diperiksa | Hasil yang diharapkan |
 |---|---|
@@ -260,8 +295,16 @@ Masih di T5:
 | Langkah | Hasil yang diharapkan |
 |---|---|
 | Pilih OPD **Dinas Perhubungan Kab. Magelang** | Muncul baris untuk pinjaman yang masih berjalan |
-| Baris **Bagus Prakoso (T6)** — kolom pelunasan | **6.988.000** — sudah dikurangi titipan |
-| Nominal angsuran biasa | Tetap **1.090.000** (angka kontrak). Payroll memotong angka kontrak, bukan angka efektif |
+| Baris **Bagus Prakoso (T6)** — nominal angsuran | Tetap **1.090.000** |
+> Nominalnya **angka kontrak**, bukan tagihan efektif. Payroll memotong sesuai
+> kontrak; titipan T6 karena itu tidak bergerak. Yang terlihat 1.090.000 — bukan
+> 90.000 — memang benar.
+
+**Sebagai Pengurus** (kolom pelunasan disembunyikan dari Petugas — lihat §6.2):
+
+| Langkah | Hasil yang diharapkan |
+|---|---|
+| Baris **Bagus Prakoso (T6)** — centang pelunasan | Tertulis **"pelunasan Rp 6.988.000, jasa sisa dibebaskan"** — sudah dikurangi titipan. Bila **8.078.000**, potongan titipannya hilang |
 | Proses batch | Berhasil; titipan T6 **tidak berkurang** oleh potongan sebesar kontrak |
 
 ### 6.1 Baris yang dilewati harus bisa ditelusuri
@@ -324,7 +367,7 @@ Masih di T5:
 | Pinjaman yang tak pernah kelebihan bayar (mis. Sri Wahyuni dari `DemoDataSeeder`) | Berperilaku persis seperti sebelumnya. Tak ada panel Titipan Pokok, tak ada baris tambahan di kuitansi |
 | Bayar angsuran dari saldo simpanan | Tetap **terkunci tepat sebesar tagihan efektif** — tidak boleh lebih |
 | Sebrakan (`jangka_pendek`) dengan kelebihan bayar | Kelebihannya **langsung ke Simpanan Sukarela** saat lunas, tanpa singgah jadi titipan |
-| Angka tunggakan di dashboard | Anggota bertitipan **tidak** dilaporkan menunggak lebih besar dari kewajiban riilnya |
+| Angka tunggakan di dashboard | Kartu **Tunggakan** menampilkan **cacahan jadwal** lewat tempo, bukan rupiah. Cacahan tak bisa terpengaruh titipan — titipan mengurangi nominal, tak pernah membuat jadwal berhenti menunggak. **Tak ada yang bisa dibandingkan; tandai N/A** |
 | Σ uang seumur pinjaman, kedua mode | **Identik.** Fitur ini keringanan arus kas, bukan potongan — anggota membayar total yang sama |
 
 ---
@@ -362,6 +405,14 @@ Cek cepat per pinjaman uji:
 | T4 | 2 | 24.000 |
 | T5 | 11 (+1 pelunasan) | **132.000** — baris pelunasan **tidak** menambah |
 | T6 | 4 | 48.000 |
+
+> **Angka ini turunan, bukan tetapan.** Rumusnya `12.000 × jumlah baris angsuran
+> terbayar (bukan baris pelunasan)`. Skenario yang sudah kamu jalankan menambah
+> angsuran — §2 menambah satu ke T2, batch §6 menambah satu ke hampir semua.
+> Hitung ulang dari *Progres Angsuran* tiap anggota, jangan cocokkan ke angka di
+> atas. Yang **tidak** bergeser: SWP tetap 120.000 (1% pokok, dicatat sekali saat
+> pencairan), dan **T5 tetap 132.000** — 11 angsuran, baris pelunasan tidak
+> mengakru. Bila T5 jadi 144.000, itu kegagalan sungguhan.
 
 > T5 yang paling penting: pelunasan dipercepat membebaskan jasa bulan sisa, dan
 > tabungan bulan sisa memang tak pernah disetor. Kalau angkanya 144.000, baris
@@ -418,16 +469,28 @@ haknya sekarang, bukan menunggu bulan SHU.
 | Langkah | Hasil yang diharapkan |
 |---|---|
 | Cairkan Tab. Berjangka anggota mana pun (pertama kali) | **Berhasil** — belum pernah cair, tak ada yang menghalangi |
-| Ajukan lagi, lalu ACC & Cairkan | **DITOLAK**: *"…dikembalikan satu kali dalam setahun. Pencairan terakhir …, jadi pencairan berikutnya baru boleh mulai …"* |
-| Cek status pencairan kedua | Masih **acc**, tidak berubah jadi cair |
+| Ajukan lagi untuk anggota yang sama | Di **formulir pengajuan** langsung muncul panel merah *"Tabungan Berjangka belum waktunya"* berisi tanggal cair terakhir dan tanggal boleh berikutnya. Pengajuan tetap boleh disimpan |
+| Buka detail pengajuan kedua | Panel merah **"Belum waktunya dicairkan"** menetap di halaman. Tombol **Setujui (ACC)** dan **Cairkan Dana** **tidak ditampilkan** |
+| Coba ACC lewat jalur lain | **DITOLAK** sejak ACC, bukan menunggu sampai Cairkan. Status tetap **draft** |
+
+> Penolakannya dipindah ke depan. Sebelumnya pengajuan bisa di-ACC lalu baru
+> ditolak saat dicairkan — pengurus mengerjakan persetujuan yang sejak awal
+> mustahil, dan meninggalkan pengajuan ber-status *acc* yang menggantung
+> selamanya. Sebabnya kini tertulis di halaman, bukan lewat notifikasi sekejap.
 
 #### 9.4b Dengan setelan bulan SHU
 
 *Pengurus · Pengaturan → set Bulan Pembagian SHU*
 
+> **Pakai anggota yang belum pernah cair tahun ini.** Aturan jendela SHU punya
+> DUA bagian: harus di bulan SHU, **dan** sekali per tahun kalender. Anggota yang
+> sudah cair Agustus tetap ditolak di September walau bulan SHU digeser ke
+> September — itu bagian "sekali setahun" yang bekerja, bukan setelan yang tak
+> terbaca. Kalau §9.4a dijalankan lebih dulu, anggotanya sudah terpakai.
+
 | Langkah | Hasil yang diharapkan |
 |---|---|
-| Set ke **bulan ini**, lalu cairkan Tab. Berjangka | **Berhasil** |
+| Set ke **bulan ini**, lalu cairkan Tab. Berjangka **anggota lain yang masih bersih** | **Berhasil** |
 | Ajukan lagi di bulan yang sama, ACC & Cairkan | **DITOLAK**: *"…sudah dicairkan tahun ini …"* — jendela sebulan tak boleh dipakai dua kali |
 | Set ke **bulan lain**, lalu coba cairkan anggota yang belum pernah cair | **DITOLAK**: *"…hanya dapat dicairkan pada bulan pembagian SHU (…). Jendela berikutnya: …"* |
 | Anggota yang pencairan terakhirnya **13 bulan lalu**, sekarang bukan bulan SHU | **Tetap DITOLAK** — inilah bedanya. Aturan lama meloloskannya, jendela SHU tidak |
@@ -530,11 +593,25 @@ Pembatalannya lewat jalur yang benar:
 |---|---|
 | Setelah seluruh skenario di atas dijalankan | **"Seluruhnya cocok"** — halaman kosong adalah hasil yang benar |
 | Kolom | SWP dan Tab Berjangka, masing-masing *Tercatat / Seharusnya / Selisih* |
+| Tombol **Periksa Ulang** | Ada, beserta cap waktu *"Diperiksa …"* di bawahnya. Klik → cap waktunya berubah |
 | Login Petugas | **403** |
 
 > Halaman ini membandingkan saldo tercatat dengan hitungan ulang dari data
 > pinjaman. Kalau ia menampilkan baris, ada saldo yang tak bisa dijelaskan oleh
 > pinjaman mana pun — itu yang perlu ditelusuri, apa pun sebabnya.
+
+**Kapan sebaiknya dijalankan?** Perhitungannya dilakukan saat halaman dibuka,
+jadi ia selalu menunjukkan keadaan **sekarang** — tidak ada proses terjadwal yang
+perlu ditunggu. Yang membuat H+1 tetap masuk akal adalah kebiasaannya, bukan
+mesinnya: dijalankan **pagi hari untuk memeriksa hari sebelumnya**, saat seluruh
+transaksi kemarin sudah tutup dan pembatalan susulan sudah masuk. Memeriksa di
+tengah hari kerja tetap sah, hanya saja selisih yang muncul bisa berupa transaksi
+yang memang sedang berjalan.
+
+> Cap waktu *"Diperiksa …"* ada karena halaman yang benar isinya kosong — dan
+> halaman kosong tak bisa dibedakan dari halaman basi. Tanpa cap itu, pengurus
+> yang baru memperbaiki sesuatu tak punya cara menyatakan "sudah, kan?" selain
+> menebak apakah yang ia lihat masih hasil pemuatan setengah jam lalu.
 
 ### 10.5 Jejak bisa dicari
 

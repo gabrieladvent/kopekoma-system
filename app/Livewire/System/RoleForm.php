@@ -84,7 +84,7 @@ class RoleForm extends Component
 
     public function mount(?Role $role = null): void
     {
-        abort_unless(auth()->user()?->hasRole('super_admin'), 403);
+        abort_unless(auth()->user()?->can('access_system_roles') ?? false, 403);
 
         if ($role && $role->exists) {
             $this->roleId = $role->id;
@@ -146,7 +146,7 @@ class RoleForm extends Component
 
     public function save()
     {
-        abort_unless(auth()->user()?->hasRole('super_admin'), 403);
+        abort_unless(auth()->user()?->can('access_system_roles') ?? false, 403);
 
         $validated = $this->validate();
 

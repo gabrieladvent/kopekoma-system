@@ -158,7 +158,8 @@ $step('1.1', 'Petugas', 'Ubah nominal jadi 1.100.000, lalu Simpan.', 'Tersimpan 
 $step('1.2', 'Petugas', 'Ulangi seeder / pakai T1 bersih. Isi nominal 2.180.000, Simpan.', 'DIALOG MUNCUL. Belum ada yang tersimpan.');
 $step('1.2', 'Petugas', 'Baca pilihan "Simpan sebagai Titipan Pokok" di dialog.', 'Angsuran tertutup: #3. Sisa Titipan Pokok: 1.090.000. Tagihan berikutnya: #4 → 90.000 dan #5 → 1.000.000.');
 $step('1.2', 'Petugas', 'Baca pilihan "Tutup angsuran berikutnya sekalian".', 'Angsuran tertutup: #3 dan #4. Sisa Titipan Pokok: 0. Tagihan berikutnya: #5 → 1.090.000.');
-$step('1.3', 'Petugas', 'Klik "Simpan sebagai Titipan Pokok".', 'Langsung tersimpan TANPA klik konfirmasi kedua. 1 baris angsuran dibuat.');
+$step('1.2', 'Petugas', 'Perhatikan tampilan dialognya.', 'Kepala dialog berpembatas garis + bayangan. Tombol Batal berbingkai dan berlatar MERAH — terbaca sebagai tombol, bukan keterangan.');
+$step('1.3', 'Petugas', 'Klik "Simpan sebagai Titipan Pokok".', 'Tombolnya menampilkan spinner dan seluruh pilihan mengunci selama proses, lalu langsung tersimpan TANPA klik konfirmasi kedua. 1 baris angsuran dibuat.');
 $step('1.3', 'Petugas', 'Buka detail pinjaman T1.', 'Saldo Titipan Pokok 1.090.000.');
 $step('1.3', 'Petugas', 'Tekan tombol kembali browser lalu simpan ulang.', 'TIDAK menghasilkan baris angsuran kedua.');
 
@@ -167,11 +168,11 @@ $step('2', 'Petugas', 'Catat Pembayaran. Pilih anggota & pinjaman T2.', 'Nominal
 $step('2', 'Petugas', 'Baca panel tagihan.', 'Menampilkan Tagihan kontrak 1.090.000, Titipan Pokok dipakai 1.000.000, Tagihan Bulan Ini 90.000.');
 $step('2', 'Petugas', 'Cari kalimat "dikreditkan ke Simpanan Sukarela" di layar.', 'TIDAK ADA. Sudah dicabut dari layar loket.');
 $step('2', 'Petugas', 'Isi 89.999, Simpan.', 'DITOLAK — "Nominal tidak boleh kurang dari tagihan Rp 90.000".');
-$step('2', 'Petugas', 'Isi 90.000, Simpan.', 'Tersimpan. Titipan jadi 0.');
-$step('2.1', 'Petugas', 'Buka kuitansi baris ANG-2026-000004 (setoran 2.180.000 milik Yusuf).', 'Pokok 1.000.000 + Jasa 78.000 + Tab. Berjangka 12.000 + Titipan Pokok disisihkan 1.090.000 = Total 2.180.000. Sisa Titipan Pokok 1.090.000.');
+$step('2', 'Petugas', 'Isi 90.000, Simpan.', 'Tersimpan. Titipan SISA 90.000 — titipan hanya memotong pokok (maks. 1.000.000); jasa 78.000 + tab. berjangka 12.000 tetap tertagih.');
+$step('2.1', 'Petugas', 'Menu Angsuran → cari "Yusuf" → baris ber-Dibayar 2.180.000 (angsuran ke-2) → Cetak Kuitansi. (Nomor ANG-… berbeda tiap lingkungan; kenali dari nominalnya.)', 'Pokok 1.000.000 + Jasa 78.000 + Tab. Berjangka 12.000 + Titipan Pokok disisihkan 1.090.000 = Total 2.180.000. Sisa Titipan Pokok 1.090.000.');
 $step('2.1', 'Petugas', 'Jumlahkan komponen kuitansi.', 'Σ komponen SAMA PERSIS dengan total. Kuitansi yang tak berjumlah = dokumen salah yang diserahkan ke anggota.');
-$step('2.2', 'Petugas', 'Detail Pinjaman T2 → panel Riwayat Titipan Pokok.', 'Satu baris: ANG-…04, Masuk 1.090.000, Saldo 1.090.000.');
-$step('2.2', 'Petugas', 'Cari baris pembayaran yang pas (tidak menggerakkan saldo).', 'TIDAK MUNCUL. Panel ini menjelaskan pergerakan, bukan mendaftar transaksi.');
+$step('2.2', 'Petugas', 'Detail Pinjaman T2 → panel Riwayat Titipan Pokok. KERJAKAN SEBELUM skenario 2.', 'Satu baris: angsuran ke-2 (dibayar 2.180.000), Masuk 1.090.000, Saldo 1.090.000. Setelah skenario 2 dijalankan jadi dua baris — yang kedua Dipakai 1.000.000, saldo 90.000.');
+$step('2.2', 'Petugas', 'Hitung baris di panel Titipan, bandingkan dengan jumlah angsuran terbayar di Progres Angsuran.', 'Selisih satu baris. Yang tak ikut adalah pembayaran pas (angsuran ke-1, dibayar tepat 1.090.000) — panel ini menjelaskan pergerakan, bukan mendaftar transaksi.');
 
 $section('BAGIAN 3 — Satu setoran, dua angsuran (pakai T3: Wahyu Nugroho)');
 $step('3', 'Petugas', 'Detail pinjaman T3 → lihat daftar angsuran.', 'DUA baris, keduanya 1.090.000, angsuran #1 dan #2.');
@@ -190,10 +191,13 @@ $step('4.1', 'Pengurus', 'Sistem → Log Aktivitas. Cari event "Pembatalan ditol
 $step('4.1', 'Pengurus', 'Buka isi jejaknya.', 'Menampilkan Titipan Pokok sesudah (negatif), Titipan Pokok tertahan pelunasan, dan Angsuran penghalang — dengan label Indonesia dan format rupiah, bukan nama kolom mentah.', true);
 
 $section('BAGIAN 5 — Pelunasan Dipercepat bertitipan (pakai T5 dan T6)');
-$step('5.1', 'Petugas', 'Catat Pembayaran untuk T6 (Bagus Prakoso). Isi nominal 7.000.000, Simpan.', 'DITOLAK dengan arahan: "Nominal ini cukup untuk melunasi seluruh sisa pinjaman. Gunakan Pelunasan Dipercepat — jumlahnya Rp 6.988.000…"');
+$step('5.1', 'Petugas', 'Catat Pembayaran untuk T6 (Bagus Prakoso). Isi nominal 7.000.000, Simpan.', 'DIALOG PILIHAN MUNCUL. Belum ada yang tersimpan.');
+$step('5.1', 'Petugas', 'Baca pilihan "Pelunasan Dipercepat".', 'Bayar Rp 6.988.000, pinjaman LUNAS. Menyebut jasa bulan sisa yang dibebaskan, dan kembalian yang masuk Simpanan Sukarela.');
+$step('5.1', 'Petugas', 'Baca pilihan "Tetap mencicil".', 'Angsuran bulan ini lunas, sisanya jadi Titipan Pokok. Menyebut bahwa jasa bulan sisa TETAP tertagih.');
+$step('5.1', 'Petugas', 'Pilih "Tetap mencicil".', 'Tersimpan. Pinjaman tetap Cair, tidak ada baris pelunasan. Anggota berhak tetap mencicil — yang dilarang adalah memilih tanpa tahu ada yang lebih ringan.', true);
 $step('5.1', 'Petugas', 'Periksa angka pelunasannya.', '6.988.000 = sisa pokok 8.000.000 + jasa 78.000 − titipan 1.090.000. Bila layar menyebut 8.078.000, potongan titipannya hilang.');
 $step('5.2', 'Petugas', 'Detail pinjaman T5 (Hesti) — cek status.', 'Lunas.');
-$step('5.2', 'Petugas', 'Cek nominal baris pelunasan.', '78.000 = sisa pokok 1.000.000 + jasa 78.000 − titipan terpakai 1.000.000.');
+$step('5.2', 'Petugas', 'Menu Angsuran → cari "Hesti" → baris ber-Dibayar 78.000. (Baris pelunasan TIDAK ada di tabel Progres Angsuran: ia dibuat tanpa jadwal.) Cek nominalnya.', '78.000 = sisa pokok 1.000.000 + jasa 78.000 − titipan terpakai 1.000.000.');
 $step('5.2', 'Petugas', 'Cek rincian baris pelunasan.', 'Kolom "Titipan Pokok dipakai" terisi 1.000.000, bukan kosong.');
 $step('5.2', 'Pengurus', 'Cek Simpanan Sukarela Hesti.', 'Bertambah 1.000.000 — sisa titipan yang tak terpakai, TIDAK hangus.');
 $step('5.3', 'Petugas', 'Panel Riwayat Titipan Pokok T5 — baca TIGA baris terakhir.', 'Baris 1: ANG-…19 Masuk 2.000.000, saldo 2.000.000. Baris 2: Dipakai 1.000.000, saldo 1.000.000, catatan "Memotong jumlah Pelunasan Dipercepat". Baris 3: Dipakai 1.000.000, saldo 0, catatan "Dilimpahkan ke Simpanan Sukarela saat pinjaman ditutup".');
@@ -204,7 +208,7 @@ $step('5.4', 'Petugas', 'Lalu batalkan ANG-…19.', 'Sekarang berhasil. (Bila la
 
 $section('BAGIAN 6 — Batch potong gaji (OPD Dinas Perhubungan)');
 $step('6', 'Petugas', 'Angsuran → Batch Potong Gaji. Pilih OPD Dinas Perhubungan Kab. Magelang.', 'Muncul baris untuk pinjaman yang masih berjalan.');
-$step('6', 'Petugas', 'Lihat baris Bagus Prakoso (T6) — kolom pelunasan.', '6.988.000 — sudah dikurangi titipan.');
+$step('6', 'Pengurus', 'Lihat baris Bagus Prakoso (T6) — centang pelunasan. WAJIB sebagai Pengurus: kolom ini memang disembunyikan dari Petugas (lihat 6.2).', 'Tertulis "pelunasan Rp 6.988.000, jasa sisa dibebaskan" — sudah dikurangi titipan. Bila 8.078.000, potongan titipannya hilang.');
 $step('6', 'Petugas', 'Lihat nominal angsuran biasa.', 'Tetap 1.090.000 (angka kontrak). Payroll memotong angka kontrak, bukan angka efektif.');
 $step('6', 'Petugas', 'Proses batch.', 'Berhasil. Titipan T6 TIDAK berkurang oleh potongan sebesar kontrak.');
 $step('6.1', 'Petugas', 'Bayar satu angsuran manual dulu, lalu jalankan batch yang memuat jadwal yang sama.', 'Ringkasan menyebut jumlah yang dilewati.');
@@ -223,12 +227,16 @@ $step('7.2', 'Petugas', 'Buka Laporan Titipan Pokok.', '403. Menunya juga tidak 
 $step('7.2', 'Petugas', 'Buka Sistem → Log Aktivitas.', '403.');
 $step('7.2', 'Pengurus', 'Buka Sistem → Log Aktivitas.', 'BISA dibuka.');
 $step('7.2', 'Pengurus', 'Buka Sistem → Pengguna dan Sistem → Peran.', '403 — membaca jejak ≠ mengelola sistem.');
+$step('7.2', 'Pengurus', 'Buka Simpanan → Saldo Anggota.', 'BISA dibuka. Izinnya (view_any_member::savings::balance) sempat diperiksa halaman ini tapi tak pernah dibuat siapa pun — permission yang tak ada selalu menjawab "tidak", jadi halamannya 403 untuk SEMUA ORANG, super_admin sekalipun.', true);
+$step('7.2', 'Petugas', 'Buka Simpanan → Saldo Anggota.', '403. Menunya juga tidak muncul di sidebar — batasannya memang begitu sejak awal.');
+$step('7.2', 'super_admin', 'Sistem → Peran & Izin. Cari izin access_system_users dan access_system_roles.', 'ADA di daftar dan bisa diberikan. Dulu modul Sistem dijaga pemeriksaan PERAN super_admin yang dipatok di kode — tak bisa diberikan ke siapa pun, dan tak terlihat di layar mana pun.');
+$step('7.2', 'super_admin', 'Beri access_system_users ke seorang pengguna non-super_admin, lalu login sebagai dia.', 'Menu Pengguna muncul di sidebar DAN halamannya bisa dibuka. Menu Peran tetap tidak — izinnya diberikan satu per satu.');
 
 $section('BAGIAN 8 — Regresi (yang TIDAK boleh berubah)');
 $step('8', 'Petugas', 'Buka pinjaman yang tak pernah kelebihan bayar (mis. Sri Wahyuni dari DemoDataSeeder).', 'Berperilaku persis seperti sebelumnya. Tak ada panel Titipan Pokok, tak ada baris tambahan di kuitansi.');
 $step('8', 'Pengurus', 'Bayar angsuran dari saldo simpanan.', 'Tetap terkunci TEPAT sebesar tagihan efektif — tidak boleh lebih.');
 $step('8', 'Petugas', 'Sebrakan (jangka_pendek) dengan kelebihan bayar.', 'Kelebihannya LANGSUNG ke Simpanan Sukarela saat lunas, tanpa singgah jadi titipan.');
-$step('8', 'Pengurus', 'Cek angka tunggakan di dashboard.', 'Anggota bertitipan TIDAK dilaporkan menunggak lebih besar dari kewajiban riilnya.');
+$step('8', 'Pengurus', 'Cek angka tunggakan di dashboard.', 'N/A — kartu Tunggakan menampilkan CACAHAN jadwal lewat tempo, bukan rupiah. Cacahan tak bisa terpengaruh titipan (titipan mengurangi nominal, tak pernah membuat jadwal berhenti menunggak). Tak ada yang bisa dibandingkan.');
 $step('8', 'Pengurus', 'Bandingkan Σ uang seumur pinjaman antara mode Titipan dan Tutup Sekalian.', 'IDENTIK. Fitur ini keringanan arus kas, bukan potongan.');
 
 $section('BAGIAN 9 — SWP & Tabungan Berjangka sebagai simpanan');
@@ -242,12 +250,13 @@ $step('9.2', 'Pengurus', 'Cek saldo SWP dan Tab. Berjangka Hesti.', 'Tetap 120.0
 $step('9.3', 'Pengurus', 'Simpanan → Pencairan → Buat. Pilih anggota Hesti.', 'Baris sumber dana memuat SWP dan Tabungan Berjangka dengan saldo di atas.');
 $step('9.3', 'Pengurus', 'Ajukan penarikan SWP 120.000, lalu ACC dan Cairkan.', 'Saldo SWP jadi 0; Tab. Berjangka tak tersentuh. (CATATAN: aturan koperasi sebenarnya SWP hanya kembali saat anggota KELUAR — belum ditegakkan, jangan dilaporkan sebagai bug.)');
 $step('9.4a', 'Pengurus', 'Pengaturan → pastikan Bulan Pembagian SHU = "Belum ditetapkan". Lalu cairkan Tab. Berjangka anggota mana pun untuk PERTAMA kali.', 'Berhasil — belum pernah cair, tak ada yang menghalangi.');
-$step('9.4a', 'Pengurus', 'Ajukan lagi, ACC, lalu Cairkan.', 'DITOLAK: "…dikembalikan satu kali dalam setahun. Pencairan terakhir …, jadi pencairan berikutnya baru boleh mulai …"');
-$step('9.4a', 'Pengurus', 'Cek status pencairan kedua.', 'Masih acc, tidak berubah jadi cair.');
+$step('9.4a', 'Pengurus', 'Ajukan lagi untuk anggota yang sama — perhatikan FORMULIR pengajuannya.', 'Panel merah "Tabungan Berjangka belum waktunya" muncul langsung di formulir, berisi tanggal cair terakhir dan tanggal boleh berikutnya. Pengajuan tetap boleh disimpan.');
+$step('9.4a', 'Pengurus', 'Buka detail pengajuan kedua.', 'Panel merah "Belum waktunya dicairkan" MENETAP di halaman (bukan notifikasi sekejap). Tombol Setujui (ACC) dan Cairkan Dana TIDAK ditampilkan.');
+$step('9.4a', 'Pengurus', 'Coba ACC pengajuan kedua.', 'DITOLAK sejak ACC, bukan menunggu sampai Cairkan. Status tetap draft — tidak ada pengajuan ber-status acc yang menggantung selamanya.', true);
 $step('9.4a', 'Pengurus', 'PALING PENTING — coba lagi sebagai Pengurus.', 'TETAP DITOLAK. Kalau Pengurus lolos, aturannya tak mengikat siapa pun — hanya Pengurus yang bisa mencairkan.', true);
 $step('9.4a', 'Pengurus', 'Cairkan Sukarela dua kali berturut-turut.', 'BOLEH — jadwal ini hanya berlaku untuk Tabungan Berjangka.');
 $step('9.4a', 'Pengurus', 'Batalkan pencairan Tab. Berjangka, lalu ajukan lagi.', 'BOLEH — uangnya kembali, jadi jadwalnya ikut terbuka lagi.');
-$step('9.4b', 'Pengurus', 'Pengaturan → set Bulan Pembagian SHU ke BULAN INI. Lalu cairkan Tab. Berjangka.', 'Berhasil.');
+$step('9.4b', 'Pengurus', 'Pengaturan → set Bulan Pembagian SHU ke BULAN INI. Lalu cairkan Tab. Berjangka ANGGOTA LAIN yang belum pernah cair tahun ini.', 'Berhasil. (Anggota yang sudah cair tahun ini tetap ditolak walau bulan SHU digeser — itu bagian "sekali setahun" yang bekerja, bukan setelan yang tak terbaca.)');
 $step('9.4b', 'Pengurus', 'Ajukan lagi di bulan yang sama, ACC & Cairkan.', 'DITOLAK: "…sudah dicairkan tahun ini …". Jendela sebulan tak boleh dipakai dua kali.');
 $step('9.4b', 'Pengurus', 'Set Bulan SHU ke BULAN LAIN, lalu cairkan Tab. Berjangka anggota yang belum pernah cair.', 'DITOLAK: "…hanya dapat dicairkan pada bulan pembagian SHU (…). Jendela berikutnya: …"');
 $step('9.4b', 'Pengurus', 'Anggota yang pencairan terakhirnya 13 BULAN LALU, sekarang bukan bulan SHU.', 'TETAP DITOLAK — inilah bedanya dengan aturan lama, yang akan meloloskannya. "Sekali setahun" jadi benar-benar "bersamaan SHU".', true);
@@ -272,6 +281,7 @@ $step('10.3', 'Pengurus', 'Cairkan SWP anggota sampai saldonya 0, lalu batalkan 
 $step('10.3', 'Pengurus', 'Cek saldo SWP anggota.', 'Tetap 0, TIDAK MINUS.', true);
 $step('10.3', 'Pengurus', 'Batalkan pencairan SWP-nya dulu, lalu batalkan pinjamannya.', 'Sekarang berhasil.');
 $step('10.4', 'Pengurus', 'Laporan → Rekonsiliasi Pinjaman (setelah seluruh skenario di atas dijalankan).', '"Seluruhnya cocok" — halaman kosong adalah hasil yang benar.');
+$step('10.4', 'Pengurus', 'Klik tombol "Periksa Ulang".', 'Cap waktu "Diperiksa …" di bawah tombol berubah. Perhitungannya selalu keadaan sekarang — tak ada proses terjadwal yang perlu ditunggu.');
 $step('10.4', 'Pengurus', 'Cek kolomnya.', 'SWP dan Tab Berjangka, masing-masing Tercatat / Seharusnya / Selisih.');
 $step('10.4', 'Petugas', 'Buka Rekonsiliasi Pinjaman.', '403.');
 $step('10.5', 'Pengurus', 'Sistem → Log Aktivitas → buka filter Aksi.', 'Memuat "Pencairan di Luar Jadwal", "Pembatalan Ditolak", "Pembayaran Angsuran", "Batch Angsuran Potong Gaji", "Koreksi / Pembatalan".');
